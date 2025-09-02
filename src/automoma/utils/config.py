@@ -1,10 +1,11 @@
 # region Paths
 PROJECT_ROOT = "/home/xinhai/Documents/automoma"
 
+OBJECT_ASSET_DIR = "assets/object"
 
 SCENE_GENERATION_VERSION = "v0_1"
-SCENE_GENERATION_REPO = "scene/infinigen"
-SCENE_OUTPUT_DIR = "scene/infinigen/output/kitchen"
+SCENE_GENERATION_REPO = "third_party/infinigen"
+SCENE_OUTPUT_DIR = "third_party/infinigen/output/kitchen"
 
 # endregion Paths
 
