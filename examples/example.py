@@ -5,19 +5,19 @@ from automoma.pipeline import GraspPipeline, ScenePipeline, TrajectoryPipeline
 
 
 def main():
-    object = ObjectDescription("7221")
+    objects = [ObjectDescription("7221"), ObjectDescription("11622")]
     scene_pipeline = ScenePipeline()
-    scene = scene_pipeline.generate_scene(object)
+    scene, updated_objects = scene_pipeline.generate_scene(objects)
     grasp_pipeline = GraspPipeline()
-    grasps = grasp_pipeline.generate_grasps(object, count=5)
-    for grasp in grasps:
-        task = TaskDescription(
-            robot=RobotDescription("franka.yaml"),
-            object=object,
-            scene=scene,
-            object_scene_pose=[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
-            grasp_pose=grasp,
-            task_type=TaskType.ARTICULATE,
-        )
-        trajectory_pipeline = TrajectoryPipeline(task)
-        trajectory_pipeline.plan_trajector()
+    for object in updated_objects:
+        grasps = grasp_pipeline.generate_grasps(object, count=5)
+        for grasp in grasps:
+            task = TaskDescription(
+                robot=RobotDescription("franka.yaml"),
+                object=object,
+                scene=scene,
+                grasp_pose=grasp,
+                task_type=TaskType.ARTICULATE,
+            )
+            trajectory_pipeline = TrajectoryPipeline(task)
+            trajectory_pipeline.plan_trajectory()

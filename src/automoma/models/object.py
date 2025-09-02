@@ -4,7 +4,11 @@ import numpy as np
 
 class ObjectDescription:
     scale: float | list[float] = 1.0
-    def __init__(self, urdf_path: str, scale: float | list[float] = 1.0):
+    def __init__(self, urdf_path: str, scale: float | list[float] = 1.0, asset_type: str = None, asset_id: str = None):
+
+        self.urdf_path = urdf_path
+        self.asset_type = asset_type
+        self.asset_id = asset_id
         self.urdf_asset = URDFAsset(urdf_path)
         self.scale = scale
 
