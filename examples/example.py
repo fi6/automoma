@@ -1,3 +1,4 @@
+from automoma.models.object import ObjectDescription
 from automoma.models.robot import RobotDescription
 from automoma.models.task import TaskDescription, TaskType
 from automoma.pipeline import GraspPipeline, ScenePipeline, TrajectoryPipeline
@@ -13,11 +14,10 @@ def main():
         task = TaskDescription(
             robot=RobotDescription("franka.yaml"),
             object=object,
-            object_scale=1.0,
             scene=scene,
             object_scene_pose=[[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
             grasp_pose=grasp,
-            task_type=TaskType.PICKPLACE,
+            task_type=TaskType.ARTICULATE,
         )
         trajectory_pipeline = TrajectoryPipeline(task)
-        trajectory_pipeline.plan_trajectory()
+        trajectory_pipeline.plan_trajector()

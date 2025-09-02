@@ -3,8 +3,10 @@ import numpy as np
 
 
 class ObjectDescription:
-    def __init__(self, urdf_path: str):
+    scale: float | list[float] = 1.0
+    def __init__(self, urdf_path: str, scale: float | list[float] = 1.0):
         self.urdf_asset = URDFAsset(urdf_path)
+        self.scale = scale
 
-    def scale(self, scale_factor: float | list[float]):
-        raise NotImplementedError("Scaling is not implemented yet.")
+    def set_scale(self, scale_factor: float | list[float]):
+        self.scale = scale_factor

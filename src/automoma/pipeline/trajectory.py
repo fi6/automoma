@@ -36,9 +36,7 @@ class TrajectoryPipeline:
         self.akr_robot
         raise NotImplementedError("plan_akr_trajectory is not implemented yet.")
 
-    def plan_trajectory(self):
+    def plan_trajectories(self):
         # plan approach trajectory(if needed)
         self.task.robot
         raise NotImplementedError("plan_trajectory is not implemented yet.")
-
-
