@@ -5,20 +5,26 @@ import numpy as np
 class GraspPipeline:
     # for a given object, output the grasp pose
     def __init__(self):
-        raise NotImplementedError("GraspPipeline is not implemented yet.")
-    
-    
+        pass
     def grasp_scale(self, grasp: np.ndarray, scale: float | list[float]) -> np.ndarray:
         # scale the grasp pose according to the object scale
         scaled_grasp = np.copy(grasp)
-        scaled_grasp[:3, 3] *= scale
+        scaled_grasp[:3] *= scale
         return scaled_grasp
-    
-    def read_grasps_from_file(self, object: ObjectDescription, count: int) -> list[np.ndarray]:
-        # read grasp poses from a file
+        
+    def generate_grasps(self, object: ObjectDescription, count: int) -> list[np.ndarray]:
+        # Generate a grasp pose for the given object description
+        raise NotImplementedError("GraspPipeline is not implemented yet.")
+
+
+class AOGraspPipeline(GraspPipeline):
+    def __init__(self):
+        super().__init__()
+        
+    def generate_grasps(self, object: ObjectDescription, count: int) -> list[np.ndarray]:
+        # Read the grasp poses from a file
         urdf_path = object.urdf_path
-        object_id = urdf_path.split("/")[-2]  # assuming the folder name is the object id
-        file_folder = f"assets/grasp/{object_id}/0/raw/pos"
+        file_folder = urdf_path.replace("mobility.urdf", "grasp")
         grasps = []
         for i in range(count):
             file_path = f"{file_folder}/{i:04d}.npy"
@@ -26,10 +32,16 @@ class GraspPipeline:
             grasp = self.grasp_scale(grasp, object.scale)
             grasps.append(grasp)
         return grasps
-        
-
-    def generate_grasps(self, object: ObjectDescription, count: int) -> list[np.ndarray]:
-        # Generate a grasp pose for the given object description
-        grasps = self.read_grasps_from_file(object, count)
-        
-        return grasps
+    
+if __name__ == "__main__":
+    from automoma.models.object import ObjectDescription
+    object = ObjectDescription(
+            asset_type="Dishwasher",
+            asset_id="11622",
+            scale=0.6,
+            urdf_path="assets/object/Dishwasher/11622/mobility.urdf",
+        )
+    pipeline = AOGraspPipeline()
+    grasps = pipeline.generate_grasps(object, 10)
+    for grasp in grasps:
+        print(grasp)
