@@ -154,19 +154,10 @@ class InfinigenScenePipeline(ScenePipeline):
         """
         infinigen_root = abs_path(SCENE_GENERATION_REPO)
         log_dir = make_dir(os.path.join(scene_dir, "logs"))
-        # Common shell prefix to activate conda env
+        # Using conda run (simplest and most reliable)
         def make_conda_command(args: list) -> list:
-            cmd_str = " ".join(args)
-            return [
-                "/bin/bash", "-i", "-c",  # Use interactive shell to load conda
-                f"""
-                source $(conda info --base)/etc/profile.d/conda.sh
-                conda activate infinigen
-                cd {infinigen_root}
-                echo "🔧 Activated conda env: $(conda info --envs | grep '*' | awk '{{print $1}}')"
-                {cmd_str}
-                """
-            ]
+            # use the interpreter that belongs to the 'infinigen' env
+            return args
 
         # 1. Generate Scene
         print(f"🌱 Generating scene with seed={seed}...")
@@ -261,9 +252,9 @@ if __name__ == "__main__":
     test_objects = [
         ObjectDescription(
             asset_type="Microwave",
-            asset_id="7221",
+            asset_id="7263",
             scale=0.4,
-            urdf_path="assets/object/Microwave/7221/mobility.urdf",
+            urdf_path="assets/object/Microwave/7263/mobility.urdf",
         ),
         ObjectDescription(
             asset_type="Dishwasher",
@@ -275,4 +266,4 @@ if __name__ == "__main__":
 
     # Run pipeline
     pipeline = InfinigenScenePipeline(version="v1")
-    result = pipeline.generate_scene(test_objects, seed=50)
+    result = pipeline.generate_scene(test_objects, seed=100)
