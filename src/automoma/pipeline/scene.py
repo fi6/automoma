@@ -122,7 +122,7 @@ class ScenePipeline:
         with open(requirement_path, "r", encoding="utf-8") as f:
             requirement = json.load(f)
 
-        generated_ids = {obj["asset_id"] for obj in metadata.get("static_objects", [])}
+        generated_ids = {obj["asset_id"] for obj in metadata.get("static_objects", {}).values()}
         valid_objects = []
 
         for obj in requirement["static_objects"]:
@@ -183,7 +183,7 @@ class ScenePipeline:
         print(f"📝 Logging to: {log_file_1}")
         with open(log_file_1, "w") as log_f:
             result1 = subprocess.run(make_conda_command(generate_cmd), cwd=infinigen_root, stdout=log_f, stderr=subprocess.STDOUT)
-        if result1.returncode != 0:
+        if not os.path.exists(os.path.join(blender_dir, "scene.blend")):
             raise RuntimeError(f"❌ Scene generation failed. See log: {log_file_1}")
 
         # 2. Export to USD
@@ -200,7 +200,7 @@ class ScenePipeline:
         print(f"📝 Logging to: {log_file_2}")
         with open(log_file_2, "w") as log_f:
             result2 = subprocess.run(make_conda_command(export_cmd), cwd=infinigen_root, stdout=log_f, stderr=subprocess.STDOUT)
-        if result2.returncode != 0:
+        if not os.path.exists(os.path.join(export_dir, USD_EXPORT_PATH)):
             raise RuntimeError(f"❌ USD export failed. See log: {log_file_2}")
 
         # 3. Extract Object Info
@@ -221,7 +221,7 @@ class ScenePipeline:
         print(f"📝 Logging to: {log_file_3}")
         with open(log_file_3, "w") as log_f:
             result3 = subprocess.run(make_conda_command(extract_cmd), stdout=log_f, stderr=subprocess.STDOUT)
-        if result3.returncode != 0:
+        if not os.path.exists(metadata_file):
             raise RuntimeError(f"❌ Object extraction failed. See log: {log_file_3}")
 
         print("✅ All Infinigen steps completed.")
@@ -295,10 +295,4 @@ if __name__ == "__main__":
 
     # Run pipeline
     pipeline = ScenePipeline(version="v1")
-    try:
-        result = pipeline.generate_scene(test_objects, seed=50)
-        print(f"📦 USD Path: {result.scene.scene_usd_path}")
-        print(f"📄 Metadata: {result.scene.metadata_path}")
-        print(f"✅ Valid Objects: {[obj.asset_id for obj in result.valid_objects]}")
-    except Exception as e:
-        print(f"❌ Scene generation failed: {e}")
+    result = pipeline.generate_scene(test_objects, seed=50)
