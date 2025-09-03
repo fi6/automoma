@@ -38,9 +38,6 @@ USD_EXPORT_PATH = "export_scene.blend/export_scene.usdc"
 TEXTURE_RESOLUTION = "1024"
 DEFAULT_CONFIG = "kitchen_only.gin"  # Change as needed
 
-SUPPORTED_GENERATORS = ["infinigen"]
-
-
 @dataclass
 class SceneGenerationResult:
     """Result of a successful scene generation."""
@@ -49,6 +46,12 @@ class SceneGenerationResult:
 
 
 class ScenePipeline:
+    def __init__(self, version: str = SCENE_GENERATION_VERSION):
+        self.version = version
+    def generate_scene(self, objects: List[ObjectDescription], seed: int) -> SceneGenerationResult:
+        raise NotImplementedError("This method should be implemented by subclasses.")
+
+class InfinigenScenePipeline(ScenePipeline):
     """
     Pipeline for generating 3D scenes with specified objects using Infinigen.
 
@@ -60,12 +63,8 @@ class ScenePipeline:
         5. Validate and return SceneDescription
     """
 
-    def __init__(self, version: str = SCENE_GENERATION_VERSION, generator: str = "infinigen"):
-        if generator not in SUPPORTED_GENERATORS:
-            raise ValueError(f"Unsupported generator: {generator}. Supported: {SUPPORTED_GENERATORS}")
-
-        self.generator = generator
-        self.version = version
+    def __init__(self, version: str = SCENE_GENERATION_VERSION):
+        super().__init__(version)
 
     def _create_requirement_data(self, objects: List[ObjectDescription]) -> dict:
         """Build requirement dict from object list."""
@@ -226,7 +225,7 @@ class ScenePipeline:
 
         print("✅ All Infinigen steps completed.")
 
-    def _generate_scene_infinigen(self, objects: List[ObjectDescription], seed: int) -> SceneGenerationResult:
+    def generate_scene(self, objects: List[ObjectDescription], seed: int) -> SceneGenerationResult:
         """Generate scene using Infinigen backend."""
         timestamp = int(time.time())
         scene_dir = abs_path(f"{SCENE_OUTPUT_DIR}/{self.version}_seed{seed}_{timestamp}")
@@ -253,25 +252,6 @@ class ScenePipeline:
         print(f"🎨 Scene generated at: {scene_dir}")
         return SceneGenerationResult(scene=scene, valid_objects=valid_objects)
 
-    def generate_scene(self, objects: List[ObjectDescription], seed: int) -> SceneGenerationResult:
-        """
-        Generate a 3D scene with the given objects.
-
-        Args:
-            objects: List of ObjectDescription to include.
-            seed: Random seed for scene variation.
-
-        Returns:
-            SceneGenerationResult with scene and valid objects.
-        """
-        if not objects:
-            raise ValueError("Object list cannot be empty.")
-
-        if self.generator == "infinigen":
-            return self._generate_scene_infinigen(objects, seed)
-        else:
-            raise ValueError(f"Unsupported generator: {self.generator}")
-
 
 # ----------------------------
 # Example Usage
@@ -294,5 +274,5 @@ if __name__ == "__main__":
     ]
 
     # Run pipeline
-    pipeline = ScenePipeline(version="v1")
+    pipeline = InfinigenScenePipeline(version="v1")
     result = pipeline.generate_scene(test_objects, seed=50)
