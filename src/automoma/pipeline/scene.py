@@ -203,7 +203,7 @@ class InfinigenScenePipeline(ScenePipeline):
         metadata_file = os.path.join(info_dir, METADATA_FILE_NAME)
         extract_cmd = [
             sys.executable,
-            "scripts/automoma/extract_object_info.py",
+            "third_party/infinigen/scripts/automoma/extract_object_info.py",
             "--blend_file", blend_file,
             "--output", metadata_file,
         ]
@@ -242,6 +242,19 @@ class InfinigenScenePipeline(ScenePipeline):
 
         print(f"🎨 Scene generated at: {scene_dir}")
         return SceneGenerationResult(scene=scene, valid_objects=valid_objects)
+    
+    def load_scene(self, scene_dir: str, objects: List[ObjectDescription]) -> SceneGenerationResult:
+        """Load existing scene from directory."""
+        scene_dir = abs_path(scene_dir)
+        export_dir = os.path.join(scene_dir, "export")
+        info_dir = os.path.join(scene_dir, "info")
+        usd_path = os.path.join(export_dir, USD_EXPORT_PATH)
+        metadata_path = os.path.join(info_dir, METADATA_FILE_NAME)
+        self._validate_usd_file(usd_path)
+        num_valid, valid_objects = self._check_generation_validity(objects, metadata_path, os.path.join(info_dir, REQUIREMENT_FILE_NAME))
+        scene = SceneDescription(scene_usd_path=usd_path, metadata_path=metadata_path)
+        print(f"🎨 Scene loaded from: {scene_dir}")
+        return SceneGenerationResult(scene=scene, valid_objects=valid_objects)
 
 
 # ----------------------------
@@ -266,4 +279,6 @@ if __name__ == "__main__":
 
     # Run pipeline
     pipeline = InfinigenScenePipeline(version="v1")
-    result = pipeline.generate_scene(test_objects, seed=100)
+    # result = pipeline.generate_scene(test_objects, seed=100)
+    result = pipeline.load_scene("/home/xinhai/Documents/automoma/third_party/infinigen/output/kitchen/v1_seed100_1756884596", test_objects)
+    print(f"Scene USD Path: {result.scene.scene_usd_path}")
