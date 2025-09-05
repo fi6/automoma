@@ -1,3 +1,3 @@
-from .grasp import GraspPipeline
+from .grasp import GraspPipeline, AOGraspPipeline
 from .trajectory import TrajectoryPipeline
-from .scene import ScenePipeline
+from .scene import ScenePipeline, InfinigenScenePipeline

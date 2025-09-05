@@ -26,7 +26,6 @@ class TaskDescription:
         scene: SceneDescription,
         object: ObjectDescription,
         grasp_pose: np.ndarray,
-        object_scene_pose: np.ndarray,
         object_scale: float | list[float] = 1.0,
     ):
         self.task_type = task_type
@@ -34,8 +33,32 @@ class TaskDescription:
         self.scene = scene
         self.object = object
         self.grasp_pose = grasp_pose
-        self.object_scene_pose = object_scene_pose
         self.object_scale = object_scale
+
+        self.init_task()
+
+    def init_task(self):
+        if self.task_type == TaskType.PICKPLACE:
+            self.init_task_pickplace()
+        elif self.task_type == TaskType.ARTICULATE:
+            self.init_task_articulate()
+
+    def init_task_pickplace(self):
+        self.start = {
+            "pose": self.scene.get_object_pose(self.object),
+        }
+        self.goal = {
+            "pose": [[0, 0, 0, 1, 0, 0, 0]],
+        }
+        
+    def init_task_articulate(self):
+        self.start = {
+            "pose": self.scene.get_object_pose(self.object),
+            "angle": 0.0,
+        }
+        self.goal = {
+            "angle": [1.00, 1.57],  # radians
+        }
 
     @classmethod
     def from_yaml(cls, task_yaml_path: str) -> "TaskDescription":
