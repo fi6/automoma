@@ -1,6 +1,7 @@
 # Specific to this project
 assets/
-
+output/
+tests/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

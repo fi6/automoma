@@ -35,6 +35,19 @@ cd automoma
 pip install -e ".[dev]"
 ```
 
+### Curobo
+
+```
+pip install isaacsim==4.2.0.2 isaacsim-extscache-physics==4.2.0.2 isaacsim-extscache-kit==4.2.0.2 isaacsim-extscache-kit-sdk==4.2.0.2 --extra-index-url https://pypi.nvidia.com
+
+cd third_party
+git clone https://github.com/fi6/curobo.git
+
+pip install tomli wheel ninja
+pip install -U setuptools pip
+pip install -e "./third_party/curobo[isaacsim]" --no-build-isolation
+```
+
 ## Quick Start
 
 ```python
