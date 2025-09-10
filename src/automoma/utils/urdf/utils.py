@@ -6,7 +6,7 @@ import sys
 from yourdfpy.urdf import URDF, Collision, Geometry, Visual
 import numpy as np
 import yaml
-from cuakr.urdf.object import BaseObject
+from automoma.utils.urdf.object import BaseObject
 import itertools
 from collections import defaultdict
 import torch
@@ -17,8 +17,11 @@ import time
 
 def sum_link_mesh(geo_list):
     link_mesh = trimesh.Trimesh()
+    print(f"geo_list, {geo_list}")
     for i in geo_list:
+        print(i.geometry.mesh.filename)
         m: trimesh.Trimesh = trimesh.load(i.geometry.mesh.filename)
+        print(f"Mesh: {m.vertices.shape}")
         link_mesh = trimesh.util.concatenate(m, link_mesh)
     return link_mesh
 
@@ -37,8 +40,71 @@ def scale_geometry(mesh, scaling_factor, file_name):
     return geo
 
 
-# TODO: Clean up
 def init_scale_urdf(
+    urdf, scaling_factor, extracted_file: str | None = None, mesh_folder=""
+):
+    # if not mesh_folder:
+    #     extracted_folder = extracted_file.rsplit("/", 1)[0]
+    #     mesh_folder = f"{extracted_folder}/new_mesh/"
+    
+    print(f"Scaling URDF by factor {scaling_factor}")
+
+    for link in urdf.robot.links:
+        print(f"Processing link: {link.name}")
+        # Scale link visuals
+        if len(link.visuals) != 0:
+            print(f"  Scale")
+            link_mesh_sum = sum_link_mesh(link.visuals)
+            print(f"  Merged visuals into one mesh")
+            link_visual_file = f"{mesh_folder}{link.name}_scale.obj"
+            link_geo = scale_geometry(link_mesh_sum, scaling_factor, link_visual_file)
+            link_vis = Visual(
+                name=link.name,
+                origin=link.visuals[0].origin * scaling_factor,
+                geometry=link_geo,
+            )
+            print(f" scale_geometry")
+            
+
+            link.visuals.clear()
+            link.visuals.append(link_vis)
+            print(f"  Scaled visuals and saved to {link_visual_file}")
+
+        # Scale link collisions
+        if len(link.collisions) != 0:
+            print(f"  Scale")
+            link_col_sum = sum_link_mesh(link.collisions)
+            print(f"  Merged collisions into one mesh")
+            link_col_file = f"{mesh_folder}{link.name}_col_scale.obj"
+            link_geo = scale_geometry(link_col_sum, scaling_factor, link_col_file)
+            link_vis = Collision(
+                name=link.name,
+                origin=link.collisions[0].origin * scaling_factor,
+                geometry=link_geo,
+            )
+            print(f" scale_geometry")
+
+            link.collisions.clear()
+            link.collisions.append(link_vis)
+            print(f"  Scaled collisions and saved to {link_col_file}")
+            
+    print("Finished scaling all link geometries.")
+
+    # Re-calculate joint origin after scaling link geometry
+    for joint in urdf.robot.joints:
+        t_parent_child = urdf.get_transform(joint.child, joint.parent)
+        joint.origin[:3, :3] = t_parent_child[:3, :3]
+        joint.origin[:3, 3] = t_parent_child[:3, 3] * scaling_factor
+        
+    print("Re-calculated joint origins after scaling.")
+
+    if extracted_file is not None:
+        urdf.write_xml_file(extracted_file)
+    
+    return urdf
+
+# TODO: Clean up
+def init_scale_urdf_old(
     urdf_file, scaling_factor, init_cfg, extracted_file: str | None = None, mesh_folder=""
 ):
     urdf = URDF(robot=URDF.load(urdf_file + "mobility.urdf").robot)

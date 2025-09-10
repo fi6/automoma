@@ -1,6 +1,7 @@
 import tempfile
 from scene_synthesizer.procedural_assets import URDFAsset
 from automoma.utils.urdf.object import BaseObject
+from automoma.utils.urdf.utils import init_scale_urdf
 from yourdfpy import URDF
 import numpy as np
 from typing import Dict
@@ -26,14 +27,17 @@ def attach_object_to_robot(
     :param robot_ee_link: The end-effector link of the robot.
     :return: A new URDFAsset with the object attached to the robot.
     """
-    # calculate attached origin from grasp pose
+    
     t_handle = np.eye(4, dtype=np.float64)
-    inversed_object_urdf = inverse_object(object, object_ee_link, object_tip)
-
+    
     # Update joint configuration and get transform
     if object_cfg is not None:
-        inversed_object_urdf._model.update_cfg(object_cfg)
-    t_handle = inversed_object_urdf._model.get_transform(object_tip)
+        object._model.update_cfg(object_cfg)
+    t_handle = object._model.get_transform(object_tip)
+    
+    # calculate attached origin from grasp pose
+    inversed_object_urdf = inverse_object(object, object_ee_link, object_tip)
+
 
     t_grasp = np.matrix(grasp_pose)
     attached_origin = t_grasp.I * t_handle
@@ -82,7 +86,17 @@ def _robot_to_urdf_asset(robot) -> URDFAsset:
         return new_urdf_asset
 
 
-if __name__ == "__main1__":
+def load_urdf_asset(urdf_path: str, scale: float | None = None) -> URDFAsset:
+    urdf_asset = URDFAsset(urdf_path)
+    if scale is not None:
+        from automoma.utils.scale_urdf import scale_urdf
+        output_path = urdf_path.replace(".urdf", "output/test/scaled.urdf")
+        scale_urdf(urdf_path, output_path, scale)
+        urdf_asset = URDFAsset(output_path)
+    return urdf_asset
+
+
+if __name__ == "__main__":
     import trimesh.transformations as tra
     import os
     import shutil
@@ -92,8 +106,20 @@ if __name__ == "__main1__":
         shutil.rmtree(output_dir)
     os.makedirs(output_dir)
     
+    
     # urdf = URDFAsset("/home/xinhai/Documents/cuakr-docker/scene/infinigen/assets/partnet_mobility/processed_data/Microwave/7221/mobility.urdf")
     urdf = URDFAsset("/home/xinhai/Documents/automoma/assets/object/Microwave/7221/mobility.urdf")
+    
+    scene = urdf.scene()
+    
+    from scene_synthesizer.exchange.urdf import scene_as_urdf
+    plain_urdf = scene_as_urdf(scene)
+    urdf = _robot_to_urdf_asset(plain_urdf.robot)
+
+    # scene.show()
+    
+    # urdf._model = init_scale_urdf(urdf._model, 0.4, None)
+    
     urdf._model.write_xml_file(os.path.join(output_dir, "mobility.urdf"))
     
     # new_urdf_asset = inverse_object(
@@ -112,7 +138,7 @@ if __name__ == "__main1__":
     grasp_pose_adjust = tra.euler_matrix(-np.pi / 2, 0, 0, "rxyz") # TODO: what is this?
     grasp_pose = grasp_pose @ grasp_pose_adjust
     vkc_robot = attach_object_to_robot(
-        urdf, robot_urdf, grasp_pose, "link_0", "base", "ee_link", object_cfg={"joint_0": 0.0}
+        urdf, robot_urdf, grasp_pose, "object_link_0", "object_base", "ee_link", object_cfg={"object_joint_0": 0.0}
     )
     # vkc_robot.write_xml_file("output/test/attached_object_scene.urdf")
     vkc_robot_asset = _robot_to_urdf_asset(vkc_robot.robot)
@@ -121,7 +147,7 @@ if __name__ == "__main1__":
     scene.subscene(["object"]).export(os.path.join(output_dir, "attached_object_scene.urdf"))
 
 
-if __name__ == "__main__":
+if __name__ == "__main2__":
     from scene_synthesizer.procedural_assets import RefrigeratorAsset
     import trimesh.transformations as tra
     from scene_synthesizer.procedural_scenes import Scene
