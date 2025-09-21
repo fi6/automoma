@@ -1,5 +1,6 @@
 from automoma.models.object import ObjectDescription
 import numpy as np
+import os
 
 
 class GraspPipeline:
@@ -24,7 +25,7 @@ class AOGraspPipeline(GraspPipeline):
     def generate_grasps(self, object: ObjectDescription, count: int) -> list[np.ndarray]:
         # Read the grasp poses from a file
         urdf_path = object.urdf_path
-        file_folder = urdf_path.replace("mobility.urdf", "grasp")
+        file_folder = urdf_path.replace(os.path.basename(urdf_path), "grasp")
         grasps = []
         for i in range(count):
             file_path = f"{file_folder}/{i:04d}.npy"

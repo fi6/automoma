@@ -119,13 +119,13 @@ def get_open_ee_pose(object_pose: Pose, grasp_pose: Pose, object_urdf: URDF, han
         
         
     # 2: Compute relative pose of the grasp and handle in object frame
-    T_object_handle_init = Pose.from_matrix(object_urdf.get_transform(handle, "base"))
+    T_object_handle_init = Pose.from_matrix(object_urdf.get_transform(handle))
     T_object_grasp_init = grasp_pose
     T_handle_grasp = T_object_handle_init.inverse().multiply(T_object_grasp_init)
     
     # 3. Compute the open grasp pose in object frame
     object_urdf.update_cfg(joint_cfg)
-    T_object_handle_open = Pose.from_matrix(object_urdf.get_transform(handle, "base"))
+    T_object_handle_open = Pose.from_matrix(object_urdf.get_transform(handle))
     T_object_grasp_open = T_object_handle_open.multiply(T_handle_grasp)
 
     # 4. Compute the open grasp pose in world frame

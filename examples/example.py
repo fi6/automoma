@@ -1,7 +1,18 @@
+import isaacsim
+from omni.isaac.kit import SimulationApp
+
+simulation_app = SimulationApp({
+    "headless": False,
+    "width": 1920,
+    "height": 1080
+})
+
 from automoma.models.object import ObjectDescription
 from automoma.models.robot import RobotDescription
 from automoma.models.task import TaskDescription, TaskType
-from automoma.pipeline import GraspPipeline, ScenePipeline, TrajectoryPipeline, InfinigenScenePipeline, AOGraspPipeline
+from automoma.pipeline import GraspPipeline, ScenePipeline, TrajectoryPipeline, InfinigenScenePipeline, AOGraspPipeline, ReplayPipeline
+from automoma.utils.transform import single_axis_self_rotation, matrix_to_pose
+import numpy as np
 
 
 def main():
@@ -23,32 +34,207 @@ def main():
             trajectory_pipeline.plan_trajectory()
 
 
-def test():
+def create_7221_object():
+    """Create a 7221 microwave object."""
     object = ObjectDescription(
-            asset_type="Dishwasher",
-            asset_id="11622",
-            scale=0.6,
-            urdf_path="assets/object/Dishwasher/11622/mobility.urdf",
-        )
-    objects = [object]
+        asset_type="Microwave",
+        asset_id="7221",
+        scale=0.3562990018302636,
+        urdf_path="assets/object/Microwave/7221/7221_0_scaling.urdf",
+    )
+    object.set_handle_link("link_0")
+    return object
+
+
+def load_scene(scene_path: str, objects: list):
+    """Load scene from path."""
+    
+    from cuakr.utils.math import pose_multiply
+    
     scene_pipeline = InfinigenScenePipeline()
-    # scene, valid_objects = scene_pipeline.generate_scene(objects, seed=100)
-    scene_result = scene_pipeline.load_scene("/home/xinhai/Documents/automoma/third_party/infinigen/output/kitchen/v1_seed100_1756884596", objects)
-    for object in scene_result.valid_objects:
-        print(object.urdf_path)
-        pipeline = AOGraspPipeline()
-        grasps = pipeline.generate_grasps(object, 10)
-        for grasp in grasps:
-            print(grasp)
-            task = TaskDescription(
-                robot=RobotDescription("assets/robot/summit_franka/summit_franka.yml"),
-                object=object,
-                scene=scene_result.scene,
-                grasp_pose=grasp,
-                task_type=TaskType.ARTICULATE,
-            )
-            # trajectory_pipeline = TrajectoryPipeline(task)
-            # trajectory_pipeline.plan_trajectory()
-            
+    scene_result = scene_pipeline.load_scene(scene_path, objects)
+    scene_pose = [0, 0, -0.12, 1, 0, 0, 0]
+    scene_result.scene.set_pose(scene_pose)
+    # set object poses
+    for obj in scene_result.valid_objects:
+        obj_pose = scene_result.scene.get_object_matrix(obj)
+        obj_pose = single_axis_self_rotation(obj_pose, 'z', np.pi)
+        obj_pose = matrix_to_pose(obj_pose)
+        obj.set_pose(pose_multiply(scene_pose, obj_pose))
+    # set scene pose
+    return scene_result
+
+
+def test():
+    """Simple pipeline test with 7221 microwave."""
+    print("=== AKR Pipeline Test ===")
+
+    # Create object
+    object = create_7221_object()
+
+    # Load scene
+    scene_path = "/home/xinhai/Documents/automoma/output/test/kitchen_0919/scene_1_seed_1"
+    scene_result = load_scene(scene_path, [object])
+
+    # Generate grasps
+    pipeline = AOGraspPipeline()
+    grasps = pipeline.generate_grasps(object, 20)
+    
+    # Create task
+    task = TaskDescription(
+        robot=RobotDescription("assets/robot/summit_franka/summit_franka.yml"),
+        object=object,
+        scene=scene_result.scene,
+        task_type=TaskType.ARTICULATE,
+    )
+    print("=== Task is created ===")
+    
+    trajectory_pipeline = TrajectoryPipeline(task)
+    
+    print("=== Trajectory pipeline is created ===")
+
+    # Process each grasp
+    for i, grasp in enumerate(grasps):
+        print(f"\nProcessing grasp {i}")
+
+        # Update task with current grasp
+        task.update_grasp(grasp)
+        print("=== Task updated with new grasp. ===")
+        
+        # Run pipeline
+        trajectory_pipeline.load_akr_robot(f"assets/object/Microwave/7221/summit_franka_7221_0_grasp_{i:04d}.yml")
+        print("=== AKR robot loaded. ===")
+
+        trajectory_pipeline.plan_ik()
+        print("=== IK planning completed. ===")
+
+        trajectory_pipeline.plan_traj()
+        print("=== Trajectory planning completed. ===")
+        
+        trajectory_pipeline.filter_traj()
+        print("=== Trajectory filtering completed. ===")
+        
+        trajectory_pipeline.save_results(grasp_id=i)
+        print("=== Results saved. ===")
+
+        print(f"Completed grasp {i}")
+
+
+def test_with_replay():
+    """Test pipeline with replay visualization - standalone approach."""
+    print("=== AKR Pipeline Test with Replay ===")
+
+    # Create object
+    object = create_7221_object()
+
+    # Load scene
+    scene_path = "/home/xinhai/Documents/automoma/output/test/kitchen_0919/scene_1_seed_1"
+    scene_result = load_scene(scene_path, [object])
+
+    # Generate grasps
+    pipeline = AOGraspPipeline()
+    grasps = pipeline.generate_grasps(object, 5)  # Limit for demo
+    
+    # Create task
+    task = TaskDescription(
+        robot=RobotDescription("assets/robot/summit_franka/summit_franka.yml"),
+        object=object,
+        scene=scene_result.scene,
+        task_type=TaskType.ARTICULATE,
+    )
+    
+    # First run the trajectory pipeline
+    trajectory_pipeline = TrajectoryPipeline(task)
+
+    # Process first grasp
+    grasp_id = 0
+    grasp = grasps[grasp_id]
+    
+    print(f"\nProcessing grasp {grasp_id}")
+    task.update_grasp(grasp)
+    
+    # Run pipeline
+    trajectory_pipeline.load_akr_robot(f"assets/object/Microwave/7221/summit_franka_7221_0_grasp_{grasp_id:04d}.yml")
+    trajectory_pipeline.plan_ik()
+    trajectory_pipeline.plan_traj()
+    trajectory_pipeline.filter_traj()
+    trajectory_pipeline.save_results(grasp_id=grasp_id)
+    
+    print("=== Pipeline completed, starting replay ===")
+    
+    # Now use standalone ReplayPipeline - independent from TrajectoryPipeline
+    from automoma.pipeline.replay import ReplayPipeline
+    replay_pipeline = ReplayPipeline(task)
+    
+    # Option 1: Replay IK solutions
+    print("=== Replaying IK solutions ===")
+    replay_pipeline.replay_ik(grasp_id=grasp_id)
+    
+    # Option 2: Replay trajectories
+    print("=== Replaying trajectories ===")
+    replay_pipeline.replay_traj(grasp_id=grasp_id)
+    
+    # Option 3: Replay filtered trajectories
+    print("=== Replaying filtered trajectories ===")
+    replay_pipeline.replay_filtered_traj(grasp_id=grasp_id)
+    
+    # Option 4: Replay AKR trajectories
+    print("=== Replaying AKR trajectories ===")
+    replay_pipeline.replay_traj_akr(grasp_id=grasp_id)
+    
+    # Close replay pipeline
+    replay_pipeline.close()
+
+
+def demo_replay_only():
+    """Demo replay functionality with existing results."""
+    print("=== Replay Demo (using existing results) ===")
+    
+    # Create task for replay
+    object = create_7221_object()
+    scene_path = "/home/xinhai/Documents/automoma/output/test/kitchen_0919/scene_1_seed_1"
+    scene_result = load_scene(scene_path, [object])
+    
+    task = TaskDescription(
+        robot=RobotDescription("assets/robot/summit_franka/summit_franka.yml"),
+        object=object,
+        scene=scene_result.scene,
+        task_type=TaskType.ARTICULATE,
+    )
+    
+    # Create replay pipeline directly
+    replay_pipeline = ReplayPipeline(task, simulation_app)
+    
+    # Original object
+    replay_pipeline.replayer.set_deactivate_prims("StaticCategoryFactory_Microwave_7221")
+    
+    # Ceiling for visualization
+    # 1. "exterior" for the walls
+    # 2. "ceiling" for the ceiling
+    # 3. "Ceiling" for the light
+    replay_pipeline.replayer.set_deactivate_prims("exterior")
+    replay_pipeline.replayer.set_deactivate_prims("ceiling")
+    replay_pipeline.replayer.set_deactivate_prims("Ceiling")
+    
+    # Replay existing results for grasp 0
+    grasp_id = 0
+    
+    print("Choose replay mode:")
+    print("1. Replay IK solutions")
+    print("2. Replay trajectories")  
+    print("3. Replay filtered trajectories")
+    print("4. Replay AKR trajectories")
+    
+    # For demo, just replay IK
+    # replay_pipeline.replay_ik(grasp_id=grasp_id)
+    replay_pipeline.replay_filtered_traj(grasp_id=grasp_id)
+    
+    # Close when done
+    replay_pipeline.close()
+
+
 if __name__ == "__main__":
-    test()
+    # Choose which demo to run
+    # test()  # Original pipeline test
+    # test_with_replay()  # Test with replay
+    demo_replay_only()  # Replay only demo
