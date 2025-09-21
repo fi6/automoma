@@ -15,9 +15,6 @@ class TaskDescription:
     robot: RobotDescription
     scene: SceneDescription
     object: ObjectDescription
-    grasp_pose: np.ndarray
-    object_scene_pose: np.ndarray
-    object_scale: float | list[float] = 1.0
 
     def __init__(
         self,
@@ -25,15 +22,13 @@ class TaskDescription:
         robot: RobotDescription,
         scene: SceneDescription,
         object: ObjectDescription,
-        grasp_pose: np.ndarray,
-        object_scale: float | list[float] = 1.0,
+        grasp_pose: np.ndarray=None,
     ):
         self.task_type = task_type
         self.robot = robot
         self.scene = scene
         self.object = object
         self.grasp_pose = grasp_pose
-        self.object_scale = object_scale
 
         self.init_task()
 
@@ -59,6 +54,9 @@ class TaskDescription:
         self.goal = {
             "angle": [1.00, 1.57],  # radians
         }
+        
+    def update_grasp(self, grasp_pose: np.ndarray):
+        self.grasp_pose = grasp_pose
 
     @classmethod
     def from_yaml(cls, task_yaml_path: str) -> "TaskDescription":

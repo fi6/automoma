@@ -1,5 +1,4 @@
-# from scene_synthesizer import URDFAsset
-from yourdfpy import URDF
+from scene_synthesizer import URDFAsset
 import numpy as np
 
 
@@ -10,7 +9,7 @@ class ObjectDescription:
         self.urdf_path = urdf_path
         self.asset_type = asset_type
         self.asset_id = asset_id
-        # self.urdf_asset = URDF(urdf_path)
+        self.urdf_asset = URDFAsset(urdf_path)
         self.scale = scale
 
     def set_scale(self, scale_factor: float | list[float]):

@@ -265,20 +265,20 @@ if __name__ == "__main__":
     test_objects = [
         ObjectDescription(
             asset_type="Microwave",
-            asset_id="7263",
-            scale=0.4,
-            urdf_path="assets/object/Microwave/7263/mobility.urdf",
+            asset_id="7221",
+            scale=0.3563,
+            urdf_path="assets/object/Microwave/7221/mobility.urdf",
         ),
-        ObjectDescription(
-            asset_type="Dishwasher",
-            asset_id="11622",
-            scale=0.6,
-            urdf_path="assets/object/Dishwasher/11622/mobility.urdf",
-        ),
+        # ObjectDescription(
+        #     asset_type="Dishwasher",
+        #     asset_id="11622",
+        #     scale=0.6,
+        #     urdf_path="assets/object/Dishwasher/11622/mobility.urdf",
+        # ),
     ]
 
     # Run pipeline
     pipeline = InfinigenScenePipeline(version="v1")
-    # result = pipeline.generate_scene(test_objects, seed=100)
-    result = pipeline.load_scene("/home/xinhai/Documents/automoma/third_party/infinigen/output/kitchen/v1_seed100_1756884596", test_objects)
+    result = pipeline.generate_scene(test_objects, seed=100)
+    # result = pipeline.load_scene("/home/xinhai/Documents/automoma/third_party/infinigen/output/kitchen/v1_seed100_1756884596", test_objects)
     print(f"Scene USD Path: {result.scene.scene_usd_path}")
