@@ -52,6 +52,7 @@ class TaskDescription:
             "angle": 0.0,
         }
         self.goal = {
+            # "angle": [0.80, 1.00, 1.25, 1.40, 1.57],  # radians
             "angle": [1.00, 1.57],  # radians
         }
         

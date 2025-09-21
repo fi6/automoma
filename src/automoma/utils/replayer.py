@@ -410,24 +410,29 @@ class Replayer:
             robot._articulation_view.set_max_efforts(
                 values=np.array([5000] * len(idx_list)), joint_indices=idx_list,
             )
-            self.set_handle_pose(handle_pose.item())
-            self._isaacsim_step(duration=stop_duration, render=True)
+            start_time = time.time()
+            while time.time() - start_time < pose_duration:
+                robot.set_joint_positions(robot_pose.tolist(), idx_list)
+                self.set_handle_pose(handle_pose.item())
+                self._isaacsim_step(step=1, render=True)
             
             # Step through trajectory
             for step_idx, pose in enumerate(traj):
                 robot_pose = pose[:-1]
                 handle_pose = pose[-1:]
                 robot_pose = self._adjust_pose_for_robot(robot_pose, robot_name)
-                robot.set_joint_positions(robot_pose.tolist(), idx_list)
-                self.set_handle_pose(handle_pose.item())
-                self._isaacsim_step(duration=pose_duration, render=True)
+                start_time = time.time()
+                while time.time() - start_time < pose_duration:
+                    robot.set_joint_positions(robot_pose.tolist(), idx_list)
+                    self.set_handle_pose(handle_pose.item())
+                    self._isaacsim_step(step=1, render=True)
                 
             # Set to goal state
-            robot_pose = goal_state[:-1]
-            handle_pose = goal_state[-1:]
-            robot_pose = self._adjust_pose_for_robot(robot_pose, robot_name)
-            robot.set_joint_positions(robot_pose.tolist(), idx_list)
-            self.set_handle_pose(handle_pose.item())
+            # robot_pose = goal_state[:-1]
+            # handle_pose = goal_state[-1:]
+            # robot_pose = self._adjust_pose_for_robot(robot_pose, robot_name)
+            # robot.set_joint_positions(robot_pose.tolist(), idx_list)
+            # self.set_handle_pose(handle_pose.item())
             self._isaacsim_step(duration=stop_duration, render=True)
        
     def replay_traj_akr(self, start_states, goal_states, trajs, successes, robot_name):
