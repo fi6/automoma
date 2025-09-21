@@ -84,7 +84,7 @@ class TrajectoryPipeline:
             ik_result = IKResult(start_ik=start_iks, goal_ik=goal_iks)
         
         self.ik_result = ik_result
-        print(f"IK planning completed: {ik_result.start_ik.shape[0]} solutions")
+        print(f"IK planning completed: {ik_result.start_ik.shape[0], ik_result.goal_ik.shape[0]} solutions")
         return ik_result
 
     def plan_traj(self):

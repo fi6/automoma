@@ -478,6 +478,9 @@ class Replayer:
             robot_pose = goal_state
             robot_pose = self._adjust_pose_for_akr_robot(robot_pose, robot_name)
             robot.set_joint_positions(robot_pose.tolist(), idx_list)
+            
+    # def replay_traj_record(self, start_states, goal_states, trajs, successes, robot_name):
+        
 
     def _get_indices(self, success, all=False):
         """Get indices for replay."""

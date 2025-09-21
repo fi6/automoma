@@ -71,7 +71,7 @@ class ReplayPipeline:
         """Generate organized output directory path."""
         robot_name = "summit_franka"
         scene_path = Path(self.task.scene.scene_usd_path)
-        scene_name = scene_path.parent.parent.name
+        scene_name = scene_path.parent.parent.parent.name
         
         output_dir = os.path.join(
             self.output_base_dir,
@@ -81,6 +81,7 @@ class ReplayPipeline:
             f"grasp_{grasp_id:04d}"
         )
         
+        os.makedirs(output_dir, exist_ok=True)
         return output_dir
         
     def _get_object_pose(self):

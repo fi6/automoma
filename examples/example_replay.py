@@ -7,6 +7,8 @@ simulation_app = SimulationApp({
     "height": 1080
 })
 
+import omni.kit.actions.core
+
 from automoma.models.object import ObjectDescription
 from automoma.models.robot import RobotDescription
 from automoma.models.task import TaskDescription, TaskType
@@ -65,127 +67,6 @@ def load_scene(scene_path: str, objects: list):
     return scene_result
 
 
-def test():
-    """Simple pipeline test with 7221 microwave."""
-    print("=== AKR Pipeline Test ===")
-
-    # Create object
-    object = create_7221_object()
-
-    # Load scene
-    scene_path = "/home/xinhai/Documents/automoma/output/test/kitchen_0919/scene_1_seed_1"
-    scene_result = load_scene(scene_path, [object])
-
-    # Generate grasps
-    pipeline = AOGraspPipeline()
-    grasps = pipeline.generate_grasps(object, 20)
-    
-    # Create task
-    task = TaskDescription(
-        robot=RobotDescription("assets/robot/summit_franka/summit_franka.yml"),
-        object=object,
-        scene=scene_result.scene,
-        task_type=TaskType.ARTICULATE,
-    )
-    print("=== Task is created ===")
-    
-    trajectory_pipeline = TrajectoryPipeline(task)
-    
-    print("=== Trajectory pipeline is created ===")
-
-    # Process each grasp
-    for i, grasp in enumerate(grasps):
-        print(f"\nProcessing grasp {i}")
-
-        # Update task with current grasp
-        task.update_grasp(grasp)
-        print("=== Task updated with new grasp. ===")
-        
-        # Run pipeline
-        trajectory_pipeline.load_akr_robot(f"assets/object/Microwave/7221/summit_franka_7221_0_grasp_{i:04d}.yml")
-        print("=== AKR robot loaded. ===")
-
-        trajectory_pipeline.plan_ik()
-        print("=== IK planning completed. ===")
-
-        trajectory_pipeline.plan_traj()
-        print("=== Trajectory planning completed. ===")
-        
-        trajectory_pipeline.filter_traj()
-        print("=== Trajectory filtering completed. ===")
-        
-        trajectory_pipeline.save_results(grasp_id=i)
-        print("=== Results saved. ===")
-
-        print(f"Completed grasp {i}")
-
-
-def test_with_replay():
-    """Test pipeline with replay visualization - standalone approach."""
-    print("=== AKR Pipeline Test with Replay ===")
-
-    # Create object
-    object = create_7221_object()
-
-    # Load scene
-    scene_path = "/home/xinhai/Documents/automoma/output/test/kitchen_0919/scene_1_seed_1"
-    scene_result = load_scene(scene_path, [object])
-
-    # Generate grasps
-    pipeline = AOGraspPipeline()
-    grasps = pipeline.generate_grasps(object, 5)  # Limit for demo
-    
-    # Create task
-    task = TaskDescription(
-        robot=RobotDescription("assets/robot/summit_franka/summit_franka.yml"),
-        object=object,
-        scene=scene_result.scene,
-        task_type=TaskType.ARTICULATE,
-    )
-    
-    # First run the trajectory pipeline
-    trajectory_pipeline = TrajectoryPipeline(task)
-
-    # Process first grasp
-    grasp_id = 0
-    grasp = grasps[grasp_id]
-    
-    print(f"\nProcessing grasp {grasp_id}")
-    task.update_grasp(grasp)
-    
-    # Run pipeline
-    trajectory_pipeline.load_akr_robot(f"assets/object/Microwave/7221/summit_franka_7221_0_grasp_{grasp_id:04d}.yml")
-    trajectory_pipeline.plan_ik()
-    trajectory_pipeline.plan_traj()
-    trajectory_pipeline.filter_traj()
-    trajectory_pipeline.save_results(grasp_id=grasp_id)
-    
-    print("=== Pipeline completed, starting replay ===")
-    
-    # Now use standalone ReplayPipeline - independent from TrajectoryPipeline
-    from automoma.pipeline.replay import ReplayPipeline
-    replay_pipeline = ReplayPipeline(task)
-    
-    # Option 1: Replay IK solutions
-    print("=== Replaying IK solutions ===")
-    replay_pipeline.replay_ik(grasp_id=grasp_id)
-    
-    # Option 2: Replay trajectories
-    print("=== Replaying trajectories ===")
-    replay_pipeline.replay_traj(grasp_id=grasp_id)
-    
-    # Option 3: Replay filtered trajectories
-    print("=== Replaying filtered trajectories ===")
-    replay_pipeline.replay_filtered_traj(grasp_id=grasp_id)
-    
-    # Option 4: Replay AKR trajectories
-    print("=== Replaying AKR trajectories ===")
-    replay_pipeline.replay_traj_akr(grasp_id=grasp_id)
-    
-    # Close replay pipeline
-    replay_pipeline.close()
-
-
 def demo_replay_only():
     """Demo replay functionality with existing results."""
     print("=== Replay Demo (using existing results) ===")
@@ -215,6 +96,18 @@ def demo_replay_only():
     replay_pipeline.replayer.set_deactivate_prims("exterior")
     replay_pipeline.replayer.set_deactivate_prims("ceiling")
     replay_pipeline.replayer.set_deactivate_prims("Ceiling")
+
+    action_registry = omni.kit.actions.core.get_action_registry()
+
+    action = action_registry.get_action("omni.kit.viewport.menubar.lighting", "set_lighting_mode_rig")
+    action.execute(lighting_mode=2)
+
+    # action = action_registry.get_action("omni.kit.viewport.menubar.lighting", "set_lighting_mode_stage")
+    # action.execute()
+
+    # action = action_registry.get_action("omni.kit.viewport.menubar.lighting", "set_lighting_mode_camera")
+    # action.execute()
+
     
     # Replay existing results for grasp 0
     grasp_id = 0
