@@ -55,7 +55,7 @@ def load_scene(scene_path: str, objects: list):
     """Load scene from path (same as in example)."""
     scene_pipeline = InfinigenScenePipeline()
     scene_result = scene_pipeline.load_scene(scene_path, objects)
-    scene_pose = [0, 0, -0.12, 1, 0, 0, 0]
+    scene_pose = [0, 0, -0.14, 1, 0, 0, 0]
     scene_result.scene.set_pose(scene_pose)
     
     # set object poses
@@ -68,7 +68,7 @@ def load_scene(scene_path: str, objects: list):
     return scene_result
 
 
-def run_pipeline_for_scene(scene_path: str, scene_name: str, plan_dir: str):
+def run_pipeline_for_scene(scene_path: str, scene_name: str, plan_dir: str, robot_name: str):
     """Run the complete pipeline for a single scene."""
     print("######################")
     print(f"#### Processing Scene: {scene_name} ####")
@@ -93,7 +93,7 @@ def run_pipeline_for_scene(scene_path: str, scene_name: str, plan_dir: str):
         # Create task with custom output directory
         print("###################### Creating task description ######################")
         task = TaskDescription(
-            robot=RobotDescription("assets/robot/summit_franka/summit_franka.yml"),
+            robot=RobotDescription(robot_name,"assets/robot/summit_franka/summit_franka.yml"),
             object=object,
             scene=scene_result.scene,
             task_type=TaskType.ARTICULATE,
@@ -149,7 +149,7 @@ def run_pipeline_for_scene(scene_path: str, scene_name: str, plan_dir: str):
         return False
 
 
-def run_pipelines_for_directory(scene_dir: str, plan_dir: str):
+def run_pipelines_for_directory(scene_dir: str, plan_dir: str, robot_name: str):
     """Run pipelines for all scene subdirectories in a directory."""
     scene_path = Path(scene_dir)
     
@@ -184,8 +184,8 @@ def run_pipelines_for_directory(scene_dir: str, plan_dir: str):
     for scene_subdir in scene_dirs:
         scene_name = scene_subdir.name
         scene_full_path = str(scene_subdir)
-        
-        success = run_pipeline_for_scene(scene_full_path, scene_name, plan_dir)
+
+        success = run_pipeline_for_scene(scene_full_path, scene_name, plan_dir, robot_name)
         if success:
             successful_scenes += 1
         else:
@@ -209,12 +209,13 @@ def run_pipelines_for_directory(scene_dir: str, plan_dir: str):
     print(f"###################### Statistics saved to {stats_file} ######################")
 
 
-def generate_statistics(plan_dir: str) -> Dict[str, Any]:
+def generate_statistics(plan_dir: str, robot_name: str) -> Dict[str, Any]:
     """
     Generate statistics by reading result files from the plan directory.
     This is a standalone function that analyzes existing results.
     """
     print("###################### Analyzing results for statistics ######################")
+    plan_dir = os.path.join(plan_dir, robot_name)
     
     plan_path = Path(plan_dir)
     stats = {
@@ -382,19 +383,25 @@ def main():
         description="Run pipeline planning for all scenes in a directory and generate statistics"
     )
     parser.add_argument(
-        "--scene-dir", 
+        "--scene_dir", 
         type=str,
         help="Directory containing scene subdirectories (e.g., /path/to/kitchen_0919)"
     )
     parser.add_argument(
-        "--plan-dir", 
+        "--plan_dir", 
         type=str,
         help="Directory to save planning results (e.g., output/summit_franka)"
     )
     parser.add_argument(
-        "--stats-only",
+        "--stats_only",
         action="store_true", 
         help="Only generate statistics from existing results in plan-dir"
+    )
+    parser.add_argument(
+        "--robot_name",
+        type=str,
+        default="summit_franka",
+        help="Name of the robot to use for planning"
     )
     
     args = parser.parse_args()
@@ -402,8 +409,8 @@ def main():
     if args.stats_only:
         print("###################### Generating statistics only ######################")
         print(f"###################### Plan directory: {args.plan_dir} ######################")
-        stats = generate_statistics(args.plan_dir)
-        stats_file = os.path.join(args.plan_dir, "pipeline_statistics.json")
+        stats = generate_statistics(args.plan_dir, args.robot_name)
+        stats_file = os.path.join(args.plan_dir, args.robot_name, "pipeline_statistics.json")
         with open(stats_file, 'w') as f:
             json.dump(stats, f, indent=2)
         print(f"###################### Statistics saved to {stats_file} ######################")
@@ -414,7 +421,7 @@ def main():
         print("###################### Starting pipeline planning ######################")
         print(f"###################### Scene directory: {args.scene_dir} ######################")
         print(f"###################### Plan directory: {args.plan_dir} ######################")
-        run_pipelines_for_directory(args.scene_dir, args.plan_dir)
+        run_pipelines_for_directory(args.scene_dir, args.plan_dir, args.robot_name)
 
 
 if __name__ == "__main__":

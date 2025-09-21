@@ -64,7 +64,7 @@ def test():
     object = create_7221_object()
 
     # Load scene
-    scene_path = "/home/xinhai/Documents/automoma/output/test/kitchen_0919/scene_1_seed_1"
+    scene_path = "/home/xinhai/Documents/automoma/output/test/kitchen_0919/scene_4_seed_4"
     scene_result = load_scene(scene_path, [object])
 
     # Generate grasps
@@ -73,7 +73,7 @@ def test():
     
     # Create task
     task = TaskDescription(
-        robot=RobotDescription("assets/robot/summit_franka/summit_franka.yml"),
+        robot=RobotDescription("summit_franka", "assets/robot/summit_franka/summit_franka.yml"),
         object=object,
         scene=scene_result.scene,
         task_type=TaskType.ARTICULATE,

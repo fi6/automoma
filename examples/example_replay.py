@@ -55,7 +55,7 @@ def load_scene(scene_path: str, objects: list):
     
     scene_pipeline = InfinigenScenePipeline()
     scene_result = scene_pipeline.load_scene(scene_path, objects)
-    scene_pose = [0, 0, -0.12, 1, 0, 0, 0]
+    scene_pose = [0, 0, -0.14, 1, 0, 0, 0]
     scene_result.scene.set_pose(scene_pose)
     # set object poses
     for obj in scene_result.valid_objects:
@@ -73,11 +73,11 @@ def demo_replay_only():
     
     # Create task for replay
     object = create_7221_object()
-    scene_path = "/home/xinhai/Documents/automoma/output/test/kitchen_0919/scene_1_seed_1"
+    scene_path = "/home/xinhai/Documents/automoma/output/test/kitchen_0919/scene_10_seed_10"
     scene_result = load_scene(scene_path, [object])
     
     task = TaskDescription(
-        robot=RobotDescription("assets/robot/summit_franka/summit_franka.yml"),
+        robot=RobotDescription("summit_franka", "assets/robot/summit_franka/summit_franka.yml"),
         object=object,
         scene=scene_result.scene,
         task_type=TaskType.ARTICULATE,
@@ -110,7 +110,7 @@ def demo_replay_only():
 
     
     # Replay existing results for grasp 0
-    grasp_id = 0
+    grasp_id = 1
     
     print("Choose replay mode:")
     print("1. Replay IK solutions")
@@ -119,8 +119,8 @@ def demo_replay_only():
     print("4. Replay AKR trajectories")
     
     # For demo, just replay IK
-    # replay_pipeline.replay_ik(grasp_id=grasp_id)
-    replay_pipeline.replay_filtered_traj(grasp_id=grasp_id)
+    replay_pipeline.replay_ik(grasp_id=grasp_id)
+    replay_pipeline.replay_traj(grasp_id=grasp_id)
     
     # Close when done
     replay_pipeline.close()
