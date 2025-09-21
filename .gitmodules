@@ -4,7 +4,7 @@
 [submodule "third_party/curobo"]
 	path = third_party/curobo
 	url = https://github.com/fi6/curobo.git
-	branch = develop
+	# branch = develop
 [submodule "third_party/cuakr"]
 	path = third_party/cuakr
 	url = https://github.com/fi6/cuakr.git
