@@ -308,8 +308,8 @@ class ReplayPipeline:
             scene_id=scene_name,
             object_id=self.task.object.asset_id,
             angle_id="0",  # Could be made configurable
-            pose_id="0",   # Could be made configurable
-            grasp_id=grasp_id
+            pose_id=str(grasp_id),   # Could be made configurable
+            num_episodes=num_episodes,
         )
         
         print(f"Recorded {len(camera_results)} trajectory episodes")

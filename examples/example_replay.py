@@ -134,6 +134,8 @@ def demo_replay_only():
         grasp_id=grasp_id, 
         num_episodes=30  # Record 3 episodes for demo
     )
+    # replay_pipeline.replayer.isaacsim_step(step=-1, render=True)  # Keep running until window is closed
+    
     print(f"Successfully recorded {len(camera_results)} episodes!")
     
     # Show data structure

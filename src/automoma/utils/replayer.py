@@ -17,6 +17,7 @@ Adapted from the existing test_replay.py script.
 # )
 
 from omni.isaac.core.utils.stage import add_reference_to_stage
+from omni.usd import get_world_transform_matrix
 from omni.isaac.core import World
 from omni.isaac.core.objects import sphere
 from omni.isaac.core.prims.xform_prim import XFormPrim
@@ -48,7 +49,7 @@ import h5py
 
 # Camera and data collection imports
 from omni.isaac.sensor import Camera
-# from omni.isaac.core.utils import rotations as rot_utils  # Commented out due to import issues
+import omni.isaac.core.utils.torch.rotations as rot_utils
 from automoma.utils.data_structures import CameraResult, TrajectoryEvaluationResult
 from automoma.utils.transform import euler_to_quat  # Use automoma's rotation utilities
 
@@ -71,6 +72,8 @@ class Replayer:
         self._load_scene(self.scene_cfg)
         self._load_object(self.object_cfg)
 
+        self.set_isaacsim_collision_free()
+
         self.isaac_world.initialize_physics()
         self.isaac_world.reset()
         self.tensor_args = TensorDeviceType()
@@ -88,6 +91,14 @@ class Replayer:
     def get_world_pose(self, pose: List[float]) -> List[float]:
         """Get the new world pose"""
         return pose_multiply(self.root_pose, pose)
+
+    def get_prim_pose(self, prim_path: str) -> Optional[np.ndarray]:
+        """Get the world pose of a prim (object) in the scene."""
+        prim = self.isaac_world.stage.GetPrimAtPath(prim_path)
+        if not prim.IsValid():
+            log_warn(f"prim {prim_path} not found")
+            return None
+        return np.array(get_world_transform_matrix(prim)).T
 
     def _init_world(self):
         self.isaac_world = World(stage_units_in_meters=1.0)
@@ -521,10 +532,40 @@ class Replayer:
             return [i for i, s in enumerate(success) if s]
     
     # ========================================
+    # Camera Helper Functions
+    # ========================================
+    
+    def _get_transform(self, transform):
+        """Convert camera transform from cuakr format to Isaac Sim format."""
+        translate = transform.get("translate", [0, 0, 0])
+        orient = transform.get("orient", [0, 0, 0])
+        scale = transform.get("scale", [1, 1, 1])
+
+        # Convert Euler angles to quaternion following cuakr pattern
+        if len(orient) == 3:
+            try:
+                rot_quat = rot_utils.euler_angles_to_quats(
+                    torch.tensor([orient], dtype=torch.float32), degrees=True, extrinsic=False
+                )[0].tolist()
+            except:
+                # Fallback to our own euler_to_quat if Isaac Sim not available
+                rot_quat = euler_to_quat(
+                    np.array(orient) * np.pi / 180, order='xyz'
+                )
+                if hasattr(rot_quat, 'tolist'):
+                    rot_quat = rot_quat.tolist()
+        elif len(orient) == 4:
+            rot_quat = orient
+        else:
+            rot_quat = [1, 0, 0, 0]  # Identity quaternion
+        
+        return translate + rot_quat, scale
+
+    # ========================================
     # Camera Setup and Data Collection Methods
     # ========================================
     
-    def setup_fixed_cameras(self) -> Dict[str, Camera]:
+    def setup_cameras(self) -> Dict[str, Camera]:
         """
         Setup 3 fixed cameras for data collection:
         1. ego_topdown: attached to robot end effector (panda_hand)
@@ -540,7 +581,7 @@ class Replayer:
             # Create camera prim path based on cuakr structure
             if camera_type in ["ego_topdown", "ego_wrist"]:
                 # Ego cameras attach to robot end effector
-                camera_prim_path = f"/World/summit_franka/panda_hand/{camera_type}"
+                camera_prim_path = f"/World/summit_panda/panda_hand/{camera_type}"
             elif camera_type == "fix_local":
                 # Fix local camera attaches to object
                 camera_prim_path = f"/World/object/{camera_type}"
@@ -555,10 +596,13 @@ class Replayer:
                 resolution=(240, 320)  # Height x Width - matching cuakr config
             )
             camera.initialize()
+            camera.add_motion_vectors_to_frame()
+            camera.add_distance_to_image_plane_to_frame()
             
             # Set focal length if specified
             if "focal_length" in config:
                 camera.set_focal_length(config["focal_length"])
+                print(f"Camera {camera_type} focal length set to {config['focal_length']}")
             
             # Set camera pose based on type
             self._set_camera_pose(camera, camera_type, config)
@@ -569,37 +613,42 @@ class Replayer:
         return cameras
     
     def _get_camera_configurations(self) -> Dict[str, Dict[str, Any]]:
-        """Get camera configurations for the 3 fixed cameras matching cuakr structure."""
-        object_pose = self.object_cfg["pose"]
+        """Get camera configurations for the 3 fixed cameras matching original cuakr values."""
         
-        return {
+        # Use original cuakr camera poses from collect_data.py and dataset configs
+        camera_transforms = {
             "ego_topdown": {
-                "type": "local",  # Local pose relative to robot end effector
-                "local_pose": {
-                    "position": [0.0, 0.0, 10.0],  # Matching original cuakr configuration
-                    "orientation": [1.0, 0.0, 0.0, 0.0]  # Identity quaternion - matching original config
-                }
+                "translate": [0, 0, 10],  # From original cuakr configuration
+                "orient": [0, 0, -90]  # Identity orientation
             },
             "ego_wrist": {
-                "type": "local",  # Local pose relative to robot end effector
-                "local_pose": {
-                    "position": [-0.6, 0, -0.9],  # From collect_data.py configuration
-                    "orientation": euler_to_quat(
-                        np.array([180, -28, 90]) * np.pi / 180, order='xyz'  # Convert degrees to radians
-                    )
-                },
-                "focal_length": 35.0
+                "translate": [-0.6, 0, -0.9],  # From collect_data.py
+                "orient": [180, -28, 90]  # From collect_data.py
             },
             "fix_local": {
-                "type": "local",  # Local pose relative to object
-                "local_pose": {
-                    "position": [-4.3, 4.7, 6.2],  # Fixed position relative to object
-                    "orientation": euler_to_quat(
-                        np.array([-34.0, -26.0, -140.0]) * np.pi / 180, order='xyz'  # Convert degrees to radians
-                    )
-                }
+                "translate": [-4.3, 4.7, 6.2],  # From dataset config
+                "orient": [-34.0, -26.0, -140.0]  # From dataset config
             }
         }
+        
+        # Convert to Isaac Sim format using cuakr's get_transform
+        camera_configs = {}
+        for camera_type, transform in camera_transforms.items():
+            pose, scale = self._get_transform(transform)
+            
+            camera_configs[camera_type] = {
+                "type": "local",  # Local pose relative to parent
+                "local_pose": {
+                    "position": pose[:3],  # [x, y, z]
+                    "orientation": pose[3:]  # [qw, qx, qy, qz] or [qx, qy, qz, qw]
+                }
+            }
+            
+            # Add focal length for ego_wrist as in original code
+            if camera_type == "ego_wrist":
+                camera_configs[camera_type]["focal_length"] = 1.5
+                
+        return camera_configs
     
     def _set_camera_pose(self, camera: Camera, camera_type: str, config: Dict[str, Any]) -> None:
         """Set camera pose based on configuration."""
@@ -624,32 +673,42 @@ class Replayer:
         """Update ego camera positions based on current robot pose."""
         # Only ego_topdown needs dynamic updates based on robot pose
         if "ego_topdown" in cameras:
-            # Get robot end effector pose (simplified approach)
-            robot_link_prim_path = "/World/robot/robot_0/panda_link8"
-            # Use a simplified approach to get world position
-            robot_pos = np.array([0.0, 0.0, 1.0])  # Default position for now
+            # Get robot end effector pose using proper prim pose detection
+            robot_link_prim_path = "/World/summit_panda/panda_hand"
+            robot_link_pose_matrix = self.get_prim_pose(robot_link_prim_path)
             
-            # Update camera position (ego_topdown follows end effector)
-            camera_configs = self._get_camera_configurations()
-            ego_config = camera_configs["ego_topdown"]["local_pose"]
-            camera_pos = robot_pos + np.array(ego_config["position"])
-            
-            cameras["ego_topdown"].set_world_pose(
-                camera_pos.tolist(),
-                ego_config["orientation"],
-                camera_axes="usd"
-            )
+            if robot_link_pose_matrix is not None:
+                # Convert matrix to Pose object and extract position
+                robot_link_pose = Pose.from_matrix(robot_link_pose_matrix)
+                robot_pos = robot_link_pose.position.cpu().numpy()
+                
+                # Update camera position (ego_topdown follows end effector)
+                camera_configs = self._get_camera_configurations()
+                ego_config = camera_configs["ego_topdown"]["local_pose"]
+                camera_pos = robot_pos + np.array(ego_config["position"])
+                
+                cameras["ego_topdown"].set_world_pose(
+                    camera_pos.tolist(),
+                    ego_config["orientation"],
+                    camera_axes="usd"
+                )
+            else:
+                log_warn(f"Failed to get robot pose from {robot_link_prim_path}, skipping ego_topdown camera update")
     
     def _get_camera_observations(self, cameras: Dict[str, Camera]) -> Dict[str, Dict[str, np.ndarray]]:
-        """Get RGB, depth, and point cloud data from cameras."""
+        """Get RGB, depth, and point cloud data from cameras following collect_data.py format."""
         observations = {
             "rgb": {},
             "depth": {},
             "point_cloud": {}
         }
         
+        # Import required functions for point cloud processing
+        from cuakr.utils.camera import create_colored_pointcloud, process_point_cloud, PCDProcConfig
+        
+        # Collect RGB and depth data from all cameras
         for camera_type, camera in cameras.items():
-            # Get RGB data (remove alpha channel)
+            # Get RGB data (remove alpha channel) 
             rgba = camera.get_rgba()
             if rgba is not None:
                 observations["rgb"][camera_type] = rgba[:, :, :3]  # Remove alpha
@@ -658,19 +717,37 @@ class Replayer:
             depth = camera.get_depth()
             if depth is not None:
                 observations["depth"][camera_type] = depth
-            
-            # Get point cloud for ego_topdown camera
-            if camera_type == "ego_topdown":
-                pc = camera.get_pointcloud()
-                if pc is not None:
-                    observations["point_cloud"]["combined"] = pc
+        
+        # Get point cloud data from ego_topdown camera (following collect_data.py pattern)
+        if "ego_topdown" in cameras:
+            camera = cameras["ego_topdown"]
+            pc = camera.get_pointcloud()
+            if pc is not None:
+                rgb = camera.get_rgba()
+                if rgb is not None:
+                    rgb = rgb[:, :, :3]  # Remove alpha channel
+                    
+                    # Create colored point cloud
+                    colored_pc = create_colored_pointcloud(pc, rgb)
+                    
+                    # Process point cloud with configuration matching collect_data.py
+                    pcd_config = PCDProcConfig()
+                    pcd_config.USE_FPS = False
+                    pcd_config.random_drop_points = min(
+                        int(1 / 4 * 240 * 320),  # Based on camera resolution
+                        2 * 4096,  # 2 * n_points from config
+                    )
+                    pcd_config.n_points = 4096  # From CollectConfig.POINT_CLOUD_CONFIG
+                    
+                    processed_pc = process_point_cloud(colored_pc, pcd_config)
+                    observations["point_cloud"]["combined"] = processed_pc
                     
         return observations
     
     def replay_traj_record(self, start_states: torch.Tensor, goal_states: torch.Tensor, 
                           trajs: torch.Tensor, successes: torch.Tensor, robot_name: str,
                           output_dir: str, scene_id: str, object_id: str, 
-                          angle_id: str = "0", pose_id: str = "0", grasp_id: int = 0) -> List[CameraResult]:
+                          angle_id: str = "0", pose_id: str = "0", num_episodes = None) -> List[CameraResult]:
         """
         Record trajectory data with camera observations following collect_data.py format.
         
@@ -685,7 +762,6 @@ class Replayer:
             object_id: Object identifier
             angle_id: Angle identifier
             pose_id: Pose identifier
-            grasp_id: Grasp identifier
             
         Returns:
             List of CameraResult objects containing collected data
@@ -693,7 +769,7 @@ class Replayer:
         log_info(f"=== Recording trajectory data for {robot_name} ===")
         
         # Setup cameras
-        cameras = self.setup_fixed_cameras()
+        cameras = self.setup_cameras()
         
         # Get successful trajectory indices
         successful_indices = self._get_indices(successes, all=False)
@@ -706,8 +782,12 @@ class Replayer:
         camera_data_dir = os.path.join(output_dir, "camera_data")
         os.makedirs(camera_data_dir, exist_ok=True)
         
-        for i, traj_idx in enumerate(successful_indices[:10]):  # Limit to first 10 successful trajectories
-            log_info(f"Recording trajectory {i+1}/{min(10, len(successful_indices))}")
+        if num_episodes is None:
+            num_episodes = len(successful_indices)
+        num_episodes = min(num_episodes, len(successful_indices))
+        
+        for i, traj_idx in enumerate(successful_indices[:num_episodes]):  # Limit to specified number of successful trajectories
+            log_info(f"Recording trajectory {i}/{num_episodes}")
             
             # Initialize camera result
             camera_result = CameraResult()
@@ -768,7 +848,7 @@ class Replayer:
     
     def _record_trajectory_execution(self, robot: Robot, trajectory: torch.Tensor, 
                                    cameras: Dict[str, Camera], camera_result: CameraResult,
-                                   robot_name: str) -> None:
+                                   robot_name: str, steps=5) -> None:
         """Execute trajectory and record observations at each timestep."""
         
         # Convert trajectory to numpy if needed
@@ -810,15 +890,17 @@ class Replayer:
                 values=np.array([5000] * len(idx_list)), joint_indices=idx_list,
             )
             
-            # Set handle pose
-            self.set_handle_pose(handle_pose.item())
-            
-            # Update ego cameras
-            self._update_ego_cameras(cameras)
-            
-            # Step simulation
-            self._isaacsim_step(step=5, render=True)
-            
+            for _ in range(steps):
+                # Set handle pose
+                self.set_handle_pose(handle_pose.item())
+                
+                # Step simulation
+                self._isaacsim_step(step=1, render=True)
+                
+                # Update ego cameras
+                self._update_ego_cameras(cameras)
+                
+
             # Collect observations
             observations = self._get_camera_observations(cameras)
             
@@ -916,7 +998,7 @@ class Replayer:
         log_info(f"=== Evaluating policy model on trajectories ===")
         
         # Setup cameras for observation
-        cameras = self.setup_fixed_cameras()
+        cameras = self.setup_cameras()
         
         # Get successful trajectory indices
         successful_indices = self._get_indices(successes, all=False)
@@ -1051,3 +1133,28 @@ class Replayer:
         # For now, return None to indicate no action
         log_warn("Policy action interface not implemented - placeholder function")
         return None
+    
+    
+    def isaacsim_step(self, step=5, render=True):
+        """Step the Isaac Sim world"""
+        if step == -1:
+            # If step is -1, run until the simulation app is running
+            while self.simulation_app.is_running():
+                self.isaac_world.step(render=render)
+        for _ in range(step):
+            self.isaac_world.step(render=render)
+            
+    def set_isaacsim_collision_free(self):
+        from pxr import Gf, UsdGeom, UsdPhysics, UsdLux, UsdShade, Usd, Sdf
+        def disable_collision(prim_path):
+            UsdPhysics.CollisionAPI.Get(
+                self.isaac_world.stage, prim_path
+            ).GetCollisionEnabledAttr().Set(False)
+
+        for prim_path in [
+            "/World/summit_panda/panda_leftfinger/collisions",
+            "/World/summit_panda/panda_rightfinger/collisions",
+            "/World/summit_panda/grasp_frame/collisions",
+            "/World/summit_panda/panda_hand/collisions",
+        ]:
+            disable_collision(prim_path)

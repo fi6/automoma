@@ -37,41 +37,39 @@ def test_camera_result_structure():
     camera_result.initialize_camera_structure(["ego_topdown", "ego_wrist", "fix_local"])
     
     # Add some test observations
-    for i in range(5):  # Simulate 5 timesteps
-        # Raw joint positions (3 mobile_base + 7 arm + 2 gripper = 12 joints)
-        raw_joint_positions = np.array([
-            0.1*i, 0.2*i, 0.0,  # mobile_base (3)
-            0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7,  # arm (7) 
-            0.04 + 0.01*i, 0.04 + 0.01*i  # gripper (2)
-        ])
-        
-        # Add grouped joint observation
-        camera_result.add_grouped_joint_observation(raw_joint_positions, "summit_franka")
-        
-        # Add other observations
-        eef_pose = np.array([0.5 + 0.1*i, 0.0, 0.8, 1.0, 0.0, 0.0, 0.0])  # 7D pose
-        point_cloud = np.random.random((1000, 6))  # Random point cloud
-        
-        # Dummy RGB and depth data
-        rgb_data = {
-            "ego_topdown": np.random.randint(0, 255, (240, 320, 3), dtype=np.uint8),
-            "ego_wrist": np.random.randint(0, 255, (240, 320, 3), dtype=np.uint8), 
-            "fix_local": np.random.randint(0, 255, (240, 320, 3), dtype=np.uint8)
-        }
-        depth_data = {
-            "ego_topdown": np.random.random((240, 320)).astype(np.float32),
-            "ego_wrist": np.random.random((240, 320)).astype(np.float32),
-            "fix_local": np.random.random((240, 320)).astype(np.float32)
-        }
-        
-        camera_result.add_observation(
-            eef_data=eef_pose,
-            point_cloud_data=point_cloud,
-            rgb_data=rgb_data,
-            depth_data=depth_data
-        )
-    
-    # Finalize the camera result
+    for i in range(32):  # Simulate 32 timesteps to match expected format
+            # Raw joint positions (3 mobile_base + 7 arm + 2 gripper = 12 joints)
+            raw_joint_positions = np.array([
+                0.1*i, 0.2*i, 0.0,  # mobile_base (3)
+                0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7,  # arm (7) 
+                0.04 + 0.01*i, 0.04 + 0.01*i  # gripper (2)
+            ])
+            
+            # Add grouped joint observation
+            camera_result.add_grouped_joint_observation(raw_joint_positions, "summit_franka")
+            
+            # Add other observations - now with correct dimensions for all data types
+            eef_pose = np.array([0.5 + 0.1*i, 0.0, 0.8, 1.0, 0.0, 0.0, 0.0], dtype=np.float32)  # 7D pose
+            point_cloud = np.random.random((4096, 6)).astype(np.float64)  # Point cloud with XYZ+RGB
+            
+            # RGB and depth data with exact resolution (240, 320) 
+            rgb_data = {
+                "ego_topdown": np.random.randint(0, 255, (240, 320, 3), dtype=np.uint8),
+                "ego_wrist": np.random.randint(0, 255, (240, 320, 3), dtype=np.uint8), 
+                "fix_local": np.random.randint(0, 255, (240, 320, 3), dtype=np.uint8)
+            }
+            depth_data = {
+                "ego_topdown": np.random.random((240, 320)).astype(np.float32),
+                "ego_wrist": np.random.random((240, 320)).astype(np.float32),
+                "fix_local": np.random.random((240, 320)).astype(np.float32)
+            }
+            
+            camera_result.add_observation(
+                eef_data=eef_pose,
+                point_cloud_data=point_cloud,
+                rgb_data=rgb_data,
+                depth_data=depth_data
+            )    # Finalize the camera result
     camera_result.finalize()
     
     # Save to temporary HDF5 file
