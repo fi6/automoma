@@ -55,14 +55,14 @@ def load_scene(scene_path: str, objects: list):
     
     scene_pipeline = InfinigenScenePipeline()
     scene_result = scene_pipeline.load_scene(scene_path, objects)
-    scene_pose = [0, 0, -0.14, 1, 0, 0, 0]
+    scene_pose = [0, 0, -0.13, 1, 0, 0, 0]
     scene_result.scene.set_pose(scene_pose)
     # set object poses
     for obj in scene_result.valid_objects:
         obj_pose = scene_result.scene.get_object_matrix(obj)
         obj_pose = single_axis_self_rotation(obj_pose, 'z', np.pi)
         obj_pose = matrix_to_pose(obj_pose)
-        obj.set_pose(pose_multiply(scene_pose, obj_pose))
+        obj.set_pose(obj_pose)
     # set scene pose
     return scene_result
 
@@ -73,11 +73,11 @@ def demo_replay_only():
     
     # Create task for replay
     object = create_7221_object()
-    scene_path = "/home/xinhai/Documents/automoma/output/test/kitchen_0919/scene_10_seed_10"
+    scene_path = "/home/xinhai/Documents/automoma/output/test/kitchen_0919/scene_4_seed_4"
     scene_result = load_scene(scene_path, [object])
     
     task = TaskDescription(
-        robot=RobotDescription("summit_franka", "assets/robot/summit_franka/summit_franka.yml"),
+        robot=RobotDescription("summit_franka_develop", "assets/robot/summit_franka/summit_franka.yml"),
         object=object,
         scene=scene_result.scene,
         task_type=TaskType.ARTICULATE,
@@ -101,6 +101,7 @@ def demo_replay_only():
 
     action = action_registry.get_action("omni.kit.viewport.menubar.lighting", "set_lighting_mode_rig")
     action.execute(lighting_mode=2)
+    
 
     # action = action_registry.get_action("omni.kit.viewport.menubar.lighting", "set_lighting_mode_stage")
     # action.execute()
@@ -110,7 +111,7 @@ def demo_replay_only():
 
     
     # Replay existing results for grasp 0
-    grasp_id = 1
+    grasp_id = 0
     
     print("Choose replay mode:")
     print("1. Replay IK solutions")

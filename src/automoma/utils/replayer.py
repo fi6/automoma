@@ -57,6 +57,9 @@ class Replayer:
         self.usd_helper = UsdHelper()
         self.usd_helper.load_stage(self.isaac_world.stage)
         
+        self.root_pose = [0, 0, 0, 1, 0, 0, 0]
+        self._init_root_pose()
+        
         self._load_robot(self.robot_cfg)
         self._load_scene(self.scene_cfg)
         self._load_object(self.object_cfg)
@@ -64,6 +67,20 @@ class Replayer:
         self.isaac_world.initialize_physics()
         self.isaac_world.reset()
         self.tensor_args = TensorDeviceType()
+        
+    def _init_root_pose(self) -> None:
+        """Initialize the world  pose"""
+        scene_offset = self.scene_cfg["pose"]
+        object_pose = self.object_cfg["pose"].copy()
+        object_pose_Pose = Pose.from_list(object_pose)
+        object_pose_inverse = object_pose_Pose.inverse().to_list()
+
+        object_pose_inverse[2] = 0.0  # ignore z offset for root pose
+        self.root_pose = pose_multiply(object_pose_inverse, scene_offset)
+
+    def get_world_pose(self, pose: List[float]) -> List[float]:
+        """Get the new world pose"""
+        return pose_multiply(self.root_pose, pose)
 
     def _init_world(self):
         self.isaac_world = World(stage_units_in_meters=1.0)
@@ -91,7 +108,7 @@ class Replayer:
             
         log_info(f"Loading USD scene: {usd_path}")
         add_reference_to_stage(usd_path=usd_path, prim_path=prim_path)
-        set_prim_transform(self.isaac_world.stage.GetPrimAtPath(prim_path), pose=scene_cfg["pose"])
+        set_prim_transform(self.isaac_world.stage.GetPrimAtPath(prim_path), pose=self.root_pose)
 
     def _load_robot(self, robot_cfg: Dict, robot_type: str = "robot", pose: Optional[List[float]] = None) -> XFormPrim:
         """Load a robot into the scene."""
@@ -127,7 +144,9 @@ class Replayer:
             return
         
         object_path = object_cfg["path"]
-        object_pose = object_cfg["pose"]
+        object_pose = self.get_world_pose(object_cfg["pose"])
+        
+        print(f"Loading object from {object_path} at pose {object_pose}")
 
         log_info(f"Loading object at pose {object_pose}")
         
