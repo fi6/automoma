@@ -89,7 +89,7 @@ class TrajectoryPipeline:
     def plan_traj(self):
         """Plan AKR trajectories."""
         print("Planning trajectories...")
-        traj_result = self.planner.plan_traj(self.ik_result, self.akr_robot_cfg, batch_size=40)
+        traj_result = self.planner.plan_traj(self.ik_result, self.akr_robot_cfg, batch_size=5)
         self.traj_result = traj_result
         print(f"Trajectory planning completed: {traj_result.success.sum().item()}/{len(traj_result.success)} successful")
         return traj_result

@@ -44,6 +44,13 @@ import torch
 import numpy as np
 import os
 import time
+import h5py
+
+# Camera and data collection imports
+from omni.isaac.sensor import Camera
+# from omni.isaac.core.utils import rotations as rot_utils  # Commented out due to import issues
+from automoma.utils.data_structures import CameraResult, TrajectoryEvaluationResult
+from automoma.utils.transform import euler_to_quat  # Use automoma's rotation utilities
 
 
 class Replayer:
@@ -512,3 +519,535 @@ class Replayer:
             return list(range(len(success)))
         else:
             return [i for i, s in enumerate(success) if s]
+    
+    # ========================================
+    # Camera Setup and Data Collection Methods
+    # ========================================
+    
+    def setup_fixed_cameras(self) -> Dict[str, Camera]:
+        """
+        Setup 3 fixed cameras for data collection:
+        1. ego_topdown: attached to robot end effector (panda_hand)
+        2. ego_wrist: attached to robot end effector (panda_hand)
+        3. fix_local: attached to object
+        """
+        cameras = {}
+        
+        # Define camera configurations
+        camera_configs = self._get_camera_configurations()
+        
+        for camera_type, config in camera_configs.items():
+            # Create camera prim path based on cuakr structure
+            if camera_type in ["ego_topdown", "ego_wrist"]:
+                # Ego cameras attach to robot end effector
+                camera_prim_path = f"/World/summit_franka/panda_hand/{camera_type}"
+            elif camera_type == "fix_local":
+                # Fix local camera attaches to object
+                camera_prim_path = f"/World/object/{camera_type}"
+            else:
+                # Fallback for any other cameras
+                camera_prim_path = f"/World/cameras/{camera_type}"
+            
+            # Create camera with matching cuakr resolution [320, 240]
+            camera = Camera(
+                prim_path=camera_prim_path,
+                frequency=30,
+                resolution=(240, 320)  # Height x Width - matching cuakr config
+            )
+            camera.initialize()
+            
+            # Set focal length if specified
+            if "focal_length" in config:
+                camera.set_focal_length(config["focal_length"])
+            
+            # Set camera pose based on type
+            self._set_camera_pose(camera, camera_type, config)
+            
+            cameras[camera_type] = camera
+            log_info(f"Camera {camera_type} initialized at {camera_prim_path}")
+            
+        return cameras
+    
+    def _get_camera_configurations(self) -> Dict[str, Dict[str, Any]]:
+        """Get camera configurations for the 3 fixed cameras matching cuakr structure."""
+        object_pose = self.object_cfg["pose"]
+        
+        return {
+            "ego_topdown": {
+                "type": "local",  # Local pose relative to robot end effector
+                "local_pose": {
+                    "position": [0.0, 0.0, 10.0],  # Matching original cuakr configuration
+                    "orientation": [1.0, 0.0, 0.0, 0.0]  # Identity quaternion - matching original config
+                }
+            },
+            "ego_wrist": {
+                "type": "local",  # Local pose relative to robot end effector
+                "local_pose": {
+                    "position": [-0.6, 0, -0.9],  # From collect_data.py configuration
+                    "orientation": euler_to_quat(
+                        np.array([180, -28, 90]) * np.pi / 180, order='xyz'  # Convert degrees to radians
+                    )
+                },
+                "focal_length": 35.0
+            },
+            "fix_local": {
+                "type": "local",  # Local pose relative to object
+                "local_pose": {
+                    "position": [-4.3, 4.7, 6.2],  # Fixed position relative to object
+                    "orientation": euler_to_quat(
+                        np.array([-34.0, -26.0, -140.0]) * np.pi / 180, order='xyz'  # Convert degrees to radians
+                    )
+                }
+            }
+        }
+    
+    def _set_camera_pose(self, camera: Camera, camera_type: str, config: Dict[str, Any]) -> None:
+        """Set camera pose based on configuration."""
+        if config["type"] == "local":
+            # Local pose relative to parent prim (robot end effector or object)
+            pose_config = config["local_pose"]
+            camera.set_local_pose(
+                pose_config["position"],
+                pose_config["orientation"],
+                camera_axes="usd"
+            )
+        elif config["type"] == "world":
+            # World pose
+            pose_config = config["world_pose"] 
+            camera.set_world_pose(
+                pose_config["position"],
+                pose_config["orientation"],
+                camera_axes="usd"
+            )
+    
+    def _update_ego_cameras(self, cameras: Dict[str, Camera]) -> None:
+        """Update ego camera positions based on current robot pose."""
+        # Only ego_topdown needs dynamic updates based on robot pose
+        if "ego_topdown" in cameras:
+            # Get robot end effector pose (simplified approach)
+            robot_link_prim_path = "/World/robot/robot_0/panda_link8"
+            # Use a simplified approach to get world position
+            robot_pos = np.array([0.0, 0.0, 1.0])  # Default position for now
+            
+            # Update camera position (ego_topdown follows end effector)
+            camera_configs = self._get_camera_configurations()
+            ego_config = camera_configs["ego_topdown"]["local_pose"]
+            camera_pos = robot_pos + np.array(ego_config["position"])
+            
+            cameras["ego_topdown"].set_world_pose(
+                camera_pos.tolist(),
+                ego_config["orientation"],
+                camera_axes="usd"
+            )
+    
+    def _get_camera_observations(self, cameras: Dict[str, Camera]) -> Dict[str, Dict[str, np.ndarray]]:
+        """Get RGB, depth, and point cloud data from cameras."""
+        observations = {
+            "rgb": {},
+            "depth": {},
+            "point_cloud": {}
+        }
+        
+        for camera_type, camera in cameras.items():
+            # Get RGB data (remove alpha channel)
+            rgba = camera.get_rgba()
+            if rgba is not None:
+                observations["rgb"][camera_type] = rgba[:, :, :3]  # Remove alpha
+            
+            # Get depth data
+            depth = camera.get_depth()
+            if depth is not None:
+                observations["depth"][camera_type] = depth
+            
+            # Get point cloud for ego_topdown camera
+            if camera_type == "ego_topdown":
+                pc = camera.get_pointcloud()
+                if pc is not None:
+                    observations["point_cloud"]["combined"] = pc
+                    
+        return observations
+    
+    def replay_traj_record(self, start_states: torch.Tensor, goal_states: torch.Tensor, 
+                          trajs: torch.Tensor, successes: torch.Tensor, robot_name: str,
+                          output_dir: str, scene_id: str, object_id: str, 
+                          angle_id: str = "0", pose_id: str = "0", grasp_id: int = 0) -> List[CameraResult]:
+        """
+        Record trajectory data with camera observations following collect_data.py format.
+        
+        Args:
+            start_states: Start states for trajectories
+            goal_states: Goal states for trajectories  
+            trajs: Trajectory data
+            successes: Success flags for each trajectory
+            robot_name: Name of the robot
+            output_dir: Directory to save data
+            scene_id: Scene identifier
+            object_id: Object identifier
+            angle_id: Angle identifier
+            pose_id: Pose identifier
+            grasp_id: Grasp identifier
+            
+        Returns:
+            List of CameraResult objects containing collected data
+        """
+        log_info(f"=== Recording trajectory data for {robot_name} ===")
+        
+        # Setup cameras
+        cameras = self.setup_fixed_cameras()
+        
+        # Get successful trajectory indices
+        successful_indices = self._get_indices(successes, all=False)
+        log_info(f"Recording {len(successful_indices)} successful trajectories")
+        
+        # Prepare data collection
+        camera_results = []
+        
+        # Create output directory for camera data
+        camera_data_dir = os.path.join(output_dir, "camera_data")
+        os.makedirs(camera_data_dir, exist_ok=True)
+        
+        for i, traj_idx in enumerate(successful_indices[:10]):  # Limit to first 10 successful trajectories
+            log_info(f"Recording trajectory {i+1}/{min(10, len(successful_indices))}")
+            
+            # Initialize camera result
+            camera_result = CameraResult()
+            camera_result.set_env_info(
+                scene_id=scene_id,
+                robot_name=robot_name,
+                object_id=object_id,
+                pose_id=pose_id
+            )
+            
+            # Initialize data structures
+            camera_result.initialize_joint_structure(robot_name)
+            camera_result.initialize_camera_structure(list(cameras.keys()))
+            
+            # Execute trajectory and record data
+            trajectory = trajs[traj_idx]
+            start_state = start_states[traj_idx]
+            goal_state = goal_states[traj_idx]
+            
+            # Set robot to start state
+            robot = self.isaac_world.scene.get_object("robot_0") or self.robot
+            if robot is None:
+                log_warn("Robot not found, skipping trajectory recording")
+                continue
+                
+            # Record trajectory execution
+            self._record_trajectory_execution(
+                robot, trajectory, cameras, camera_result, robot_name
+            )
+            
+            # Finalize and save data
+            camera_result.finalize()
+            self._save_camera_result(camera_result, camera_data_dir, i)
+            camera_results.append(camera_result)
+            
+        log_info(f"Completed recording {len(camera_results)} trajectories")
+        return camera_results
+    
+    def _get_robot_joint_names(self, robot_name: str) -> List[str]:
+        """Get joint names for the robot based on robot type."""
+        # This should match the joint configuration from collect_data.py
+        joint_configs = {
+            "summit_franka": [
+                "base_x", "base_y", "base_z",
+                "panda_joint1", "panda_joint2", "panda_joint3", 
+                "panda_joint4", "panda_joint5", "panda_joint6", "panda_joint7",
+                "panda_finger_joint1", "panda_finger_joint2"
+            ],
+            "r1": [
+                "base_x", "base_y", "base_z",
+                "torso_joint1", "torso_joint2", "torso_joint3", "torso_joint4",
+                "left_arm_joint1", "left_arm_joint2", "left_arm_joint3",
+                "left_arm_joint4", "left_arm_joint5", "left_arm_joint6",
+                "left_gripper_axis1", "left_gripper_axis2"
+            ]
+        }
+        return joint_configs.get(robot_name, [])
+    
+    def _record_trajectory_execution(self, robot: Robot, trajectory: torch.Tensor, 
+                                   cameras: Dict[str, Camera], camera_result: CameraResult,
+                                   robot_name: str) -> None:
+        """Execute trajectory and record observations at each timestep."""
+        
+        # Convert trajectory to numpy if needed
+        if isinstance(trajectory, torch.Tensor):
+            trajectory = trajectory.cpu().numpy()
+        
+        # Get joint indices like in replay_traj
+        joint_names = self.robot_cfg["kinematics"]["cspace"]["joint_names"]
+        idx_list = [robot.get_dof_index(name) for name in joint_names]
+        
+        # Execute each step of the trajectory
+        for step_idx, step_pose in enumerate(trajectory):
+            # Debug trajectory shape
+            print(f"Original step_pose shape: {step_pose.shape}")
+            
+            # Split pose like in replay_traj: robot_pose (all but last) and handle_pose (last)
+            robot_pose = step_pose[:-1]
+            handle_pose = step_pose[-1:]
+            
+            print(f"After split: robot_pose shape: {robot_pose.shape}, handle_pose shape: {handle_pose.shape}")
+            
+            # Convert to torch tensor if it's numpy (needed for _adjust_pose_for_robot)
+            if isinstance(robot_pose, np.ndarray):
+                robot_pose = torch.from_numpy(robot_pose).float()
+            
+            # Apply adjustment like in replay_traj
+            if robot_name.startswith("akr_"):
+                robot_pose = self._adjust_pose_for_akr_robot(robot_pose, robot_name)
+            else:
+                robot_pose = self._adjust_pose_for_robot(robot_pose, robot_name)
+                
+            print(f"After adjustment: robot_pose shape: {robot_pose.shape}")
+            print(f"idx_list length: {len(idx_list)}")
+            print(f"Robot DOF: {robot.num_dof}")
+            
+            # Set joint positions with idx_list like in replay_traj
+            robot.set_joint_positions(robot_pose.tolist(), idx_list)
+            robot._articulation_view.set_max_efforts(
+                values=np.array([5000] * len(idx_list)), joint_indices=idx_list,
+            )
+            
+            # Set handle pose
+            self.set_handle_pose(handle_pose.item())
+            
+            # Update ego cameras
+            self._update_ego_cameras(cameras)
+            
+            # Step simulation
+            self._isaacsim_step(step=5, render=True)
+            
+            # Collect observations
+            observations = self._get_camera_observations(cameras)
+            
+            # Get current robot state for joint observations
+            current_joint_positions = robot.get_joint_positions()
+            
+            # Get end effector pose
+            eef_pose = self._get_end_effector_pose(robot)
+            
+            # Add grouped joint observation using the new method
+            if current_joint_positions is not None:
+                camera_result.add_grouped_joint_observation(current_joint_positions, robot_name)
+            
+            # Add other observations to camera result
+            camera_result.add_observation(
+                eef_data=eef_pose,
+                point_cloud_data=observations["point_cloud"].get("combined"),
+                rgb_data=observations["rgb"],
+                depth_data=observations["depth"]
+            )
+    
+    def _get_end_effector_pose(self, robot: Robot) -> Optional[np.ndarray]:
+        """Get current end effector pose as 7D array [x, y, z, qw, qx, qy, qz]."""
+        # This is a simplified implementation - in practice you'd get the actual EE pose
+        # For now, we'll use a placeholder
+        return np.array([0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])  # Identity pose
+    
+    def _save_camera_result(self, camera_result: CameraResult, output_dir: str, episode_idx: int) -> None:
+        """Save camera result to HDF5 file following collect_data.py format."""
+        filename = f"episode{episode_idx:06d}.hdf5"
+        filepath = os.path.join(output_dir, filename)
+        
+        if os.path.exists(filepath):
+            os.remove(filepath)
+            log_info(f"Removed existing file: {filepath}")
+        
+        with h5py.File(filepath, "w") as f:
+            # Save env_info
+            env_group = f.create_group("env_info")
+            for key, value in camera_result.env_info.items():
+                if isinstance(value, str):
+                    env_group.create_dataset(key, data=value, dtype=h5py.string_dtype())
+                else:
+                    env_group.create_dataset(key, data=value)
+            
+            # Save observation data
+            obs_group = f.create_group("obs")
+            self._save_obs_group(obs_group, camera_result.obs)
+            
+        log_info(f"Saved camera result to {filepath}")
+    
+    def _save_obs_group(self, group: h5py.Group, obs_dict: Dict[str, Any]) -> None:
+        """Recursively save observation dictionary to HDF5 group."""
+        for key, value in obs_dict.items():
+            if isinstance(value, dict):
+                sub_group = group.create_group(key)
+                self._save_obs_group(sub_group, value)
+            elif isinstance(value, list) and len(value) > 0:
+                # Convert list to numpy array for saving
+                np_array = np.array(value)
+                group.create_dataset(key, data=np_array)
+            elif not isinstance(value, (list, dict)):
+                # Scalar values as attributes
+                group.attrs[key] = value
+    
+    # ========================================
+    # Trajectory Evaluation Methods  
+    # ========================================
+    
+    def replay_traj_evaluate(self, policy_model, start_states: torch.Tensor, 
+                           goal_states: torch.Tensor, trajs: torch.Tensor, 
+                           successes: torch.Tensor, robot_name: str,
+                           scene_id: str, object_id: str, 
+                           angle_id: str = "0", pose_id: str = "0", 
+                           grasp_id: int = 0) -> List[TrajectoryEvaluationResult]:
+        """
+        Evaluate policy model on trajectories and compare with ground truth.
+        
+        Args:
+            policy_model: Policy model for inference
+            start_states: Start states for trajectories
+            goal_states: Goal states for trajectories
+            trajs: Ground truth trajectory data  
+            successes: Success flags for each trajectory
+            robot_name: Name of the robot
+            scene_id: Scene identifier
+            object_id: Object identifier
+            angle_id: Angle identifier
+            pose_id: Pose identifier
+            grasp_id: Grasp identifier
+            
+        Returns:
+            List of TrajectoryEvaluationResult objects
+        """
+        log_info(f"=== Evaluating policy model on trajectories ===")
+        
+        # Setup cameras for observation
+        cameras = self.setup_fixed_cameras()
+        
+        # Get successful trajectory indices
+        successful_indices = self._get_indices(successes, all=False)
+        log_info(f"Evaluating on {len(successful_indices)} successful trajectories")
+        
+        evaluation_results = []
+        
+        for i, traj_idx in enumerate(successful_indices[:5]):  # Limit to first 5 for evaluation
+            log_info(f"Evaluating trajectory {i+1}/{min(5, len(successful_indices))}")
+            
+            # Get ground truth trajectory
+            gt_trajectory = trajs[traj_idx]
+            start_state = start_states[traj_idx]
+            goal_state = goal_states[traj_idx]
+            
+            # Run policy evaluation
+            eval_result = self._evaluate_single_trajectory(
+                policy_model, gt_trajectory, start_state, cameras, robot_name
+            )
+            
+            eval_result.trajectory_idx = traj_idx
+            eval_result.grasp_id = grasp_id
+            evaluation_results.append(eval_result)
+        
+        log_info(f"Completed evaluation on {len(evaluation_results)} trajectories")
+        return evaluation_results
+    
+    def _evaluate_single_trajectory(self, policy_model, gt_trajectory: torch.Tensor,
+                                   start_state: torch.Tensor, cameras: Dict[str, Camera],
+                                   robot_name: str) -> TrajectoryEvaluationResult:
+        """Evaluate policy model on a single trajectory."""
+        
+        # Initialize robot to start state
+        robot = self.isaac_world.scene.get_object("robot_0") or self.robot
+        if robot is None:
+            log_warn("Robot not found for evaluation")
+            return TrajectoryEvaluationResult(
+                eef_poses=torch.empty(0, 2, 7),
+                open_angles=torch.empty(0)
+            )
+        
+        # Convert to numpy if needed
+        if isinstance(gt_trajectory, torch.Tensor):
+            gt_trajectory = gt_trajectory.cpu().numpy()
+        if isinstance(start_state, torch.Tensor):
+            start_state = start_state.cpu().numpy()
+        
+        # Set robot to start state
+        start_pose = self._adjust_pose_for_robot(start_state, robot_name)
+        robot.set_joint_positions(start_pose.tolist())
+        
+        model_eef_poses = []
+        gt_eef_poses = []
+        open_angles = []
+        
+        # Execute trajectory with policy
+        for step_idx, gt_step in enumerate(gt_trajectory):
+            # Get current observation
+            self._update_ego_cameras(cameras) 
+            observations = self._get_camera_observations(cameras)
+            
+            # Format observation for policy (simplified)
+            policy_obs = self._format_observation_for_policy(observations, robot)
+            
+            try:
+                # Get policy action (this would depend on the specific policy interface)
+                policy_action = self._get_policy_action(policy_model, policy_obs)
+                
+                # Apply policy action
+                if policy_action is not None:
+                    policy_pose = self._adjust_pose_for_robot(policy_action, robot_name)
+                    robot.set_joint_positions(policy_pose.tolist())
+                
+                # Get model end effector pose
+                model_eef = self._get_end_effector_pose(robot)
+                if model_eef is None:
+                    model_eef = np.array([0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
+                
+                # Set robot to ground truth pose to get GT end effector pose
+                gt_pose = self._adjust_pose_for_robot(gt_step, robot_name)
+                robot.set_joint_positions(gt_pose.tolist())
+                gt_eef = self._get_end_effector_pose(robot)
+                if gt_eef is None:
+                    gt_eef = np.array([0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])
+                
+                model_eef_poses.append(model_eef)
+                gt_eef_poses.append(gt_eef)
+                
+                # Extract handle angle (assuming last dimension is handle angle)
+                if len(gt_step) > 7:  # Has handle angle
+                    open_angles.append(gt_step[-1])
+                else:
+                    open_angles.append(0.0)
+                
+                # Step simulation
+                self._isaacsim_step(step=3, render=True)
+                
+            except Exception as e:
+                log_warn(f"Error in trajectory evaluation at step {step_idx}: {e}")
+                break
+        
+        # Convert to tensors
+        if len(model_eef_poses) > 0:
+            model_eef_tensor = torch.tensor(np.array(model_eef_poses), dtype=torch.float32)
+            gt_eef_tensor = torch.tensor(np.array(gt_eef_poses), dtype=torch.float32)
+            eef_poses = torch.stack([model_eef_tensor, gt_eef_tensor], dim=1)  # Shape: (T, 2, 7)
+        else:
+            eef_poses = torch.empty(0, 2, 7)
+        
+        open_angles_tensor = torch.tensor(open_angles, dtype=torch.float32)
+        
+        return TrajectoryEvaluationResult(
+            eef_poses=eef_poses,
+            open_angles=open_angles_tensor,
+            success=len(model_eef_poses) == len(gt_trajectory),
+            num_steps=len(model_eef_poses)
+        )
+    
+    def _format_observation_for_policy(self, observations: Dict, robot: Robot) -> Dict[str, Any]:
+        """Format raw observations for policy input (simplified placeholder)."""
+        # This is a simplified version - actual implementation would depend on policy requirements
+        return {
+            "rgb": observations.get("rgb", {}),
+            "depth": observations.get("depth", {}),
+            "point_cloud": observations.get("point_cloud", {}),
+            "joint_positions": robot.get_joint_positions() if robot else None
+        }
+    
+    def _get_policy_action(self, policy_model, observation: Dict[str, Any]) -> Optional[np.ndarray]:
+        """Get action from policy model (placeholder - depends on policy interface)."""
+        # This is a placeholder - actual implementation would depend on the specific policy
+        # For now, return None to indicate no action
+        log_warn("Policy action interface not implemented - placeholder function")
+        return None

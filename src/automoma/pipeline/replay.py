@@ -1,7 +1,16 @@
 """
 ReplayPipeline for visualizing motion planning results in Isaac Sim.
-This pipeline loads saved IK and trajectory results for visualization.
+This pipeline loads saved IK and trajectory results for visualization and data collection.
 """
+import os
+import torch
+from typing import Optional, List
+
+# Import automoma modules first to avoid USD conflicts
+from automoma.models.task import TaskDescription
+from automoma.utils.data_structures import CameraResult, TrajectoryEvaluationResult
+from pathlib import Path
+from typing import Optional
 
 import torch
 import os
@@ -211,7 +220,7 @@ class ReplayPipeline:
         filtered_path = os.path.join(output_dir, "filtered_traj_data.pt")
         
         if not os.path.exists(filtered_path):
-            print(f"Filtered trajectory data not found at {filtered_path}. Please run trajectory filtering first.")
+            print(f"Filtered trajectory data not found at {filtered_path}")
             return
             
         traj_data = torch.load(filtered_path, weights_only=False)
@@ -229,13 +238,217 @@ class ReplayPipeline:
         print(f"Replaying {successful_count}/{len(success)} filtered trajectories")
         
         # Replay filtered trajectories
-        self.replayer.replay_traj(
+        self.replayer.replay_traj_akr(
             start_states=start_states,
             goal_states=goal_states,
             trajs=trajectories,
             successes=success,
             robot_name=robot_name
         )
+    
+    # ========================================
+    # New Data Collection Methods
+    # ========================================
+    
+    def replay_traj_record(self, grasp_id: int = 0, num_episodes: int = 10) -> List[CameraResult]:
+        """
+        Record trajectory data with camera observations for data collection.
+        
+        Args:
+            grasp_id: Grasp ID to record trajectories for
+            num_episodes: Maximum number of episodes to record
+            
+        Returns:
+            List of CameraResult objects containing recorded data
+        """
+        print(f"=== Recording trajectory data for grasp {grasp_id} ===")
+        
+        # Load trajectory results from file (try filtered first, then regular)
+        output_dir = self._get_output_directory(grasp_id)
+        
+        filtered_path = os.path.join(output_dir, "filtered_traj_data.pt")
+        traj_path = os.path.join(output_dir, "traj_data.pt")
+        
+        if os.path.exists(filtered_path):
+            data_path = filtered_path
+            print("Using filtered trajectory data")
+        elif os.path.exists(traj_path):
+            data_path = traj_path
+            print("Using regular trajectory data")
+        else:
+            print(f"No trajectory data found in {output_dir}")
+            return []
+            
+        traj_data = torch.load(data_path, weights_only=False)
+        start_states = traj_data["start_state"]
+        goal_states = traj_data["goal_state"]
+        trajectories = traj_data["traj"]
+        success = traj_data["success"]
+        
+        # Initialize Isaac Sim if not already done
+        if self.replayer is None:
+            self._init_isaac_sim()
+        
+        robot_name = self._get_robot_name()
+        successful_count = success.sum().item()
+        print(f"Recording from {successful_count}/{len(success)} successful trajectories")
+        
+        # Extract scene information
+        scene_path = Path(self.task.scene.scene_usd_path)
+        scene_name = scene_path.parent.parent.parent.name
+        
+        # Record trajectory data
+        camera_results = self.replayer.replay_traj_record(
+            start_states=start_states,
+            goal_states=goal_states,
+            trajs=trajectories,
+            successes=success,
+            robot_name=robot_name,
+            output_dir=output_dir,
+            scene_id=scene_name,
+            object_id=self.task.object.asset_id,
+            angle_id="0",  # Could be made configurable
+            pose_id="0",   # Could be made configurable
+            grasp_id=grasp_id
+        )
+        
+        print(f"Recorded {len(camera_results)} trajectory episodes")
+        return camera_results
+    
+    def replay_traj_evaluate(self, policy_model, grasp_id: int = 0, 
+                           num_episodes: int = 5) -> List[TrajectoryEvaluationResult]:
+        """
+        Evaluate a policy model on trajectory data.
+        
+        Args:
+            policy_model: Policy model for inference
+            grasp_id: Grasp ID to evaluate trajectories for
+            num_episodes: Maximum number of episodes to evaluate
+            
+        Returns:
+            List of TrajectoryEvaluationResult objects containing evaluation results
+        """
+        print(f"=== Evaluating policy model for grasp {grasp_id} ===")
+        
+        # Load trajectory results from file
+        output_dir = self._get_output_directory(grasp_id)
+        
+        filtered_path = os.path.join(output_dir, "filtered_traj_data.pt")
+        traj_path = os.path.join(output_dir, "traj_data.pt")
+        
+        if os.path.exists(filtered_path):
+            data_path = filtered_path
+            print("Using filtered trajectory data for evaluation")
+        elif os.path.exists(traj_path):
+            data_path = traj_path
+            print("Using regular trajectory data for evaluation")
+        else:
+            print(f"No trajectory data found in {output_dir}")
+            return []
+            
+        traj_data = torch.load(data_path, weights_only=False)
+        start_states = traj_data["start_state"]
+        goal_states = traj_data["goal_state"]
+        trajectories = traj_data["traj"]
+        success = traj_data["success"]
+        
+        # Initialize Isaac Sim if not already done
+        if self.replayer is None:
+            self._init_isaac_sim()
+        
+        robot_name = self._get_robot_name()
+        successful_count = success.sum().item()
+        print(f"Evaluating on {successful_count}/{len(success)} successful trajectories")
+        
+        # Extract scene information
+        scene_path = Path(self.task.scene.scene_usd_path)
+        scene_name = scene_path.parent.parent.parent.name
+        
+        # Evaluate policy
+        evaluation_results = self.replayer.replay_traj_evaluate(
+            policy_model=policy_model,
+            start_states=start_states,
+            goal_states=goal_states,
+            trajs=trajectories,
+            successes=success,
+            robot_name=robot_name,
+            scene_id=scene_name,
+            object_id=self.task.object.asset_id,
+            angle_id="0",  # Could be made configurable
+            pose_id="0",   # Could be made configurable
+            grasp_id=grasp_id
+        )
+        
+        print(f"Completed evaluation on {len(evaluation_results)} trajectories")
+        return evaluation_results
+    
+    def save_evaluation_results(self, evaluation_results: List[TrajectoryEvaluationResult], 
+                              output_dir: str, grasp_id: int = 0) -> None:
+        """
+        Save evaluation results to file.
+        
+        Args:
+            evaluation_results: List of evaluation results to save
+            output_dir: Directory to save results
+            grasp_id: Grasp ID for filename
+        """
+        if not evaluation_results:
+            print("No evaluation results to save")
+            return
+        
+        # Prepare data for saving
+        eval_data = {
+            "eef_poses": [],
+            "open_angles": [],
+            "success": [],
+            "num_steps": [],
+            "trajectory_indices": [],
+            "metrics": []
+        }
+        
+        for result in evaluation_results:
+            eval_data["eef_poses"].append(result.eef_poses)
+            eval_data["open_angles"].append(result.open_angles)
+            eval_data["success"].append(result.success)
+            eval_data["num_steps"].append(result.num_steps)
+            eval_data["trajectory_indices"].append(result.trajectory_idx)
+            eval_data["metrics"].append(result.compute_metrics())
+        
+        # Convert lists to tensors where appropriate
+        if eval_data["eef_poses"]:
+            eval_data["eef_poses"] = torch.cat(eval_data["eef_poses"], dim=0)
+        if eval_data["open_angles"]:  
+            eval_data["open_angles"] = torch.cat(eval_data["open_angles"], dim=0)
+        
+        eval_data["success"] = torch.tensor(eval_data["success"])
+        eval_data["num_steps"] = torch.tensor(eval_data["num_steps"])
+        eval_data["trajectory_indices"] = torch.tensor(eval_data["trajectory_indices"])
+        
+        # Save to file
+        eval_dir = os.path.join(output_dir, "evaluation")
+        os.makedirs(eval_dir, exist_ok=True)
+        
+        eval_path = os.path.join(eval_dir, f"eval_results_grasp_{grasp_id:04d}.pt")
+        torch.save(eval_data, eval_path)
+        
+        print(f"Saved evaluation results to {eval_path}")
+        
+        # Also save metrics summary
+        metrics_summary = {
+            "avg_position_error": sum(m["position_error"] for m in eval_data["metrics"]) / len(eval_data["metrics"]),
+            "avg_rotation_error": sum(m["rotation_error"] for m in eval_data["metrics"]) / len(eval_data["metrics"]),
+            "success_rate": sum(m["success"] for m in eval_data["metrics"]) / len(eval_data["metrics"]),
+            "avg_num_steps": sum(m["num_steps"] for m in eval_data["metrics"]) / len(eval_data["metrics"])
+        }
+        
+        summary_path = os.path.join(eval_dir, f"metrics_summary_grasp_{grasp_id:04d}.txt")
+        with open(summary_path, "w") as f:
+            f.write("Evaluation Metrics Summary\n")
+            f.write("=" * 30 + "\n")
+            for key, value in metrics_summary.items():
+                f.write(f"{key}: {value:.4f}\n")
+        
+        print(f"Saved metrics summary to {summary_path}")
     
     def close(self):
         """Close Isaac Sim application."""

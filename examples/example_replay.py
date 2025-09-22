@@ -73,7 +73,7 @@ def demo_replay_only():
     
     # Create task for replay
     object = create_7221_object()
-    scene_path = "/home/xinhai/Documents/automoma/output/test/kitchen_0919/scene_4_seed_4"
+    scene_path = "/home/xinhai/Documents/automoma/output/infinigen_scene_10/scene_1_seed_1"
     scene_result = load_scene(scene_path, [object])
     
     task = TaskDescription(
@@ -118,10 +118,36 @@ def demo_replay_only():
     print("2. Replay trajectories")  
     print("3. Replay filtered trajectories")
     print("4. Replay AKR trajectories")
+    print("5. Record trajectory data (NEW)")
+    print("6. Evaluate policy (NEW - requires policy model)")
     
-    # For demo, just replay IK
-    replay_pipeline.replay_ik(grasp_id=grasp_id)
-    replay_pipeline.replay_traj(grasp_id=grasp_id)
+    # For demo, demonstrate different functionalities
+    print("\n=== Running IK Replay ===")
+    # replay_pipeline.replay_ik(grasp_id=grasp_id)
+    
+    print("\n=== Running Trajectory Replay ===")
+    # replay_pipeline.replay_traj(grasp_id=grasp_id)
+    
+    print("\n=== Running Trajectory Recording (NEW) ===")
+    # Record trajectory data for training/evaluation
+    camera_results = replay_pipeline.replay_traj_record(
+        grasp_id=grasp_id, 
+        num_episodes=30  # Record 3 episodes for demo
+    )
+    print(f"Successfully recorded {len(camera_results)} episodes!")
+    
+    # Show data structure
+    if camera_results:
+        result = camera_results[0]
+        print(f"Sample data structure:")
+        print(f"  - Timesteps: {result.env_info.get('num_timesteps', 'Unknown')}")
+        print(f"  - Robot: {result.env_info.get('robot_name', 'Unknown')}")
+        print(f"  - Object: {result.env_info.get('object_id', 'Unknown')}")
+        print(f"  - Has joint data: {bool(result.obs.get('joint', {}))}")
+        print(f"  - Has RGB data: {bool(result.obs.get('rgb', {}))}")
+        print(f"  - Has depth data: {bool(result.obs.get('depth', {}))}")
+    
+    print("\n=== Trajectory Evaluation Demo (NEW) ===")
     
     # Close when done
     replay_pipeline.close()
