@@ -27,11 +27,10 @@ class TrajectoryPipeline:
             "asset_id": self.task.object.asset_id,
         }
         robot_cfg = self.task.robot.robot_cfg
-        self.planner = AKRPlanner(scene_cfg, object_cfg, robot_cfg)
         
-        # Load object metadata if available
-        if hasattr(self.task.scene, 'metadata_path') and self.task.scene.metadata_path:
-            self.planner.load_object_from_metadata(self.task.scene.metadata_path)
+        object_cfg = AKRPlanner.load_object_from_metadata(self.task.scene.metadata_path, object_cfg)
+        self.planner = AKRPlanner(scene_cfg, object_cfg, robot_cfg)
+                
     
     def _get_output_directory(self, grasp_id: int) -> str:
         """Generate organized output directory path."""

@@ -55,7 +55,7 @@ def load_scene(scene_path: str, objects: list):
     """Load scene from path (same as in example)."""
     scene_pipeline = InfinigenScenePipeline()
     scene_result = scene_pipeline.load_scene(scene_path, objects)
-    scene_pose = [0, 0, -0.14, 1, 0, 0, 0]
+    scene_pose = [0, 0, -0.13, 1, 0, 0, 0]
     scene_result.scene.set_pose(scene_pose)
     
     # set object poses
@@ -162,12 +162,15 @@ def run_pipelines_for_directory(scene_dir: str, plan_dir: str, robot_name: str):
     plan_path.mkdir(parents=True, exist_ok=True)
     print(f"###################### Plan directory: {plan_dir} ######################")
     
-    # Find all subdirectories that look like scenes
     scene_dirs = []
-    for item in scene_path.iterdir():
-        if item.is_dir() and item.name.startswith('scene_'):
-            scene_dirs.append(item)
-    
+    if scene_path.name.startswith('scene_'):
+        scene_dirs.append(scene_path)
+    else:
+    # Find all subdirectories that look like scenes
+        for item in scene_path.iterdir():
+            if item.is_dir() and item.name.startswith('scene_'):
+                scene_dirs.append(item)
+        
     scene_dirs.sort()  # Process in order
     
     if not scene_dirs:
@@ -390,6 +393,7 @@ def main():
     parser.add_argument(
         "--plan_dir", 
         type=str,
+        default="output",
         help="Directory to save planning results (e.g., output/summit_franka)"
     )
     parser.add_argument(

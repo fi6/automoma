@@ -36,13 +36,19 @@ class AOGraspPipeline(GraspPipeline):
     
 if __name__ == "__main__":
     from automoma.models.object import ObjectDescription
+    # object = ObjectDescription(
+    #         asset_type="Dishwasher",
+    #         asset_id="11622",
+    #         scale=0.6,
+    #         urdf_path="assets/object/Dishwasher/11622/mobility.urdf",
+    #     )
     object = ObjectDescription(
-            asset_type="Dishwasher",
-            asset_id="11622",
-            scale=0.6,
-            urdf_path="assets/object/Dishwasher/11622/mobility.urdf",
-        )
+        asset_type="Microwave",
+        asset_id="7221", 
+        scale=0.3562990018302636,
+        urdf_path="assets/object/Microwave/7221/7221_0_scaling.urdf",
+    )
     pipeline = AOGraspPipeline()
-    grasps = pipeline.generate_grasps(object, 10)
+    grasps = pipeline.generate_grasps(object, 20)
     for grasp in grasps:
         print(grasp)
