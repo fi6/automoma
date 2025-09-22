@@ -15,7 +15,7 @@ Usage:
     python pipeline_plan.py --plan-dir /path/to/output --stats-only
 
 Examples:
-    python pipeline_plan.py --scene-dir /home/xinhai/Documents/automoma/output/test/kitchen_0919 --plan-dir output/summit_franka
+    python scripts/pipeline_plan.py --scene_dir /home/xinhai/automoma/output/infinigen_scene_100 --plan_dir output/summit_franka
     python pipeline_plan.py --plan-dir output/summit_franka --stats-only
 """
 
@@ -199,7 +199,7 @@ def run_pipelines_for_directory(scene_dir: str, plan_dir: str, robot_name: str):
     print("######################")
     
     # Generate statistics
-    stats = generate_statistics(plan_dir)
+    stats = generate_statistics(plan_dir, robot_name)
     
     # Save statistics in plan directory
     stats_file = os.path.join(plan_dir, "pipeline_statistics.json")

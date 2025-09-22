@@ -48,6 +48,15 @@ pip install -U setuptools pip
 pip install -e "./third_party/curobo[isaacsim]" --no-build-isolation
 ```
 
+### Cuakr
+```
+cd third_party
+git clone https://github.com/fi6/cuakr.git
+
+pip install -e "./third_party/cuakr"
+```
+
+
 ## Quick Start
 
 ```python

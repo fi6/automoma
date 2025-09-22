@@ -35,7 +35,7 @@ def analyze_scenes(base_directory):
             if not os.path.exists(requirement_path):
                 print(f"   - Missing requirement.json")
                 shutil.copy(
-                    "/home/xinhai/Documents/automoma/tests/assets/requirement.json",
+                    "/home/xinhai/automoma/scripts/debug/requirement.json",
                     requirement_path
                 )
             else:
@@ -102,7 +102,7 @@ def analyze_scenes(base_directory):
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    base_dir = "/home/xinhai/Documents/automoma/output/test/kitchen_0919"
+    base_dir = "/home/xinhai/automoma/output/infinigen_scene_100"
 
     if not os.path.exists(base_dir):
         print(f"Error: Base directory does not exist: {base_dir}")
