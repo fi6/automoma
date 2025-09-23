@@ -15,7 +15,7 @@ Usage:
     python pipeline_plan.py --plan-dir /path/to/output --stats-only
 
 Examples:
-    python pipeline_plan.py --scene-dir /home/xinhai/Documents/automoma/output/test/kitchen_0919 --plan-dir output/summit_franka
+    python scripts/pipeline_plan.py --scene_dir /home/xinhai/automoma/output/infinigen_scene_100 --plan_dir output/summit_franka
     python pipeline_plan.py --plan-dir output/summit_franka --stats-only
 """
 
@@ -38,6 +38,8 @@ from automoma.pipeline import ScenePipeline, TrajectoryPipeline, InfinigenSceneP
 from automoma.utils.transform import single_axis_self_rotation, matrix_to_pose
 from cuakr.utils.math import pose_multiply
 
+
+GRASP_IDS = [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 18]
 
 def create_7221_object():
     """Create a 7221 microwave object (same as in example)."""
@@ -110,12 +112,17 @@ def run_pipeline_for_scene(scene_path: str, scene_name: str, plan_dir: str, robo
             print(f"######################")
             print(f"#### Processing Grasp {grasp_id}/{total_grasps} ####")
             print(f"######################")
-            # if grasp_id % 5 == 0:
-            #     continue
+            if grasp_id not in GRASP_IDS:
+                print(f"Skipping grasp {grasp_id} as it's not in the specified GRASP_IDS")
+                continue
 
             # Update task with current grasp
             task.update_grasp(grasp)
             print("###################### Task updated with new grasp ######################")
+            
+            if trajectory_pipeline.check_results_exist(grasp_id):
+                print(f"###################### Results already exist for grasp {grasp_id}, skipping... ######################")
+                continue
             
             try:
                 # Run pipeline steps
@@ -125,7 +132,7 @@ def run_pipeline_for_scene(scene_path: str, scene_name: str, plan_dir: str, robo
                 trajectory_pipeline.plan_ik()
                 print("###################### IK planning completed ######################")
 
-                trajectory_pipeline.plan_traj(batch_size=10)
+                trajectory_pipeline.plan_traj(batch_size=20)
                 print("###################### Trajectory planning completed ######################")
                 
                 trajectory_pipeline.filter_traj()
@@ -151,6 +158,9 @@ def run_pipeline_for_scene(scene_path: str, scene_name: str, plan_dir: str, robo
         return False
 
 
+import re
+from pathlib import Path
+
 def run_pipelines_for_directory(scene_dir: str, plan_dir: str, robot_name: str):
     """Run pipelines for all scene subdirectories in a directory."""
     scene_path = Path(scene_dir)
@@ -168,12 +178,17 @@ def run_pipelines_for_directory(scene_dir: str, plan_dir: str, robot_name: str):
     if scene_path.name.startswith('scene_'):
         scene_dirs.append(scene_path)
     else:
-    # Find all subdirectories that look like scenes
+        # Find all subdirectories that look like scenes
         for item in scene_path.iterdir():
             if item.is_dir() and item.name.startswith('scene_'):
                 scene_dirs.append(item)
         
-    scene_dirs.sort()  # Process in order
+    # Sort numerically by scene number
+    def extract_scene_number(path):
+        match = re.search(r'scene_(\d+)', path.name)
+        return int(match.group(1)) if match else -1
+
+    scene_dirs.sort(key=extract_scene_number)
     
     if not scene_dirs:
         print(f"###################### No scene directories found in {scene_dir} ######################")
@@ -182,7 +197,6 @@ def run_pipelines_for_directory(scene_dir: str, plan_dir: str, robot_name: str):
     print("######################")
     print(f"#### Found {len(scene_dirs)} scenes to process ####")
     print("######################")
-    
     successful_scenes = 0
     failed_scenes = 0
     
@@ -290,17 +304,17 @@ def generate_statistics(plan_dir: str, robot_name: str) -> Dict[str, Any]:
                 if grasp_stats["ik_exists"]:
                     stats["overall_statistics"]["total_ik_results"] += 1
                     if grasp_stats["ik_success_count"] > 0:
-                        stats["overall_statistics"]["ik_success_count"] += 1
+                        stats["overall_statistics"]["ik_success_count"] += grasp_stats["ik_success_count"]
                         
                 if grasp_stats["traj_exists"]:
                     stats["overall_statistics"]["total_traj_results"] += 1
                     if grasp_stats["traj_success_count"] > 0:
-                        stats["overall_statistics"]["traj_success_count"] += 1
+                        stats["overall_statistics"]["traj_success_count"] += grasp_stats["traj_success_count"]
                         
                 if grasp_stats["filtered_exists"]:
                     stats["overall_statistics"]["total_filtered_results"] += 1
                     if grasp_stats["filtered_success_count"] > 0:
-                        stats["overall_statistics"]["filtered_success_count"] += 1
+                        stats["overall_statistics"]["filtered_success_count"] += grasp_stats["filtered_success_count"]
                         scene_stats["successful_grasps"] += 1
         
         stats["statistics_by_scene"][scene_name] = scene_stats

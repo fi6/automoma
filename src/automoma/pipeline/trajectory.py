@@ -79,6 +79,10 @@ class TrajectoryPipeline:
                 all_goal_iks.append(additional_ik.goal_ik)
             
             start_iks = torch.cat(all_start_iks, dim=0)
+            # Randomly select 50 indices
+            if start_iks.shape[0] > 50:
+                idx = torch.randperm(start_iks.shape[0])[:50]
+                start_iks = start_iks[idx]
             goal_iks = torch.cat(all_goal_iks, dim=0)
             ik_result = IKResult(start_ik=start_iks, goal_ik=goal_iks)
         
@@ -121,3 +125,12 @@ class TrajectoryPipeline:
             print(f"Saved filtered trajectory results to: {filtered_path}")
         
         return output_dir
+    
+    def check_results_exist(self, grasp_id: int) -> bool:
+        """Check if results already exist for the given grasp ID."""
+        output_dir = self._get_output_directory(grasp_id)
+        ik_path = os.path.join(output_dir, "ik_data.pt")
+        traj_path = os.path.join(output_dir, "traj_data.pt")
+        filtered_path = os.path.join(output_dir, "filtered_traj_data.pt")
+        
+        return all(os.path.exists(p) for p in [ik_path, traj_path, filtered_path])

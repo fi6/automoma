@@ -260,7 +260,7 @@ def main():
                        help="Mode: collect statistics or pick data")
     parser.add_argument("--output_dir", default="output", 
                        help="Output directory path")
-    parser.add_argument("--config_dir", default="scripts/baseline/RoboTwin/config/data",
+    parser.add_argument("--config_dir", default="scripts/config",
                        help="Configuration directory path")
     parser.add_argument("--sequential", action="store_true",
                        help="Use sequential picking instead of random picking (default is random)")
@@ -282,7 +282,7 @@ def main():
     elif args.mode == "pick":
         # Data picking mode
         pick_config_path = os.path.join(args.config_dir, "data_pick_statistic.json")
-        target_base_dir = "baseline/codes/RoboTwin/data"
+        target_base_dir = "baseline/RoboTwin/data"
         
         if not os.path.exists(pick_config_path):
             print(f"Pick config not found: {pick_config_path}")

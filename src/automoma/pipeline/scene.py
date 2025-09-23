@@ -10,7 +10,7 @@ import json
 import os
 import sys
 
-sys.path.append("/home/xinhai/Documents/automoma/third_party/infinigen")
+sys.path.append("/home/xinhai/automoma/third_party/infinigen")
 import shutil
 import time
 import subprocess

@@ -1,5 +1,5 @@
 # region Paths
-PROJECT_ROOT = "/home/xinhai/Documents/automoma"
+PROJECT_ROOT = "/home/xinhai/automoma"
 
 OBJECT_ASSET_DIR = "assets/object"
 
