@@ -26,12 +26,12 @@ class AOGraspPipeline(GraspPipeline):
         # Read the grasp poses from a file
         urdf_path = object.urdf_path
         file_folder = urdf_path.replace(os.path.basename(urdf_path), "grasp")
-        grasps = []
+        grasps = {}
         for i in range(count):
             file_path = f"{file_folder}/{i:04d}.npy"
             grasp = np.load(file_path)
             grasp = self.grasp_scale(grasp, object.scale)
-            grasps.append(grasp)
+            grasps[i] = grasp
         return grasps
     
 if __name__ == "__main__":
@@ -51,4 +51,4 @@ if __name__ == "__main__":
     pipeline = AOGraspPipeline()
     grasps = pipeline.generate_grasps(object, 20)
     for grasp in grasps:
-        print(grasp)
+        print(grasp, grasps[grasp])

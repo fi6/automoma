@@ -111,7 +111,7 @@ def demo_replay_only():
 
     
     # Replay existing results for grasp 0
-    grasp_id = 14
+    grasp_id = 2
     
     print("Choose replay mode:")
     print("1. Replay IK solutions")
@@ -123,35 +123,35 @@ def demo_replay_only():
     
     # For demo, demonstrate different functionalities
     print("\n=== Running IK Replay ===")
-    # replay_pipeline.replay_ik(grasp_id=grasp_id)
+    replay_pipeline.replay_ik(grasp_id=grasp_id)
     
     print("\n=== Running Trajectory Replay ===")
-    # replay_pipeline.replay_traj(grasp_id=grasp_id)
+    replay_pipeline.replay_traj(grasp_id=grasp_id)
     
     print("\n=== Running Trajectory Recording (NEW) ===")
     # Record trajectory data for training/evaluation
     
-    for grasp_id in [0, 12, 14]:
-        camera_results = replay_pipeline.replay_traj_record(
-            grasp_id=grasp_id, 
-            num_episodes=5  # Record 3 episodes for demo
-        )
+    # for grasp_id in [0, 12, 14]:
+    #     camera_results = replay_pipeline.replay_traj_record(
+    #         grasp_id=grasp_id, 
+    #         num_episodes=5  # Record 3 episodes for demo
+    #     )
     # replay_pipeline.replayer.isaacsim_step(step=-1, render=True)  # Keep running until window is closed
     
-    print(f"Successfully recorded {len(camera_results)} episodes!")
+    # print(f"Successfully recorded {len(camera_results)} episodes!")
     
-    # Show data structure
-    if camera_results:
-        result = camera_results[0]
-        print(f"Sample data structure:")
-        print(f"  - Timesteps: {result.env_info.get('num_timesteps', 'Unknown')}")
-        print(f"  - Robot: {result.env_info.get('robot_name', 'Unknown')}")
-        print(f"  - Object: {result.env_info.get('object_id', 'Unknown')}")
-        print(f"  - Has joint data: {bool(result.obs.get('joint', {}))}")
-        print(f"  - Has RGB data: {bool(result.obs.get('rgb', {}))}")
-        print(f"  - Has depth data: {bool(result.obs.get('depth', {}))}")
+    # # Show data structure
+    # if camera_results:
+    #     result = camera_results[0]
+    #     print(f"Sample data structure:")
+    #     print(f"  - Timesteps: {result.env_info.get('num_timesteps', 'Unknown')}")
+    #     print(f"  - Robot: {result.env_info.get('robot_name', 'Unknown')}")
+    #     print(f"  - Object: {result.env_info.get('object_id', 'Unknown')}")
+    #     print(f"  - Has joint data: {bool(result.obs.get('joint', {}))}")
+    #     print(f"  - Has RGB data: {bool(result.obs.get('rgb', {}))}")
+    #     print(f"  - Has depth data: {bool(result.obs.get('depth', {}))}")
     
-    print("\n=== Trajectory Evaluation Demo (NEW) ===")
+    # print("\n=== Trajectory Evaluation Demo (NEW) ===")
     
     # Close when done
     replay_pipeline.close()

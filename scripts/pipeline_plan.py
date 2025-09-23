@@ -106,10 +106,12 @@ def run_pipeline_for_scene(scene_path: str, scene_name: str, plan_dir: str, robo
 
         # Process each grasp
         total_grasps = len(grasps)
-        for i, grasp in enumerate(grasps):
+        for grasp_id, grasp in grasps.items():
             print(f"######################")
-            print(f"#### Processing Grasp {i+1}/{total_grasps} ####")
+            print(f"#### Processing Grasp {grasp_id}/{total_grasps} ####")
             print(f"######################")
+            # if grasp_id % 5 == 0:
+            #     continue
 
             # Update task with current grasp
             task.update_grasp(grasp)
@@ -117,25 +119,25 @@ def run_pipeline_for_scene(scene_path: str, scene_name: str, plan_dir: str, robo
             
             try:
                 # Run pipeline steps
-                trajectory_pipeline.load_akr_robot(f"assets/object/Microwave/7221/summit_franka_7221_0_grasp_{i:04d}.yml")
+                trajectory_pipeline.load_akr_robot(f"assets/object/Microwave/7221/summit_franka_7221_0_grasp_{grasp_id:04d}.yml")
                 print("###################### AKR robot loaded ######################")
 
                 trajectory_pipeline.plan_ik()
                 print("###################### IK planning completed ######################")
 
-                trajectory_pipeline.plan_traj()
+                trajectory_pipeline.plan_traj(batch_size=10)
                 print("###################### Trajectory planning completed ######################")
                 
                 trajectory_pipeline.filter_traj()
                 print("###################### Trajectory filtering completed ######################")
                 
-                trajectory_pipeline.save_results(grasp_id=i)
+                trajectory_pipeline.save_results(grasp_id=grasp_id)
                 print("###################### Results saved ######################")
 
-                print(f"###################### Completed grasp {i+1}/{total_grasps} successfully ######################")
+                print(f"###################### Completed grasp {grasp_id}/{total_grasps} successfully ######################")
                 
             except Exception as e:
-                print(f"###################### Error processing grasp {i}: {e} ######################")
+                print(f"###################### Error processing grasp {grasp_id}: {e} ######################")
                 continue
                 
         print("######################")
