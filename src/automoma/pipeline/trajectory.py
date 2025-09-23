@@ -90,10 +90,10 @@ class TrajectoryPipeline:
         print(f"IK planning completed: {ik_result.start_ik.shape[0], ik_result.goal_ik.shape[0]} solutions")
         return ik_result
 
-    def plan_traj(self):
+    def plan_traj(self, batch_size: int = 10):
         """Plan AKR trajectories."""
         print("Planning trajectories...")
-        traj_result = self.planner.plan_traj(self.ik_result, self.akr_robot_cfg, batch_size=40)
+        traj_result = self.planner.plan_traj(self.ik_result, self.akr_robot_cfg, batch_size=batch_size)
         self.traj_result = traj_result
         print(f"Trajectory planning completed: {traj_result.success.sum().item()}/{len(traj_result.success)} successful")
         return traj_result
