@@ -260,11 +260,7 @@ def main():
                        help="Mode: collect statistics or pick data")
     parser.add_argument("--output_dir", default="output", 
                        help="Output directory path")
-<<<<<<< HEAD
     parser.add_argument("--config_dir", default="scripts/config",
-=======
-    parser.add_argument("--config_dir", default="scripts/baseline/RoboTwin/config/data",
->>>>>>> 1b49b31bfe85f70c576a7b2fb1a7f761467d3f33
                        help="Configuration directory path")
     parser.add_argument("--sequential", action="store_true",
                        help="Use sequential picking instead of random picking (default is random)")

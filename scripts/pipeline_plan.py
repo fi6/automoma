@@ -125,7 +125,7 @@ def run_pipeline_for_scene(scene_path: str, scene_name: str, plan_dir: str, robo
                 trajectory_pipeline.plan_ik()
                 print("###################### IK planning completed ######################")
 
-                trajectory_pipeline.plan_traj(batch_size=10)
+                trajectory_pipeline.plan_traj(batch_size=20)
                 print("###################### Trajectory planning completed ######################")
                 
                 trajectory_pipeline.filter_traj()
@@ -290,17 +290,17 @@ def generate_statistics(plan_dir: str, robot_name: str) -> Dict[str, Any]:
                 if grasp_stats["ik_exists"]:
                     stats["overall_statistics"]["total_ik_results"] += 1
                     if grasp_stats["ik_success_count"] > 0:
-                        stats["overall_statistics"]["ik_success_count"] += 1
+                        stats["overall_statistics"]["ik_success_count"] += grasp_stats["ik_success_count"]
                         
                 if grasp_stats["traj_exists"]:
                     stats["overall_statistics"]["total_traj_results"] += 1
                     if grasp_stats["traj_success_count"] > 0:
-                        stats["overall_statistics"]["traj_success_count"] += 1
+                        stats["overall_statistics"]["traj_success_count"] += grasp_stats["traj_success_count"]
                         
                 if grasp_stats["filtered_exists"]:
                     stats["overall_statistics"]["total_filtered_results"] += 1
                     if grasp_stats["filtered_success_count"] > 0:
-                        stats["overall_statistics"]["filtered_success_count"] += 1
+                        stats["overall_statistics"]["filtered_success_count"] += grasp_stats["filtered_success_count"]
                         scene_stats["successful_grasps"] += 1
         
         stats["statistics_by_scene"][scene_name] = scene_stats

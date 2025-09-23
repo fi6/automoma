@@ -47,18 +47,52 @@ class TaskDescription:
         }
         
     def init_task_articulate(self):
+        angle = ao_grasp_task_generator('assets/grasp/7221')
         self.start = {
             "pose": self.scene.get_object_pose(self.object),
             "angle": 0.0,
         }
         self.goal = {
+            'angle': angle
             # "angle": [0.80, 1.00, 1.25, 1.40, 1.57],  # radians
-            "angle": [1.00, 1.20, 1.57],  # radians
+            # "angle_bound": [0.78, 1.57],  # radians
         }
+        self.update_goal()
         
     def update_grasp(self, grasp_pose: np.ndarray):
         self.grasp_pose = grasp_pose
+        self.update_goal()
+        
+    def update_goal(self, num_angles: int = 3):
+        if self.goal.get("angle") is not None:
+            return
+        if self.task_type == TaskType.ARTICULATE:
+            angle_bound = self.goal["angle_bound"]
+            self.goal["angle"] = list(np.random.uniform(angle_bound[0], angle_bound[1], num_angles))
+            print(f"Updated goal angles: {self.goal['angle']}")
+        else:
+            raise NotImplementedError("update_goal is only implemented for ARTICULATE tasks.")
+        
 
     @classmethod
     def from_yaml(cls, task_yaml_path: str) -> "TaskDescription":
         raise NotImplementedError("from_yaml is not implemented yet.")
+
+
+def ao_grasp_task_generator(object_grasp_folder: str):
+    import os
+    # object_grasp_folder: assets/grasp/7221
+    open_angles = []
+    for subdir in os.listdir(object_grasp_folder):
+        # subdir: assets/grasp/7221/0
+        object_init_state = os.path.join(object_grasp_folder,subdir, "init_state.npz")
+        # print(object_init_state)
+        if not os.path.exists(object_init_state):
+            continue
+        with np.load(object_init_state, allow_pickle=True) as data:
+            # print(data['data'].item()['object']['qpos'])
+            open_angles.append(data['data'].item()['object']['qpos'][1])
+        # select open angles
+    open_angles = sorted(open_angles, reverse=True)
+    return [1.57, *[open_angles[x] for x in [1,4]]]
+    

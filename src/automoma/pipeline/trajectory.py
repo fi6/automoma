@@ -78,11 +78,11 @@ class TrajectoryPipeline:
                 all_start_iks.append(additional_ik.start_ik)
                 all_goal_iks.append(additional_ik.goal_ik)
             
-            # Randomly choose start 60 if more than 60
-            if len(all_start_iks) > 60:
-                idx = torch.randperm(len(all_start_iks))[:60]
-                all_start_iks = [all_start_iks[i] for i in idx]
             start_iks = torch.cat(all_start_iks, dim=0)
+            # Randomly select 50 indices
+            if start_iks.shape[0] > 50:
+                idx = torch.randperm(start_iks.shape[0])[:50]
+                start_iks = start_iks[idx]
             goal_iks = torch.cat(all_goal_iks, dim=0)
             ik_result = IKResult(start_ik=start_iks, goal_ik=goal_iks)
         
