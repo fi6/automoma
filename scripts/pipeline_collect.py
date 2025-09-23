@@ -31,7 +31,7 @@ import torch
 import isaacsim
 from omni.isaac.kit import SimulationApp
 simulation_app = SimulationApp({
-    "headless": False,
+    "headless": True,
     "width": 1920,
     "height": 1080,
 })
@@ -52,7 +52,7 @@ from cuakr.utils.math import pose_multiply
 # =============================
 # Hyperparameters (can be edited)
 # =============================
-NUM_EPISODES = 10  # Alias, do not edit unless needed
+NUM_EPISODES = 300  # Alias, do not edit unless needed
 # GRASP_IDS = [0, 12, 14]
 GRASP_IDS = [0]
 
