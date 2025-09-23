@@ -56,6 +56,9 @@ from automoma.utils.data_structures import CameraResult, TrajectoryEvaluationRes
 from automoma.utils.transform import euler_to_quat  # Use automoma's rotation utilities
 
 
+# Import required functions for point cloud processing
+from cuakr.utils.camera import create_colored_pointcloud, process_point_cloud, PCDProcConfig
+
 class Replayer:
     def __init__(self, simulation_app, robot_cfg, scene_cfg, object_cfg):
         self._init_world()
@@ -705,9 +708,6 @@ class Replayer:
             "point_cloud": {}
         }
         
-        # Import required functions for point cloud processing
-        from cuakr.utils.camera import create_colored_pointcloud, process_point_cloud, PCDProcConfig
-        
         # Collect RGB and depth data from all cameras
         for camera_type, camera in cameras.items():
             # Get RGB data (remove alpha channel) 
@@ -772,6 +772,10 @@ class Replayer:
         
         # Setup cameras
         cameras = self.setup_cameras()
+        
+        self._init_motion_gen()
+        
+        self.robot_name = robot_name
         
         # Get successful trajectory indices
         successful_indices = self._get_indices(successes, all=False)
@@ -934,8 +938,30 @@ class Replayer:
     def _get_end_effector_pose(self, robot: Robot) -> Optional[np.ndarray]:
         """Get current end effector pose as 7D array [x, y, z, qw, qx, qy, qz]."""
         # This is a simplified implementation - in practice you'd get the actual EE pose
-        # For now, we'll use a placeholder
-        return np.array([0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0])  # Identity pose
+
+        # Get end-effector pose
+        # joint_angle = self.get_handle_pose()
+        # gt_eef_pose = self._get_open_ee_pose(self.object_pose, joint_angle)
+        # gt_eef_pose_7d = self.pose_to_7D_numpy(gt_eef_pose)
+
+        # Get model end-effector pose
+        robot_pose_np = robot.get_joint_positions()
+        # TODO: fix dof bug for fixed base robots
+        if "fixed" in self.robot_name:
+            robot_pose_np = robot_pose_np[3:]
+        js = JointState.from_position(self.tensor_args.to_device(robot_pose_np))
+        fk_result = self.motion_gen.ik_solver.fk(js.position)
+        model_eef_pose = fk_result.ee_pose
+        model_eef_pose_7d = self.pose_to_7D_numpy(model_eef_pose)
+
+        eef_pose_7d = model_eef_pose_7d
+        return eef_pose_7d
+    
+    def pose_to_7D_numpy(self, pose):
+        """Convert a pose to a 7D numpy array (position + quaternion)"""
+        position = pose.position.flatten().cpu().numpy()
+        quaternion = pose.quaternion.flatten().cpu().numpy()
+        return np.concatenate([position, quaternion])
     
     def _save_camera_result(self, camera_result: CameraResult, output_dir: str, episode_idx: int) -> None:
         """Save camera result to HDF5 file following collect_data.py format."""
@@ -1010,6 +1036,8 @@ class Replayer:
         
         # Setup cameras for observation
         cameras = self.setup_cameras()
+        
+        self.robot_name = robot_name  # Store robot name for pose adjustments
         
         # Get successful trajectory indices
         successful_indices = self._get_indices(successes, all=False)

@@ -26,6 +26,9 @@ import argparse
 from pathlib import Path
 from typing import Dict, List, Any
 import torch
+import os
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"  # Ensure only one GPU is used
 
 # Lazy import and start Isaac Sim headless for this scene
 import isaacsim
@@ -52,9 +55,9 @@ from cuakr.utils.math import pose_multiply
 # =============================
 # Hyperparameters (can be edited)
 # =============================
-NUM_EPISODES = 300  # Alias, do not edit unless needed
+NUM_EPISODES = 110  # Alias, do not edit unless needed
 # GRASP_IDS = [0, 12, 14]
-GRASP_IDS = [0]
+GRASP_IDS = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]  # Alias, do not edit unless needed
 
 # Optional scene cleanup toggles
 DEACTIVATE_PRIMS = [
@@ -323,8 +326,8 @@ def run_collection_for_directory(scene_dir: str, plan_dir: str, robot_name: str,
 
 def main():
     parser = argparse.ArgumentParser(description="Collect camera data by replaying planned trajectories across scenes")
-    parser.add_argument("--scene_dir", type=str, default="output/infinigen_scene_10", help="Directory containing scene subdirectories (e.g., /path/to/kitchen)")
-    parser.add_argument("--plan_dir", type=str, default="output", help="Directory where planning results were saved")
+    parser.add_argument("--scene_dir", type=str, default="output/test_collect/infinigen_scene_100", help="Directory containing scene subdirectories (e.g., /path/to/kitchen)")
+    parser.add_argument("--plan_dir", type=str, default="output/test_collect/traj", help="Directory where planning results were saved")
     parser.add_argument("--robot_name", type=str, default="summit_franka", help="Robot name used in planning outputs")
     parser.add_argument("--stats_only", action="store_true", help="Only generate camera statistics from plan-dir")
     parser.add_argument("--num_episodes", type=int, default=None, help="Override number of episodes to record per grasp")

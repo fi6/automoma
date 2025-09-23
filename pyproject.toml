@@ -31,6 +31,8 @@ dependencies = [
     "scipy",
     "PyYAML",
     "scene-synthesizer[recommend]",
+    "h5py",
+    "ipywidgets"
 ]
 dynamic = ["version"]
 
