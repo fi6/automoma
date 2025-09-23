@@ -16,6 +16,7 @@ Adapted from the existing test_replay.py script.
 #     }
 # )
 
+
 from omni.isaac.core.utils.stage import add_reference_to_stage
 from omni.usd import get_world_transform_matrix
 from omni.isaac.core import World
@@ -45,6 +46,7 @@ import torch
 import numpy as np
 import os
 import time
+from tqdm import tqdm
 import h5py
 
 # Camera and data collection imports
@@ -593,7 +595,7 @@ class Replayer:
             camera = Camera(
                 prim_path=camera_prim_path,
                 frequency=30,
-                resolution=(240, 320)  # Height x Width - matching cuakr config
+                resolution=(320, 240)  # Height x Width - matching cuakr config
             )
             camera.initialize()
             camera.add_motion_vectors_to_frame()
@@ -786,7 +788,7 @@ class Replayer:
             num_episodes = len(successful_indices)
         num_episodes = min(num_episodes, len(successful_indices))
         
-        for i, traj_idx in enumerate(successful_indices[:num_episodes]):  # Limit to specified number of successful trajectories
+        for i, traj_idx in enumerate(tqdm(successful_indices[:num_episodes], desc="Recording trajectories")):  # Limit to specified number of successful trajectories
             log_info(f"Recording trajectory {i}/{num_episodes}")
             
             # Initialize camera result
@@ -859,16 +861,17 @@ class Replayer:
         joint_names = self.robot_cfg["kinematics"]["cspace"]["joint_names"]
         idx_list = [robot.get_dof_index(name) for name in joint_names]
         
+        
         # Execute each step of the trajectory
         for step_idx, step_pose in enumerate(trajectory):
             # Debug trajectory shape
-            print(f"Original step_pose shape: {step_pose.shape}")
+            # print(f"Original step_pose shape: {step_pose.shape}")
             
             # Split pose like in replay_traj: robot_pose (all but last) and handle_pose (last)
             robot_pose = step_pose[:-1]
             handle_pose = step_pose[-1:]
             
-            print(f"After split: robot_pose shape: {robot_pose.shape}, handle_pose shape: {handle_pose.shape}")
+            # print(f"After split: robot_pose shape: {robot_pose.shape}, handle_pose shape: {handle_pose.shape}")
             
             # Convert to torch tensor if it's numpy (needed for _adjust_pose_for_robot)
             if isinstance(robot_pose, np.ndarray):
@@ -880,17 +883,23 @@ class Replayer:
             else:
                 robot_pose = self._adjust_pose_for_robot(robot_pose, robot_name)
                 
-            print(f"After adjustment: robot_pose shape: {robot_pose.shape}")
-            print(f"idx_list length: {len(idx_list)}")
-            print(f"Robot DOF: {robot.num_dof}")
+            # print(f"After adjustment: robot_pose shape: {robot_pose.shape}")
+            # print(f"idx_list length: {len(idx_list)}")
+            # print(f"Robot DOF: {robot.num_dof}")
             
             # Set joint positions with idx_list like in replay_traj
             robot.set_joint_positions(robot_pose.tolist(), idx_list)
             robot._articulation_view.set_max_efforts(
                 values=np.array([5000] * len(idx_list)), joint_indices=idx_list,
             )
+
+            # Warm up simulation
+            if step_idx == 0:
+                set_steps = 50
+            else:
+                set_steps = 5
             
-            for _ in range(steps):
+            for _ in range(set_steps):
                 # Set handle pose
                 self.set_handle_pose(handle_pose.item())
                 
@@ -936,6 +945,8 @@ class Replayer:
         if os.path.exists(filepath):
             os.remove(filepath)
             log_info(f"Removed existing file: {filepath}")
+            
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
         
         with h5py.File(filepath, "w") as f:
             # Save env_info
@@ -1156,5 +1167,7 @@ class Replayer:
             "/World/summit_panda/panda_rightfinger/collisions",
             "/World/summit_panda/grasp_frame/collisions",
             "/World/summit_panda/panda_hand/collisions",
+            "/World/object/partnet_5b2633d960419bb2e5bf1ab8e7d0b/link_0/collisions",
+            "/World/object/partnet_5b2633d960419bb2e5bf1ab8e7d0b/link_1/collisions"
         ]:
             disable_collision(prim_path)

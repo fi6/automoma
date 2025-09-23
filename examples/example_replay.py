@@ -111,7 +111,7 @@ def demo_replay_only():
 
     
     # Replay existing results for grasp 0
-    grasp_id = 0
+    grasp_id = 14
     
     print("Choose replay mode:")
     print("1. Replay IK solutions")
@@ -130,10 +130,12 @@ def demo_replay_only():
     
     print("\n=== Running Trajectory Recording (NEW) ===")
     # Record trajectory data for training/evaluation
-    camera_results = replay_pipeline.replay_traj_record(
-        grasp_id=grasp_id, 
-        num_episodes=30  # Record 3 episodes for demo
-    )
+    
+    for grasp_id in [0, 12, 14]:
+        camera_results = replay_pipeline.replay_traj_record(
+            grasp_id=grasp_id, 
+            num_episodes=5  # Record 3 episodes for demo
+        )
     # replay_pipeline.replayer.isaacsim_step(step=-1, render=True)  # Keep running until window is closed
     
     print(f"Successfully recorded {len(camera_results)} episodes!")
