@@ -39,6 +39,8 @@ from automoma.utils.transform import single_axis_self_rotation, matrix_to_pose
 from cuakr.utils.math import pose_multiply
 
 
+GRASP_IDS = [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 18]
+
 def create_7221_object():
     """Create a 7221 microwave object (same as in example)."""
     object = ObjectDescription(
@@ -110,12 +112,17 @@ def run_pipeline_for_scene(scene_path: str, scene_name: str, plan_dir: str, robo
             print(f"######################")
             print(f"#### Processing Grasp {grasp_id}/{total_grasps} ####")
             print(f"######################")
-            # if grasp_id % 5 == 0:
-            #     continue
+            if grasp_id not in GRASP_IDS:
+                print(f"Skipping grasp {grasp_id} as it's not in the specified GRASP_IDS")
+                continue
 
             # Update task with current grasp
             task.update_grasp(grasp)
             print("###################### Task updated with new grasp ######################")
+            
+            if trajectory_pipeline.check_results_exist(grasp_id):
+                print(f"###################### Results already exist for grasp {grasp_id}, skipping... ######################")
+                continue
             
             try:
                 # Run pipeline steps
@@ -151,6 +158,9 @@ def run_pipeline_for_scene(scene_path: str, scene_name: str, plan_dir: str, robo
         return False
 
 
+import re
+from pathlib import Path
+
 def run_pipelines_for_directory(scene_dir: str, plan_dir: str, robot_name: str):
     """Run pipelines for all scene subdirectories in a directory."""
     scene_path = Path(scene_dir)
@@ -168,12 +178,17 @@ def run_pipelines_for_directory(scene_dir: str, plan_dir: str, robot_name: str):
     if scene_path.name.startswith('scene_'):
         scene_dirs.append(scene_path)
     else:
-    # Find all subdirectories that look like scenes
+        # Find all subdirectories that look like scenes
         for item in scene_path.iterdir():
             if item.is_dir() and item.name.startswith('scene_'):
                 scene_dirs.append(item)
         
-    scene_dirs.sort()  # Process in order
+    # Sort numerically by scene number
+    def extract_scene_number(path):
+        match = re.search(r'scene_(\d+)', path.name)
+        return int(match.group(1)) if match else -1
+
+    scene_dirs.sort(key=extract_scene_number)
     
     if not scene_dirs:
         print(f"###################### No scene directories found in {scene_dir} ######################")
@@ -182,7 +197,6 @@ def run_pipelines_for_directory(scene_dir: str, plan_dir: str, robot_name: str):
     print("######################")
     print(f"#### Found {len(scene_dirs)} scenes to process ####")
     print("######################")
-    
     successful_scenes = 0
     failed_scenes = 0
     

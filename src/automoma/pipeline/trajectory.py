@@ -125,3 +125,12 @@ class TrajectoryPipeline:
             print(f"Saved filtered trajectory results to: {filtered_path}")
         
         return output_dir
+    
+    def check_results_exist(self, grasp_id: int) -> bool:
+        """Check if results already exist for the given grasp ID."""
+        output_dir = self._get_output_directory(grasp_id)
+        ik_path = os.path.join(output_dir, "ik_data.pt")
+        traj_path = os.path.join(output_dir, "traj_data.pt")
+        filtered_path = os.path.join(output_dir, "filtered_traj_data.pt")
+        
+        return all(os.path.exists(p) for p in [ik_path, traj_path, filtered_path])
