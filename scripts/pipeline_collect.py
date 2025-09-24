@@ -33,7 +33,7 @@ from typing import Dict, List, Any, Tuple
 import torch
 import numpy as np
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"  # Ensure only one GPU is used
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Ensure only one GPU is used
 
 # Add the src directory to the path so we can import automoma
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'src'))

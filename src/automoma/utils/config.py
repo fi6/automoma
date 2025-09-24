@@ -1,5 +1,9 @@
 # region Paths
-PROJECT_ROOT = "/home/xinhai/automoma"
+import os
+PROJECT_ROOT = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../../..")
+)
+print(f"Project root: {PROJECT_ROOT}")
 
 OBJECT_ASSET_DIR = "assets/object"
 
