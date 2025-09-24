@@ -5,19 +5,11 @@ This pipeline loads saved IK and trajectory results for visualization and data c
 import os
 import torch
 from typing import Optional, List
-
-# Import automoma modules first to avoid USD conflicts
-from automoma.models.task import TaskDescription
-from automoma.utils.data_structures import CameraResult, TrajectoryEvaluationResult
 from pathlib import Path
-from typing import Optional
-
-import torch
-import os
-from typing import Optional
 
 # Import automoma modules first to avoid USD conflicts
 from automoma.models.task import TaskDescription
+from automoma.utils.data_structures import TrajectoryEvaluationResult
 from pathlib import Path
 from typing import Optional
 
@@ -250,16 +242,13 @@ class ReplayPipeline:
     # New Data Collection Methods
     # ========================================
     
-    def replay_traj_record(self, grasp_id: int = 0, num_episodes: int = 10) -> List[CameraResult]:
+    def replay_traj_record(self, grasp_id: int = 0, num_episodes: int = 10) -> None:
         """
         Record trajectory data with camera observations for data collection.
         
         Args:
             grasp_id: Grasp ID to record trajectories for
             num_episodes: Maximum number of episodes to record
-            
-        Returns:
-            List of CameraResult objects containing recorded data
         """
         print(f"=== Recording trajectory data for grasp {grasp_id} ===")
         
@@ -298,7 +287,7 @@ class ReplayPipeline:
         scene_name = scene_path.parent.parent.parent.name
         
         # Record trajectory data
-        camera_results = self.replayer.replay_traj_record(
+        self.replayer.replay_traj_record(
             start_states=start_states,
             goal_states=goal_states,
             trajs=trajectories,
@@ -311,9 +300,6 @@ class ReplayPipeline:
             pose_id=str(grasp_id),   # Could be made configurable
             num_episodes=num_episodes,
         )
-        
-        print(f"Recorded {len(camera_results)} trajectory episodes")
-        return camera_results
     
     def replay_traj_evaluate(self, policy_model, grasp_id: int = 0, 
                            num_episodes: int = 5) -> List[TrajectoryEvaluationResult]:

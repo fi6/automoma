@@ -95,6 +95,17 @@ def load_and_stack_trajectory_data(scene_asset_dir: str) -> Tuple[torch.Tensor, 
     """
     scene_asset_path = Path(scene_asset_dir)
     
+    # Check if total_filtered_traj_data.pt already exists
+    total_traj_file = scene_asset_path / "total_filtered_traj_data.pt"
+    if total_traj_file.exists():
+        print(f"Loading existing total trajectory data from {total_traj_file}")
+        try:
+            data = torch.load(total_traj_file, weights_only=False)
+            return (data["start_state"], data["goal_state"], data["traj"], 
+                   data["success"], data["grasp_sources"])
+        except Exception as e:
+            print(f"Error loading existing file, regenerating: {e}")
+    
     # Find all grasp folders
     grasp_folders = [d for d in scene_asset_path.iterdir() if d.is_dir() and d.name.startswith("grasp_")]
     grasp_folders.sort()
@@ -130,6 +141,8 @@ def load_and_stack_trajectory_data(scene_asset_dir: str) -> Tuple[torch.Tensor, 
             successful_mask = success.bool()
             if successful_mask.sum() == 0:
                 print(f"Warning: No successful trajectories in {grasp_folder.name}, skipping")
+                # Clean up memory
+                del traj_data, start_states, goal_states, trajectories, success, successful_mask
                 continue
             
             successful_start = start_states[successful_mask]
@@ -147,6 +160,10 @@ def load_and_stack_trajectory_data(scene_asset_dir: str) -> Tuple[torch.Tensor, 
             
             print(f"Loaded {len(successful_start)} successful trajectories from {grasp_folder.name}")
             
+            # Clean up memory for original data
+            del traj_data, start_states, goal_states, trajectories, success, successful_mask
+            del successful_start, successful_goal, successful_traj, successful_success
+            
         except Exception as e:
             print(f"Error loading data from {grasp_folder.name}: {e}")
             continue
@@ -160,6 +177,9 @@ def load_and_stack_trajectory_data(scene_asset_dir: str) -> Tuple[torch.Tensor, 
     stacked_trajectories = torch.cat(all_trajectories, dim=0)
     stacked_success = torch.cat(all_success, dim=0)
     
+    # Clean up intermediate lists to free memory
+    del all_start_states, all_goal_states, all_trajectories, all_success
+    
     print(f"Total stacked trajectories: {len(stacked_start_states)}")
     print(f"Success rate: {stacked_success.sum().item()}/{len(stacked_success)}")
     
@@ -169,13 +189,25 @@ def load_and_stack_trajectory_data(scene_asset_dir: str) -> Tuple[torch.Tensor, 
 def randomly_sample_trajectories(start_states: torch.Tensor, goal_states: torch.Tensor, 
                                 trajectories: torch.Tensor, success: torch.Tensor,
                                 grasp_sources: List[str], num_episodes: int, 
-                                random_seed: int = None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, List[str], List[int]]:
+                                random_seed: int = None, output_dir: str = None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, List[str], List[int]]:
     """
     Randomly sample num_episodes trajectories from the stacked data.
     
     Returns:
         Tuple of (sampled_start_states, sampled_goal_states, sampled_trajectories, sampled_success, sampled_grasp_sources, selected_indices)
     """
+    # Check if selected_filtered_traj_data.pt already exists
+    if output_dir:
+        selected_traj_file = os.path.join(output_dir, "selected_filtered_traj_data.pt")
+        if os.path.exists(selected_traj_file):
+            print(f"Loading existing selected trajectory data from {selected_traj_file}")
+            try:
+                data = torch.load(selected_traj_file, weights_only=False)
+                return (data["start_state"], data["goal_state"], data["traj"], 
+                       data["success"], data["grasp_sources"], data["selected_indices"])
+            except Exception as e:
+                print(f"Error loading existing selected file, regenerating: {e}")
+    
     total_trajectories = len(start_states)
     
     if num_episodes >= total_trajectories:
@@ -220,6 +252,9 @@ def save_trajectory_data(output_dir: str, start_states: torch.Tensor, goal_state
     output_path = os.path.join(output_dir, filename)
     torch.save(traj_data, output_path)
     print(f"Saved {len(start_states)} trajectories to {output_path}")
+    
+    # Clean up memory
+    del traj_data
 
 
 def create_7221_object():
@@ -296,30 +331,39 @@ def collect_for_scene_asset(scene_path: str, scene_name: str, asset_id: str,
             print(f"Error loading trajectory data: {e}")
             return stats
 
-        # Step 2: Save total stacked data
-        save_trajectory_data(scene_asset_dir, stacked_start, stacked_goal, stacked_traj, 
-                           stacked_success, grasp_sources, "total_filtered_traj_data.pt")
+        # Step 2: Save total stacked data (only if it doesn't exist)
+        total_traj_file = os.path.join(scene_asset_dir, "total_filtered_traj_data.pt")
+        if not os.path.exists(total_traj_file):
+            save_trajectory_data(scene_asset_dir, stacked_start, stacked_goal, stacked_traj, 
+                               stacked_success, grasp_sources, "total_filtered_traj_data.pt")
 
-        # Step 3: Randomly sample trajectories
+        # Step 3: Randomly sample trajectories (check if already exists)
         print(f"Randomly sampling {num_episodes} trajectories")
         sampled_start, sampled_goal, sampled_traj, sampled_success, sampled_sources, selected_indices = randomly_sample_trajectories(
-            stacked_start, stacked_goal, stacked_traj, stacked_success, grasp_sources, num_episodes, RANDOM_SEED)
+            stacked_start, stacked_goal, stacked_traj, stacked_success, grasp_sources, num_episodes, RANDOM_SEED, scene_asset_dir)
 
-        # Step 4: Save selected data with additional metadata
-        sampled_data_with_indices = {
-            "start_state": sampled_start.cpu(),
-            "goal_state": sampled_goal.cpu(),
-            "traj": sampled_traj.cpu(),
-            "success": sampled_success.cpu(),
-            "grasp_sources": sampled_sources,
-            "selected_indices": selected_indices,  # Track which original trajectories were selected
-            "num_trajectories": len(sampled_start),
-            "total_available": len(stacked_start),
-            "random_seed": RANDOM_SEED,
-        }
+        # Step 4: Save selected data with additional metadata (only if it doesn't exist)
         selected_output_path = os.path.join(scene_asset_dir, "selected_filtered_traj_data.pt")
-        torch.save(sampled_data_with_indices, selected_output_path)
-        print(f"Saved selected {len(sampled_start)} trajectories to {selected_output_path}")
+        if not os.path.exists(selected_output_path):
+            sampled_data_with_indices = {
+                "start_state": sampled_start.cpu(),
+                "goal_state": sampled_goal.cpu(),
+                "traj": sampled_traj.cpu(),
+                "success": sampled_success.cpu(),
+                "grasp_sources": sampled_sources,
+                "selected_indices": selected_indices,  # Track which original trajectories were selected
+                "num_trajectories": len(sampled_start),
+                "total_available": len(stacked_start),
+                "random_seed": RANDOM_SEED,
+            }
+            torch.save(sampled_data_with_indices, selected_output_path)
+            print(f"Saved selected {len(sampled_start)} trajectories to {selected_output_path}")
+            del sampled_data_with_indices  # Clean up memory
+        else:
+            print(f"Selected trajectory data already exists at {selected_output_path}")
+        
+        # Clean up stacked data to free memory (keep only sampled data)
+        del stacked_start, stacked_goal, stacked_traj, stacked_success, grasp_sources
 
         # Step 5: Set up scene and objects for replay
         obj = create_7221_object()
@@ -346,7 +390,7 @@ def collect_for_scene_asset(scene_path: str, scene_name: str, asset_id: str,
         print(f"Recording camera data for {len(sampled_start)} sampled trajectories")
         
         # Use the replayer's record functionality directly with sampled data
-        camera_results = replay_pipeline.replayer.replay_traj_record(
+        replay_pipeline.replayer.replay_traj_record(
             start_states=sampled_start,
             goal_states=sampled_goal,
             trajs=sampled_traj,
@@ -360,24 +404,44 @@ def collect_for_scene_asset(scene_path: str, scene_name: str, asset_id: str,
             num_episodes=None  # Use all sampled trajectories
         )
         
-        stats["episodes_recorded"] = len(camera_results)
+        # Count episodes by checking the camera_data directory
+        camera_data_dir = os.path.join(scene_asset_dir, "camera_data")
+        if os.path.exists(camera_data_dir):
+            episodes_recorded = len([f for f in os.listdir(camera_data_dir) if f.endswith('.hdf5')])
+            stats["episodes_recorded"] = episodes_recorded
+        else:
+            stats["episodes_recorded"] = 0
         
         # Step 7: Save sampling metadata
-        sampling_metadata = {
-            "scene_name": scene_name,
-            "asset_id": asset_id,
-            "total_trajectories_available": stats["total_trajectories_found"],
-            "trajectories_sampled": len(sampled_start),
-            "episodes_recorded": stats["episodes_recorded"],
-            "random_seed": RANDOM_SEED,
-            "grasp_source_distribution": {src: sampled_sources.count(src) for src in set(sampled_sources)},
-            "selected_indices": selected_indices,
-        }
-        
         metadata_path = os.path.join(scene_asset_dir, "collection_metadata.json")
-        with open(metadata_path, 'w') as f:
-            json.dump(sampling_metadata, f, indent=2)
-        print(f"Saved collection metadata to {metadata_path}")
+        if not os.path.exists(metadata_path):
+            sampling_metadata = {
+                "scene_name": scene_name,
+                "asset_id": asset_id,
+                "total_trajectories_available": stats["total_trajectories_found"],
+                "trajectories_sampled": len(sampled_start),
+                "episodes_recorded": stats["episodes_recorded"],
+                "random_seed": RANDOM_SEED,
+                "grasp_source_distribution": {src: sampled_sources.count(src) for src in set(sampled_sources)},
+                "selected_indices": selected_indices,
+            }
+            
+            with open(metadata_path, 'w') as f:
+                json.dump(sampling_metadata, f, indent=2)
+            print(f"Saved collection metadata to {metadata_path}")
+            del sampling_metadata  # Clean up memory
+        else:
+            print(f"Collection metadata already exists at {metadata_path}")
+        
+        # Final memory cleanup
+        del sampled_start, sampled_goal, sampled_traj, sampled_success, sampled_sources
+        del selected_indices
+        
+        # Force garbage collection and GPU memory cleanup
+        import gc
+        gc.collect()
+        if hasattr(torch, 'cuda') and torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     except Exception as e:
         print(f"Error during collection for {scene_name}/{asset_id}: {e}")

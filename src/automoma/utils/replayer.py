@@ -746,10 +746,17 @@ class Replayer:
                     
         return observations
     
+    def _check_episode_exists(self, output_dir: str, episode_idx: int) -> bool:
+        """Check if HDF5 file already exists for this episode."""
+        camera_data_dir = os.path.join(output_dir, "camera_data")
+        episode_filename = f"episode{episode_idx:06d}.hdf5"
+        episode_path = os.path.join(camera_data_dir, episode_filename)
+        return os.path.exists(episode_path)
+
     def replay_traj_record(self, start_states: torch.Tensor, goal_states: torch.Tensor, 
                           trajs: torch.Tensor, successes: torch.Tensor, robot_name: str,
                           output_dir: str, scene_id: str, object_id: str, 
-                          angle_id: str = "0", pose_id: str = "0", num_episodes = None) -> List[CameraResult]:
+                          angle_id: str = "0", pose_id: str = "0", num_episodes = None) -> None:
         """
         Record trajectory data with camera observations following collect_data.py format.
         
@@ -764,9 +771,6 @@ class Replayer:
             object_id: Object identifier
             angle_id: Angle identifier
             pose_id: Pose identifier
-            
-        Returns:
-            List of CameraResult objects containing collected data
         """
         log_info(f"=== Recording trajectory data for {robot_name} ===")
         
@@ -781,9 +785,6 @@ class Replayer:
         successful_indices = self._get_indices(successes, all=False)
         log_info(f"Recording {len(successful_indices)} successful trajectories")
         
-        # Prepare data collection
-        camera_results = []
-        
         # Create output directory for camera data
         camera_data_dir = os.path.join(output_dir, "camera_data")
         os.makedirs(camera_data_dir, exist_ok=True)
@@ -794,6 +795,11 @@ class Replayer:
         
         for i, traj_idx in enumerate(tqdm(successful_indices[:num_episodes], desc="Recording trajectories")):  # Limit to specified number of successful trajectories
             log_info(f"Recording trajectory {i}/{num_episodes}")
+            
+            # Check if HDF5 file already exists for this episode
+            if self._check_episode_exists(output_dir, i):
+                log_info(f"Episode {i} already exists, skipping")
+                continue
             
             # Initialize camera result
             camera_result = CameraResult()
@@ -827,10 +833,13 @@ class Replayer:
             # Finalize and save data
             camera_result.finalize()
             self._save_camera_result(camera_result, camera_data_dir, i)
-            camera_results.append(camera_result)
             
-        log_info(f"Completed recording {len(camera_results)} trajectories")
-        return camera_results
+            # Clean up memory for trajectory data - release camera_result immediately
+            del trajectory, start_state, goal_state, camera_result
+            if hasattr(torch, 'cuda') and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+        log_info(f"Completed recording {num_episodes} trajectories")
     
     def _get_robot_joint_names(self, robot_name: str) -> List[str]:
         """Get joint names for the robot based on robot type."""
