@@ -451,6 +451,17 @@ def collect_for_scene_asset(scene_path: str, scene_name: str, asset_id: str,
     return stats
 
 
+def _extract_scene_number(scene_name: str) -> int:
+    """Extract numeric part from scene name for proper sorting (e.g., 'scene_12_seed_12' -> 12)."""
+    try:
+        # Extract the number after 'scene_' and before '_seed'
+        parts = scene_name.split('_')
+        if len(parts) >= 2 and parts[0] == 'scene':
+            return int(parts[1])
+        return 0
+    except (ValueError, IndexError):
+        return 0
+
 def generate_camera_statistics(plan_dir: str, robot_name: str) -> Dict[str, Any]:
     """Scan plan_dir for camera_data outputs and summarize counts per scene/asset."""
     base_dir = os.path.join(plan_dir, robot_name)
@@ -470,7 +481,7 @@ def generate_camera_statistics(plan_dir: str, robot_name: str) -> Dict[str, Any]
 
     # iterate scenes
     scenes = [p for p in base.iterdir() if p.is_dir() and p.name.startswith("scene_")]
-    scenes.sort()
+    scenes.sort(key=lambda x: _extract_scene_number(x.name))  # Sort numerically by scene number
     stats["total_scenes"] = len(scenes)
 
     for scene_path in scenes:
@@ -549,8 +560,12 @@ def run_collection_for_directory(scene_dir: str, plan_dir: str, robot_name: str,
 
     # Find scene+asset combinations that have filtered_traj_data.pt files
     scene_asset_combinations = []
-    for scene_dir_item in plan_path.iterdir():
-        if scene_dir_item.is_dir() and scene_dir_item.name.startswith('scene_'):
+    
+    # Get all scene directories and sort them numerically by scene number
+    scene_dirs = [d for d in plan_path.iterdir() if d.is_dir() and d.name.startswith('scene_')]
+    scene_dirs.sort(key=lambda x: _extract_scene_number(x.name))
+    
+    for scene_dir_item in scene_dirs:
             # Check asset directories under this scene
             for asset_dir in scene_dir_item.iterdir():
                 if asset_dir.is_dir():

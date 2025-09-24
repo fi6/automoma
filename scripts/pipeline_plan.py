@@ -40,6 +40,7 @@ from cuakr.utils.math import pose_multiply
 
 
 GRASP_IDS = [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 18]
+SCENE_IDS = ["scene_31_seed_31", "scene_32_seed_32"]
 
 def create_7221_object():
     """Create a 7221 microwave object (same as in example)."""
@@ -202,6 +203,9 @@ def run_pipelines_for_directory(scene_dir: str, plan_dir: str, robot_name: str):
     
     for scene_subdir in scene_dirs:
         scene_name = scene_subdir.name
+        if SCENE_IDS != None and scene_name not in SCENE_IDS:
+            print(f"Skipping scene {scene_name} as it's not in the specified SCENE_IDS")
+            continue
         scene_full_path = str(scene_subdir)
 
         success = run_pipeline_for_scene(scene_full_path, scene_name, plan_dir, robot_name)
