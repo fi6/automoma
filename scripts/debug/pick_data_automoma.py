@@ -1,7 +1,3 @@
-
-
-
-
 #!/usr/bin/env python3
 """
 Pick Data Automoma Script
@@ -308,9 +304,9 @@ def main():
     parser = argparse.ArgumentParser(description="Pick data for automoma baseline following pipeline_collect structure")
     parser.add_argument("--mode", choices=["collect", "pick"], required=True, 
                        help="Mode: collect statistics or pick data")
-    parser.add_argument("--output_dir", default="output/collect/traj", 
+    parser.add_argument("--output_dir", default="/media/xinhai/Dave/automoma-infinigen/collect/traj", 
                        help="Output directory path (where robot directories are located)")
-    parser.add_argument("--config_dir", default="scripts/config",
+    parser.add_argument("--config_dir", default="scripts/debug/config",
                        help="Configuration directory path")
     parser.add_argument("--sequential", action="store_true",
                        help="Use sequential picking instead of random picking (default is random)")
@@ -321,8 +317,11 @@ def main():
     
     if args.mode == "collect":
         # Statistics collection mode
+        os.makedirs(args.output_dir, exist_ok=True)
+        os.makedirs(args.config_dir, exist_ok=True)
         config_path = os.path.join(args.config_dir, "automoma_data_statistic.json")
         statistics = collect_data_statistics(args.output_dir, config_path)
+        
         
         # Copy data_statistic.json to data_pick_statistic.json for easy modification
         pick_config_path = os.path.join(args.config_dir, "automoma_data_pick_statistic.json")
