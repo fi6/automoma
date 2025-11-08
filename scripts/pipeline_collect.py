@@ -81,6 +81,21 @@ DEACTIVATE_PRIMS = [
     "StaticCategoryFactory_Microwave_7221",
 ]
 
+# Robot configuration mapping - add more robots as needed
+ROBOT_CONFIG_MAP = {
+    "summit_franka": "assets/robot/summit_franka/summit_franka.yml",
+    "summit_franka_fixed_base": "assets/robot/summit_franka/summit_franka_fixed_base.yml",
+    # Add other robots here as needed
+    # "other_robot": "assets/robot/other_robot/other_robot.yml",
+}
+
+
+def get_robot_config_path(robot_name: str) -> str:
+    """Get the configuration path for a robot by name."""
+    if robot_name not in ROBOT_CONFIG_MAP:
+        raise ValueError(f"Unknown robot: {robot_name}. Available robots: {list(ROBOT_CONFIG_MAP.keys())}")
+    return ROBOT_CONFIG_MAP[robot_name]
+
 
 def load_and_stack_trajectory_data(scene_asset_dir: str) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, List[str]]:
     """
@@ -371,7 +386,7 @@ def collect_for_scene_asset(scene_path: str, scene_name: str, asset_id: str,
 
         # Create task and replay pipeline
         task = TaskDescription(
-            robot=RobotDescription(robot_name, "assets/robot/summit_franka/summit_franka.yml"),
+            robot=RobotDescription(robot_name, get_robot_config_path(robot_name)),
             object=obj,
             scene=scene_result.scene,
             task_type=TaskType.ARTICULATE,

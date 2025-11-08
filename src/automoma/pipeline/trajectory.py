@@ -34,7 +34,7 @@ class TrajectoryPipeline:
     
     def _get_output_directory(self, grasp_id: int) -> str:
         """Generate organized output directory path."""
-        robot_name = "summit_franka"
+        robot_name = self.task.robot.robot_name
         scene_path = Path(self.task.scene.scene_usd_path)
         scene_name = scene_path.parent.parent.parent.name
         

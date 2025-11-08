@@ -73,7 +73,8 @@ def demo_replay_only():
     
     # Create task for replay
     object = create_7221_object()
-    scene_path = "/home/xinhai/Documents/automoma/output/infinigen_scene_10/scene_1_seed_1"
+    # scene_path = "/home/xinhai/Documents/automoma/output/infinigen_scene_10/scene_1_seed_1"
+    scene_path = "/home/xinhai/Documents/automoma/output/collect_table1/infinigen_scene/scene_0_seed_0"
     scene_result = load_scene(scene_path, [object])
     
     task = TaskDescription(
@@ -111,7 +112,7 @@ def demo_replay_only():
 
     
     # Replay existing results for grasp 0
-    grasp_id = 2
+    grasp_id = 0
     
     print("Choose replay mode:")
     print("1. Replay IK solutions")
@@ -157,8 +158,78 @@ def demo_replay_only():
     replay_pipeline.close()
 
 
+def demo_replay_fixed_base():
+    """Demo replay functionality with existing results."""
+    print("=== Replay Demo (using existing results) ===")
+    
+    # Create task for replay
+    object = create_7221_object()
+    # scene_path = "/home/xinhai/Documents/automoma/output/infinigen_scene_10/scene_1_seed_1"
+    scene_path = "/home/xinhai/Documents/automoma/output/collect_table1/infinigen_scene/scene_0_seed_0"
+    scene_result = load_scene(scene_path, [object])
+    
+    task = TaskDescription(
+        robot=RobotDescription("summit_franka_fixed_base", "assets/robot/summit_franka/summit_franka_fixed_base.yml"),
+        object=object,
+        scene=scene_result.scene,
+        task_type=TaskType.ARTICULATE,
+    )
+    
+    # Create replay pipeline directly
+    replay_pipeline = ReplayPipeline(task, simulation_app, output_base_dir="output/collect_table1/traj")
+    
+    # Original object
+    replay_pipeline.replayer.set_deactivate_prims("StaticCategoryFactory_Microwave_7221")
+    
+    # Ceiling for visualization
+    # 1. "exterior" for the walls
+    # 2. "ceiling" for the ceiling
+    # 3. "Ceiling" for the light
+    replay_pipeline.replayer.set_deactivate_prims("exterior")
+    replay_pipeline.replayer.set_deactivate_prims("ceiling")
+    replay_pipeline.replayer.set_deactivate_prims("Ceiling")
+
+    action_registry = omni.kit.actions.core.get_action_registry()
+
+    action = action_registry.get_action("omni.kit.viewport.menubar.lighting", "set_lighting_mode_rig")
+    action.execute(lighting_mode=2)
+    
+
+    # action = action_registry.get_action("omni.kit.viewport.menubar.lighting", "set_lighting_mode_stage")
+    # action.execute()
+
+    # action = action_registry.get_action("omni.kit.viewport.menubar.lighting", "set_lighting_mode_camera")
+    # action.execute()
+
+    
+    # Replay existing results for grasp 0
+    grasp_id = 0
+    
+    print("Choose replay mode:")
+    print("1. Replay IK solutions")
+    print("2. Replay trajectories")  
+    print("3. Replay filtered trajectories")
+    print("4. Replay AKR trajectories")
+    print("5. Record trajectory data (NEW)")
+    print("6. Evaluate policy (NEW - requires policy model)")
+    
+    # For demo, demonstrate different functionalities
+    print("\n=== Running IK Replay ===")
+    replay_pipeline.replay_ik(grasp_id=grasp_id)
+    
+    print("\n=== Running Trajectory Replay ===")
+    replay_pipeline.replay_filtered_traj(grasp_id=grasp_id)
+    
+    print("\n=== Running Trajectory Recording (NEW) ===")
+    # Record trajectory data for training/evaluation
+    
+    # Close when done
+    replay_pipeline.close()
+
 if __name__ == "__main__":
     # Choose which demo to run
     # test()  # Original pipeline test
     # test_with_replay()  # Test with replay
-    demo_replay_only()  # Replay only demo
+    # demo_replay_only()  # Replay only demo
+    demo_replay_fixed_base()
+    

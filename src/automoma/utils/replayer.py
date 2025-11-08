@@ -261,6 +261,12 @@ class Replayer:
                 robot_pose[3:],
                 torch.tensor([gripper_joint_value, gripper_joint_value], device=robot_pose.device),
             ])
+        elif robot_name == "summit_franka_fixed_base":
+            return torch.cat([
+                torch.tensor([-0.9, 1.4, 0.0], device=robot_pose.device),
+                robot_pose,
+                torch.tensor([gripper_joint_value, gripper_joint_value], device=robot_pose.device),
+            ])
         return robot_pose
     
     def _adjust_pose_for_akr_robot(self, robot_pose, robot_name, gripper_joint_value=0.02, *args):
@@ -282,6 +288,13 @@ class Replayer:
                 robot_pose[0:3],
                 torch.tensor([2.1816, -2.6178, -0.4363, 0.0], device=robot_pose.device),
                 robot_pose[3:-1],
+                torch.tensor([gripper_joint_value, gripper_joint_value], device=robot_pose.device),
+                robot_pose[-1:],
+            ])
+        elif robot_name == "summit_franka_fixed_base":
+            return torch.cat([
+                torch.tensor([-0.9, 1.4, 0.0], device=robot_pose.device),
+                robot_pose[:-1],
                 torch.tensor([gripper_joint_value, gripper_joint_value], device=robot_pose.device),
                 robot_pose[-1:],
             ])

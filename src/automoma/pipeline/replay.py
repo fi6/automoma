@@ -70,7 +70,7 @@ class ReplayPipeline:
         
     def _get_output_directory(self, grasp_id: int) -> str:
         """Generate organized output directory path."""
-        robot_name = "summit_franka"
+        robot_name = self.task.robot.robot_name
         scene_path = Path(self.task.scene.scene_usd_path)
         scene_name = scene_path.parent.parent.parent.name
         
@@ -96,9 +96,9 @@ class ReplayPipeline:
     
     def _get_robot_name(self):
         """Extract robot name from configuration."""
-        # Try to get robot name from config, default to summit_franka
-        return "summit_franka"  # This could be made configurable
-    
+        # Try to get robot name from config
+        return self.task.robot.robot_name
+
     def replay_ik(self, grasp_id: int = 0):
         """Replay IK solutions for visualization."""
         print(f"=== Replaying IK for grasp {grasp_id} ===")
@@ -230,7 +230,7 @@ class ReplayPipeline:
         print(f"Replaying {successful_count}/{len(success)} filtered trajectories")
         
         # Replay filtered trajectories
-        self.replayer.replay_traj_akr(
+        self.replayer.replay_traj(
             start_states=start_states,
             goal_states=goal_states,
             trajs=trajectories,
