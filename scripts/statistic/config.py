@@ -60,8 +60,10 @@ IK_CLUSTERING = {
     "num_grasps_to_analyze": 20,  # Number of grasps to generate for IK analysis
     
     # Separate config for IK clustering analysis
-    "analysis_scenes": [f"scene_{i}_seed_{i}" for i in range(0, 32) if i not in [5, 27]],  # Which scenes to analyze
-    "analysis_grasp_ids": [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 18],  # Which grasp IDs to analyze
+    # "analysis_scenes": [f"scene_{i}_seed_{i}" for i in range(0, 32) if i not in [5, 27]],  # Which scenes to analyze
+    "analysis_scenes":["scene_0_seed_0"],
+    # "analysis_grasp_ids": [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 18],  # Which grasp IDs to analyze
+    "analysis_grasp_ids": [0],
     "cache_dir": OUTPUT_ROOT / "ik_clustering_cache",  # Where to cache computed IK
     "enable_cache": True,  # Whether to use cached IK data
 }

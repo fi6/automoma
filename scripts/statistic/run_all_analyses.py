@@ -38,12 +38,12 @@ def run_all_analyses(analyses_to_run: list = None):
     """Run selected analysis scripts in sequence.
     
     Args:
-        analyses_to_run: List of analyses to run. Options: 'IK', 'TRAJ', 'IK_CLUSTERING'.
+        analyses_to_run: List of analyses to run. Options: 'IK', 'TRAJ', 'IK_CLUSTERING', 'IK_MMD'.
                         If None, runs all analyses.
     """
     
     if analyses_to_run is None:
-        analyses_to_run = ['IK', 'TRAJ', 'IK_CLUSTERING']
+        analyses_to_run = ['IK', 'TRAJ', 'IK_CLUSTERING', 'IK_MMD']
     
     print_header("AutoMoMA Statistical Analysis Suite")
     print(f"Start time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -147,6 +147,7 @@ def run_all_analyses(analyses_to_run: list = None):
                 'error': str(e),
                 'timestamp': datetime.now().isoformat()
             }
+        analysis_index += 1
     else:
         print_header("Skipping IK Clustering Analysis")
         print("⏭️  IK_CLUSTERING analysis not in the requested list")
@@ -155,6 +156,40 @@ def run_all_analyses(analyses_to_run: list = None):
             'reason': 'not_requested',
             'timestamp': datetime.now().isoformat()
         }
+    
+    # Analysis 4: IK MMD Analysis
+    if 'IK_MMD' in analyses_to_run:
+        print_header(f"Analysis {analysis_index}/{len(analyses_to_run)}: MMD-based Seed Quantity Ablation")
+        print("Computing MMD scores with IMQ kernel for seed quantity ablation study...")
+        print("This uses cached IK data from analyze_ik_curobo.py")
+        
+        try:
+            from analyze_ik_mmd import main as analyze_mmd_main
+            analyze_mmd_main()
+            results['analyses']['ik_mmd_analysis'] = {
+                'status': 'success',
+                'timestamp': datetime.now().isoformat()
+            }
+            print("\n✓ IK MMD analysis completed successfully")
+        except Exception as e:
+            print(f"\n✗ IK MMD analysis failed: {e}")
+            results['analyses']['ik_mmd_analysis'] = {
+                'status': 'failed',
+                'error': str(e),
+                'timestamp': datetime.now().isoformat()
+            }
+        analysis_index += 1
+    else:
+        print_header("Skipping IK MMD Analysis")
+        print("⏭️  IK_MMD analysis not in the requested list")
+        results['analyses']['ik_mmd_analysis'] = {
+            'status': 'skipped',
+            'reason': 'not_requested',
+            'timestamp': datetime.now().isoformat()
+        }
+    
+    # Generate summary report
+    print_header("Generating Summary Report")
     
     # Generate summary report
     print_header("Generating Summary Report")
@@ -192,6 +227,7 @@ def run_all_analyses(analyses_to_run: list = None):
         print("     python scripts/statistic/analyze_ik.py")
         print("     python scripts/statistic/analyze_traj.py")
         print("     python scripts/statistic/analyze_ik_clustering.py")
+        print("     python scripts/statistic/analyze_ik_mmd.py")
     else:
         print("\n🎉 All analyses completed successfully!")
         print("\nNext steps:")
@@ -208,7 +244,7 @@ def main():
         epilog="""
 Examples:
   # Run all analyses
-  python scripts/statistic/run_all_analyses.py IK TRAJ IK_CLUSTERING
+  python scripts/statistic/run_all_analyses.py IK TRAJ IK_CLUSTERING IK_MMD
   
   # Run only IK analysis
   python scripts/statistic/run_all_analyses.py IK
@@ -218,21 +254,24 @@ Examples:
   
   # Run only clustering analysis
   python scripts/statistic/run_all_analyses.py IK_CLUSTERING
+  
+  # Run MMD analysis (seed quantity ablation)
+  python scripts/statistic/run_all_analyses.py IK_MMD
         """
     )
     
     parser.add_argument(
         'analyses',
         nargs='*',
-        default=['IK', 'TRAJ', 'IK_CLUSTERING'],
-        choices=['IK', 'TRAJ', 'IK_CLUSTERING'],
-        help='List of analyses to run (default: all three)'
+        default=['IK', 'TRAJ', 'IK_CLUSTERING', 'IK_MMD'],
+        choices=['IK', 'TRAJ', 'IK_CLUSTERING', 'IK_MMD'],
+        help='List of analyses to run (default: all four)'
     )
     
     args = parser.parse_args()
     
     # If no arguments provided, use all analyses
-    analyses_to_run = args.analyses if args.analyses else ['IK', 'TRAJ', 'IK_CLUSTERING']
+    analyses_to_run = args.analyses if args.analyses else ['IK', 'TRAJ', 'IK_CLUSTERING', 'IK_MMD']
     
     try:
         run_all_analyses(analyses_to_run=analyses_to_run)

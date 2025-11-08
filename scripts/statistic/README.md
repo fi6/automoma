@@ -194,6 +194,83 @@ t-SNE shows clustered points (red) cover the raw distribution (blue)
 
 ---
 
+### 4. MMD-based Seed Quantity Ablation (`analyze_ik_mmd.py`)
+
+**Purpose**: Calculate MMD (Maximum Mean Discrepancy) scores with IMQ kernel to quantify how well different seed quantities approximate the reference distribution.
+
+**How It Works**:
+1. Loads precomputed IK data for different seed counts (5k-80k in 5k intervals)
+2. Uses the highest seed count (80k) as reference "real" distribution
+3. Computes MMD with IMQ kernel (α=-0.5) between each seed quantity and reference
+4. Generates comprehensive tables and visualizations
+
+**Key Concept - MMD**:
+- MMD measures distance between two probability distributions
+- Lower MMD = distributions are more similar
+- MMD = 0 means distributions are identical
+- IMQ Kernel: k(x,y) = C / (C + ||x-y||²)^α where α = -0.5 (standard)
+
+**Input**:
+- Cached IK data from `analyze_ik_curobo.py` at different seed counts
+- Reference distribution: 80k seeds (highest coverage)
+
+**Analyses**:
+- MMD score calculation for seeds: 5k, 10k, 15k, ..., 80k
+- Statistical aggregation (mean, std) across scenes/grasps
+- Convergence analysis as seed count increases
+
+**Outputs**:
+- `figures/ik_mmd_ablation/mmd_ablation_summary.csv` - Summary table with mean/std
+- `figures/ik_mmd_ablation/mmd_ablation_summary.xlsx` - Excel format for easy viewing
+- `figures/ik_mmd_ablation/mmd_ablation_detailed.csv` - Per-scene/grasp detailed results
+- `figures/ik_mmd_ablation/mmd_vs_seeds_lineplot.png` - Line plot with error bars
+- `figures/ik_mmd_ablation/mmd_vs_seeds_combined.png` - Start + Goal comparison
+- `figures/ik_mmd_ablation/mmd_distribution_boxplot.png` - Distribution of MMD scores
+- `figures/ik_mmd_ablation/mmd_heatmap_start.png` - Heatmap across scenes/grasps
+
+**Example Output**:
+```
+===============================================================================
+MMD Score Summary Table (IMQ Kernel, α=-0.5)
+===============================================================================
+   Seeds  MMD Start (Mean)  MMD Start (Std)  MMD Goal (Mean)  MMD Goal (Std)
+   5,000            0.0234           0.0045           0.0198          0.0038
+  10,000            0.0156           0.0029           0.0132          0.0025
+  15,000            0.0118           0.0022           0.0098          0.0019
+  20,000            0.0089           0.0017           0.0074          0.0015
+  ...
+  80,000            0.0000           0.0000           0.0000          0.0000
+===============================================================================
+```
+
+**Usage**:
+```bash
+# Run MMD analysis (requires cached IK data from analyze_ik_curobo.py)
+python scripts/statistic/analyze_ik_mmd.py
+
+# Configuration is in config.py - edit these values:
+# IK_CUROBO['num_seeds_values']: [5000, 10000, 20000, 40000, 80000]
+# IK_CUROBO['analysis_scenes']: scenes to analyze
+# IK_CUROBO['analysis_grasp_ids']: grasp IDs to analyze
+# IK_CUROBO['cache_dir']: where cached IK data is stored
+```
+
+**Cache File Format**:
+```
+{cache_dir}/{scene_name}_grasp_{grasp_id:04d}_seeds_{num_seeds}_ik.pt
+
+Example:
+/output/statistics/ik_curobo_cache/scene_0_seed_0_grasp_0000_seeds_5000_ik.pt
+/output/statistics/ik_curobo_cache/scene_0_seed_0_grasp_0000_seeds_10000_ik.pt
+```
+
+**Expected Pattern**:
+- MMD should decrease as seed count increases
+- MMD(80k → 80k) ≈ 0 (reference compared to itself)
+- Lower seed counts show higher MMD (less coverage)
+
+---
+
 ## Configuration Guide
 
 ### Key Configuration Options

@@ -279,12 +279,14 @@ def generate_statistics(plan_dir: str, robot_name: str) -> Dict[str, Any]:
         "statistics_by_scene": {},
         "overall_statistics": {
             "total_ik_results": 0,
+            "total_start_iks": 0,
+            "total_goal_iks": 0,
             "total_traj_results": 0,
-            "total_filtered_results": 0,
-            "ik_success_count": 0,
+            "total_traj_samples": 0,
             "traj_success_count": 0,
+            "total_filtered_results": 0,
+            "total_filtered_samples": 0,
             "filtered_success_count": 0,
-            "average_ik_success_rate": 0.0,
             "average_traj_success_rate": 0.0,
             "average_filtered_success_rate": 0.0,
         },
@@ -334,40 +336,38 @@ def generate_statistics(plan_dir: str, robot_name: str) -> Dict[str, Any]:
                 grasp_stats = analyze_grasp_results(grasp_path)
                 scene_stats["grasp_results"][grasp_dir] = grasp_stats
 
-                # Update overall statistics
+                # Update overall statistics for IK
                 if grasp_stats["ik_exists"]:
                     stats["overall_statistics"]["total_ik_results"] += 1
-                    if grasp_stats["ik_success_count"] > 0:
-                        stats["overall_statistics"]["ik_success_count"] += grasp_stats["ik_success_count"]
+                    stats["overall_statistics"]["total_start_iks"] += grasp_stats["start_iks_count"]
+                    stats["overall_statistics"]["total_goal_iks"] += grasp_stats["goal_iks_count"]
 
+                # Update overall statistics for trajectories
                 if grasp_stats["traj_exists"]:
                     stats["overall_statistics"]["total_traj_results"] += 1
-                    if grasp_stats["traj_success_count"] > 0:
-                        stats["overall_statistics"]["traj_success_count"] += grasp_stats["traj_success_count"]
+                    stats["overall_statistics"]["total_traj_samples"] += grasp_stats["traj_total_count"]
+                    stats["overall_statistics"]["traj_success_count"] += grasp_stats["traj_success_count"]
 
+                # Update overall statistics for filtered
                 if grasp_stats["filtered_exists"]:
                     stats["overall_statistics"]["total_filtered_results"] += 1
+                    stats["overall_statistics"]["total_filtered_samples"] += grasp_stats["filtered_total_count"]
+                    stats["overall_statistics"]["filtered_success_count"] += grasp_stats["filtered_success_count"]
                     if grasp_stats["filtered_success_count"] > 0:
-                        stats["overall_statistics"]["filtered_success_count"] += grasp_stats["filtered_success_count"]
                         scene_stats["successful_grasps"] += 1
 
         stats["statistics_by_scene"][scene_name] = scene_stats
 
     # Calculate averages
-    if stats["overall_statistics"]["total_ik_results"] > 0:
-        stats["overall_statistics"]["average_ik_success_rate"] = (
-            stats["overall_statistics"]["ik_success_count"] / stats["overall_statistics"]["total_ik_results"]
-        )
-
-    if stats["overall_statistics"]["total_traj_results"] > 0:
+    if stats["overall_statistics"]["total_traj_samples"] > 0:
         stats["overall_statistics"]["average_traj_success_rate"] = (
-            stats["overall_statistics"]["traj_success_count"] / stats["overall_statistics"]["total_traj_results"]
+            stats["overall_statistics"]["traj_success_count"] / stats["overall_statistics"]["total_traj_samples"]
         )
 
-    if stats["overall_statistics"]["total_filtered_results"] > 0:
+    if stats["overall_statistics"]["total_filtered_samples"] > 0:
         stats["overall_statistics"]["average_filtered_success_rate"] = (
             stats["overall_statistics"]["filtered_success_count"]
-            / stats["overall_statistics"]["total_filtered_results"]
+            / stats["overall_statistics"]["total_filtered_samples"]
         )
 
     return stats
@@ -378,12 +378,12 @@ def analyze_grasp_results(grasp_path: str) -> Dict[str, Any]:
     result = {
         "grasp_path": grasp_path,
         "ik_exists": False,
+        "start_iks_count": 0,
+        "goal_iks_count": 0,
         "traj_exists": False,
-        "filtered_exists": False,
-        "ik_total_count": 0,
-        "ik_success_count": 0,
         "traj_total_count": 0,
         "traj_success_count": 0,
+        "filtered_exists": False,
         "filtered_total_count": 0,
         "filtered_success_count": 0,
     }
@@ -394,10 +394,11 @@ def analyze_grasp_results(grasp_path: str) -> Dict[str, Any]:
         result["ik_exists"] = True
         try:
             ik_data = torch.load(ik_file, weights_only=False)
-            if "start_ik" in ik_data:
-                result["ik_total_count"] = len(ik_data["start_ik"])
-                # Count successful IK solutions (those that exist and are valid)
-                result["ik_success_count"] = sum(1 for ik in ik_data["start_ik"] if ik is not None)
+            # Count start and goal IKs
+            if "start_iks" in ik_data:
+                result["start_iks_count"] = ik_data["start_iks"].shape[0]
+            if "goal_iks" in ik_data:
+                result["goal_iks_count"] = ik_data["goal_iks"].shape[0]
         except Exception as e:
             print(f"Warning: Could not load IK data from {ik_file}: {e}")
 
