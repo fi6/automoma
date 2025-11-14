@@ -2,11 +2,31 @@ python scripts/pipeline_plan.py --scene_dir output/collect/infinigen_scene_100 \
      --plan_dir output/collect/traj --robot_name summit_franka
 
 python scripts/pipeline_plan.py --scene_dir output/collect/infinigen_scene_100 \
+     --plan_dir output/collect/traj --robot_name summit_franka_fixed_base
+
+python scripts/pipeline_plan.py --scene_dir output/collect/infinigen_scene_100 \
      --plan_dir output/collect/traj --robot_name summit_franka --stats_only
 
 python scripts/pipeline_collect.py --scene_dir output/collect/infinigen_scene_100 \
      --plan_dir output/collect/traj --robot_name summit_franka --num_episodes 1000
 
+
+python scripts/pipeline_plan.py \
+  --scene_dir output/collect/infinigen_scene_100 \
+  --plan_dir output/collect/traj \
+  --robot_name summit_franka \
+  --ik-only \
+  --record-clustering-stats
+
+python scripts/pipeline_plan.py \
+  --scene_dir output/collect/infinigen_scene_100 \
+  --plan_dir output/collect/traj \
+  --robot_name summit_franka \
+  --record-clustering-stats \
+  --stats_only
+
+# Analyze results
+python scripts/analyze_clustering_stats.py
 
 # Table 1.1
 python scripts/pipeline_plan.py --scene_dir output/collect_table1/infinigen_scene \

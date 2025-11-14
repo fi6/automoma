@@ -7,9 +7,10 @@ import os
 from pathlib import Path
 
 class TrajectoryPipeline:
-    def __init__(self, task: TaskDescription, output_base_dir: str = "output"):
+    def __init__(self, task: TaskDescription, output_base_dir: str = "output", record_clustering_stats: bool = False):
         self.task = task
         self.output_base_dir = output_base_dir
+        self.record_clustering_stats = record_clustering_stats
         self.akr_robot_cfg = None
         self.ik_result = None
         self.traj_result = None
@@ -59,7 +60,8 @@ class TrajectoryPipeline:
             start_angle=self.task.start["angle"],
             goal_angle=self.task.goal["angle"][0],
             robot_cfg=self.task.robot.robot_cfg,
-            handle_link=getattr(self.task.object, 'handle_link', 'link_0')
+            handle_link=getattr(self.task.object, 'handle_link', 'link_0'),
+            record_clustering_stats=self.record_clustering_stats
         )
         
         # Handle multiple goal angles
@@ -73,7 +75,8 @@ class TrajectoryPipeline:
                     start_angle=self.task.start["angle"],
                     goal_angle=goal_angle,
                     robot_cfg=self.task.robot.robot_cfg,
-                    handle_link=getattr(self.task.object, 'handle_link', 'link_0')
+                    handle_link=getattr(self.task.object, 'handle_link', 'link_0'),
+                    record_clustering_stats=False  # Only record stats for first angle
                 )
                 all_start_iks.append(additional_ik.start_ik)
                 all_goal_iks.append(additional_ik.goal_ik)
@@ -84,7 +87,11 @@ class TrajectoryPipeline:
                 idx = torch.randperm(start_iks.shape[0])[:50]
                 start_iks = start_iks[idx]
             goal_iks = torch.cat(all_goal_iks, dim=0)
-            ik_result = IKResult(start_ik=start_iks, goal_ik=goal_iks)
+            # Keep clustering stats from first angle if available
+            new_ik_result = IKResult(start_ik=start_iks, goal_ik=goal_iks)
+            if hasattr(ik_result, 'clustering_stats') and ik_result.clustering_stats is not None:
+                new_ik_result.clustering_stats = ik_result.clustering_stats
+            ik_result = new_ik_result
         
         self.ik_result = ik_result
         print(f"IK planning completed: {ik_result.start_ik.shape[0], ik_result.goal_ik.shape[0]} solutions")

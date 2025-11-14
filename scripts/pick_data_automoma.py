@@ -30,6 +30,7 @@ import shutil
 import random
 from pathlib import Path
 from collections import defaultdict
+from datetime import datetime
 
 
 def collect_data_statistics(output_dir, config_path):
@@ -171,9 +172,24 @@ def pick_data(output_dir, pick_config_path, target_base_dir, config_dir, random_
         # Counter for tracking files processed
         total_files_processed = 0
         
+        # Initialize tracking dictionary for this robot
+        tracking_log = {
+            "robot_name": robot_name,
+            "task_name": task_name,
+            "timestamp": datetime.now().isoformat(),
+            "random_pick": random_pick,
+            "copy_files": copy_files,
+            "scenes_processed": {}
+        }
+        
         # Process each scene_name
         for scene_name, scene_data in robot_data.items():
             print(f"  Processing scene: {scene_name}")
+            
+            # Initialize scene tracking
+            tracking_log["scenes_processed"][scene_name] = {
+                "objects": {}
+            }
             
             # Process each object_id
             for object_id, pick_count in scene_data.items():
@@ -189,6 +205,12 @@ def pick_data(output_dir, pick_config_path, target_base_dir, config_dir, random_
                     # Create empty entries even if source doesn't exist
                     train_data["statics"][robot_name][scene_name][object_id] = []
                     test_data["statics"][robot_name][scene_name][object_id] = []
+                    tracking_log["scenes_processed"][scene_name]["objects"][object_id] = {
+                        "status": "source_path_not_found",
+                        "total_available": 0,
+                        "picked": [],
+                        "test": []
+                    }
                     continue
                 
                 # Get hdf5 file list and sort them
@@ -262,8 +284,25 @@ def pick_data(output_dir, pick_config_path, target_base_dir, config_dir, random_
                 
                 # Store test file indices in test_data
                 test_data["statics"][robot_name][scene_name][object_id] = test_indices
+                
+                # Store tracking information for this object
+                tracking_log["scenes_processed"][scene_name]["objects"][object_id] = {
+                    "status": "processed",
+                    "total_available": len(hdf5_files),
+                    "picked_count": len(picked_indices),
+                    "test_count": len(test_indices),
+                    "picked_indices": picked_indices,
+                    "test_indices": test_indices,
+                    "method": "random" if random_pick else "sequential"
+                }
         
         print(f"Total files processed for {robot_name}: {total_files_processed}")
+        
+        # Save detailed tracking log
+        tracking_log_path = os.path.join(config_output_dir, "pick_tracking_log.json")
+        with open(tracking_log_path, 'w') as f:
+            json.dump(tracking_log, f, indent=2)
+        print(f"Saved detailed tracking log to {tracking_log_path}")
         
         # Copy pick configuration file to target directory
         target_config_path = os.path.join(target_dir, "data_pick_statistic.json")

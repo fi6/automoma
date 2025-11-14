@@ -269,16 +269,16 @@ if __name__ == "__main__":
             scale=0.3563,
             urdf_path="assets/object/Microwave/7221/mobility.urdf",
         ),
-        # ObjectDescription(
-        #     asset_type="Dishwasher",
-        #     asset_id="11622",
-        #     scale=0.6,
-        #     urdf_path="assets/object/Dishwasher/11622/mobility.urdf",
-        # ),
+        ObjectDescription(
+            asset_type="Dishwasher",
+            asset_id="11622",
+            scale=0.6446,
+            urdf_path="assets/object/Dishwasher/11622/mobility.urdf",
+        ),
     ]
 
     # Run pipeline
     pipeline = InfinigenScenePipeline(version="v1")
-    result = pipeline.generate_scene(test_objects, seed=100)
+    result = pipeline.generate_scene(test_objects, seed=101)
     # result = pipeline.load_scene("/home/xinhai/Documents/automoma/third_party/infinigen/output/kitchen/v1_seed100_1756884596", test_objects)
     print(f"Scene USD Path: {result.scene.scene_usd_path}")

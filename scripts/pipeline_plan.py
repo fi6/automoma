@@ -13,10 +13,17 @@ Usage:
 
     # Generate statistics only from plan directory
     python pipeline_plan.py --plan-dir /path/to/output --stats-only
+    
+    # Run with clustering statistics recording (for ablation study)
+    python pipeline_plan.py --scene-dir /path/to/scenes --plan-dir /path/to/output --record-clustering-stats
+    
+    # Run IK-only mode (skip trajectory planning, useful for IK statistics collection)
+    python pipeline_plan.py --scene-dir /path/to/scenes --plan-dir /path/to/output --ik-only --record-clustering-stats
 
 Examples:
     python scripts/pipeline_plan.py --scene_dir /home/xinhai/automoma/output/infinigen_scene_100 --plan_dir output/summit_franka
     python pipeline_plan.py --plan-dir output/summit_franka --stats-only
+    python pipeline_plan.py --scene_dir output/infinigen_scene_100 --plan_dir output/traj --ik-only --record-clustering-stats
 """
 
 import os
@@ -27,6 +34,7 @@ from pathlib import Path
 import torch
 import numpy as np
 from typing import Dict, List, Any
+import pandas as pd
 
 # Add the src directory to the path so we can import automoma
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), "src"))
@@ -38,11 +46,17 @@ from automoma.pipeline import ScenePipeline, TrajectoryPipeline, InfinigenSceneP
 from automoma.utils.transform import single_axis_self_rotation, matrix_to_pose
 from cuakr.utils.math import pose_multiply
 
+OBJECT_ID = "7221"
 
-# GRASP_IDS = [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 18]
-GRASP_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
-# SCENE_IDS = ["scene_0_seed_0"]
-SCENE_IDS = ["scene_1_seed_1", "scene_32_seed_32"]
+GRASP_IDS = [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 18]
+GRASP_IDS = [4, 5, 6, 9, 12, 13, 18]
+
+# GRASP_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+# GRASP_IDS = [0, 1, 2, 4, 5, 9, 11, 12, 13]
+SCENE_IDS = [f"scene_{i}_seed_{i}" for i in range(36, 37)]
+# SCENE_IDS = [f"scene_{i}_seed_{i}" for i in range(0, 33) if i not in [5, 27]]  # scenes 0 to 31
+# SCENE_IDS = [f"scene_{i}_seed_{i+101}" for i in range(0, 10)]  # scenes 0 to 31
+
 
 
 # Robot configuration mapping - add more robots as needed
@@ -72,6 +86,16 @@ def create_7221_object():
     object.set_handle_link("link_0")
     return object
 
+def create_11622_object():
+    """Create a 11622 dishwasher object."""
+    object = ObjectDescription(
+        asset_type="Dishwasher",
+        asset_id="11622",
+        scale=0.6446,
+        urdf_path="assets/object/Dishwasher/11622/11622_0_scaling.urdf",
+    )
+    object.set_handle_link("link_0")
+    return object
 
 def load_scene(scene_path: str, objects: list):
     """Load scene from path (same as in example)."""
@@ -90,16 +114,32 @@ def load_scene(scene_path: str, objects: list):
     return scene_result
 
 
-def run_pipeline_for_scene(scene_path: str, scene_name: str, plan_dir: str, robot_name: str):
-    """Run the complete pipeline for a single scene."""
+def run_pipeline_for_scene(scene_path: str, scene_name: str, plan_dir: str, robot_name: str, record_clustering_stats: bool = False, ik_only: bool = False):
+    """Run the complete pipeline for a single scene.
+    
+    Args:
+        scene_path: Path to the scene directory
+        scene_name: Name of the scene
+        plan_dir: Directory to save planning results
+        robot_name: Name of the robot to use
+        record_clustering_stats: Whether to record clustering statistics
+        ik_only: If True, only run IK planning without trajectory generation
+    """
     print("######################")
     print(f"#### Processing Scene: {scene_name} ####")
+    if ik_only:
+        print("#### Mode: IK-only (no trajectory planning) ####")
     print("######################")
 
     try:
         # Create object
-        print("###################### Creating 7221 microwave object ######################")
-        object = create_7221_object()
+        print(f"###################### Creating {OBJECT_ID} object ######################")
+        if OBJECT_ID == "7221":
+            object = create_7221_object()
+        elif OBJECT_ID == "11622":
+            object = create_11622_object()
+        else:
+            raise ValueError(f"Unknown object ID: {OBJECT_ID}")
 
         # Load scene
         print(f"###################### Loading scene from {scene_path} ######################")
@@ -127,7 +167,7 @@ def run_pipeline_for_scene(scene_path: str, scene_name: str, plan_dir: str, robo
         print("###################### Task created successfully ######################")
 
         # Create trajectory pipeline with custom output directory
-        trajectory_pipeline = TrajectoryPipeline(task, output_base_dir=plan_dir)
+        trajectory_pipeline = TrajectoryPipeline(task, output_base_dir=plan_dir, record_clustering_stats=record_clustering_stats)
         print(f"###################### Trajectory pipeline created with output dir: {plan_dir} ######################")
 
         # Process each grasp
@@ -152,13 +192,27 @@ def run_pipeline_for_scene(scene_path: str, scene_name: str, plan_dir: str, robo
 
             try:
                 # Run pipeline steps
-                trajectory_pipeline.load_akr_robot(
-                    f"assets/object/Microwave/7221/{robot_name}_7221_0_grasp_{grasp_id:04d}.yml"
-                )
+                if OBJECT_ID == "7221":
+                    trajectory_pipeline.load_akr_robot(
+                        f"assets/object/Microwave/{OBJECT_ID}/{robot_name}_{OBJECT_ID}_0_grasp_{grasp_id:04d}.yml"
+                    )
+                elif OBJECT_ID == "11622":
+                    trajectory_pipeline.load_akr_robot(
+                        f"assets/object/Dishwasher/{OBJECT_ID}/{robot_name}_{OBJECT_ID}_0_grasp_{grasp_id:04d}.yml"
+                    )
                 print("###################### AKR robot loaded ######################")
 
                 trajectory_pipeline.plan_ik()
                 print("###################### IK planning completed ######################")
+
+                # Skip trajectory planning if ik_only mode
+                if ik_only:
+                    trajectory_pipeline.save_results(grasp_id=grasp_id)
+                    print("###################### IK results saved (ik-only mode) ######################")
+                    print(
+                        f"###################### Completed grasp {grasp_id}/{total_grasps} successfully (IK-only) ######################"
+                    )
+                    continue
 
                 trajectory_pipeline.plan_traj(batch_size=20)
                 print("###################### Trajectory planning completed ######################")
@@ -192,8 +246,16 @@ import re
 from pathlib import Path
 
 
-def run_pipelines_for_directory(scene_dir: str, plan_dir: str, robot_name: str):
-    """Run pipelines for all scene subdirectories in a directory."""
+def run_pipelines_for_directory(scene_dir: str, plan_dir: str, robot_name: str, record_clustering_stats: bool = False, ik_only: bool = False):
+    """Run pipelines for all scene subdirectories in a directory.
+    
+    Args:
+        scene_dir: Directory containing scene subdirectories
+        plan_dir: Directory to save planning results
+        robot_name: Name of the robot to use
+        record_clustering_stats: Whether to record clustering statistics
+        ik_only: If True, only run IK planning without trajectory generation
+    """
     scene_path = Path(scene_dir)
 
     if not scene_path.exists():
@@ -238,7 +300,7 @@ def run_pipelines_for_directory(scene_dir: str, plan_dir: str, robot_name: str):
             continue
         scene_full_path = str(scene_subdir)
 
-        success = run_pipeline_for_scene(scene_full_path, scene_name, plan_dir, robot_name)
+        success = run_pipeline_for_scene(scene_full_path, scene_name, plan_dir, robot_name, record_clustering_stats, ik_only)
         if success:
             successful_scenes += 1
         else:
@@ -260,6 +322,19 @@ def run_pipelines_for_directory(scene_dir: str, plan_dir: str, robot_name: str):
         json.dump(stats, f, indent=2)
 
     print(f"###################### Statistics saved to {stats_file} ######################")
+    
+    # Generate clustering statistics if recording
+    if record_clustering_stats:
+        print("#### Generating clustering statistics... ####")
+        clustering_stats_df = collect_clustering_statistics(plan_dir, robot_name)
+        if clustering_stats_df is not None:
+            stats_output_dir = Path("output/statistics")
+            stats_output_dir.mkdir(parents=True, exist_ok=True)
+            csv_file = stats_output_dir / f"clustering_stats_{robot_name}.csv"
+            clustering_stats_df.to_csv(csv_file, index=False)
+            print(f"###################### Clustering statistics saved to {csv_file} ######################")
+        else:
+            print("###################### No clustering statistics found ######################")
 
 
 def generate_statistics(plan_dir: str, robot_name: str) -> Dict[str, Any]:
@@ -306,7 +381,7 @@ def generate_statistics(plan_dir: str, robot_name: str) -> Dict[str, Any]:
     stats["total_scenes"] = len(scene_dirs)
 
     for scene_name in scene_dirs:
-        scene_output_dir = os.path.join(plan_dir, scene_name, "7221")
+        scene_output_dir = os.path.join(plan_dir, scene_name, OBJECT_ID)
 
         scene_stats = {
             "scene_name": scene_name,
@@ -394,6 +469,176 @@ def analyze_grasp_results(grasp_path: str) -> Dict[str, Any]:
         result["ik_exists"] = True
         try:
             ik_data = torch.load(ik_file, weights_only=False)
+            if "start_iks" in ik_data:
+                result["start_iks_count"] = ik_data["start_iks"].shape[0]
+            if "goal_iks" in ik_data:
+                result["goal_iks_count"] = ik_data["goal_iks"].shape[0]
+        except Exception as e:
+            print(f"Warning: Could not load IK data from {ik_file}: {e}")
+
+    # Check trajectory results
+    traj_file = os.path.join(grasp_path, "traj_data.pt")
+    if os.path.exists(traj_file):
+        result["traj_exists"] = True
+        try:
+            traj_data = torch.load(traj_file, weights_only=False)
+            if "success" in traj_data:
+                result["traj_total_count"] = traj_data["success"].shape[0]
+                result["traj_success_count"] = traj_data["success"].count_nonzero().item()
+        except Exception as e:
+            print(f"Warning: Could not load trajectory data from {traj_file}: {e}")
+
+    # Check filtered results
+    filtered_file = os.path.join(grasp_path, "filtered_traj_data.pt")
+    if os.path.exists(filtered_file):
+        result["filtered_exists"] = True
+        try:
+            filtered_data = torch.load(filtered_file, weights_only=False)
+            if "success" in filtered_data:
+                result["filtered_total_count"] = filtered_data["success"].shape[0]
+                result["filtered_success_count"] = filtered_data["success"].count_nonzero().item()
+        except Exception as e:
+            print(f"Warning: Could not load filtered data from {filtered_file}: {e}")
+
+    return result
+
+
+def collect_clustering_statistics(plan_dir: str, robot_name: str) -> pd.DataFrame:
+    """
+    Collect clustering statistics from all IK data files.
+    
+    Returns a DataFrame with columns:
+    - scene_name
+    - object_id
+    - grasp_id
+    - ik_type (start/goal)
+    - before_clustering
+    - initial_ik_count (after kmeans preprocessing)
+    - ap_input_count
+    - ap_unique_labels
+    - clustering_method (affinity_propagation/kmeans_fallback/none)
+    - final_ik_count
+    - clustering_params (as JSON string)
+    """
+    plan_dir = os.path.join(plan_dir, robot_name)
+    plan_path = Path(plan_dir)
+    
+    if not plan_path.exists():
+        print(f"Plan directory {plan_dir} does not exist")
+        return None
+    
+    records = []
+    
+    # Find all scene directories
+    for scene_dir in plan_path.iterdir():
+        if not scene_dir.is_dir() or not scene_dir.name.startswith("scene_"):
+            continue
+            
+        scene_name = scene_dir.name
+        object_dir = scene_dir / OBJECT_ID
+        
+        if not object_dir.exists():
+            continue
+        
+        # Find all grasp directories
+        for grasp_dir in object_dir.iterdir():
+            if not grasp_dir.is_dir() or not grasp_dir.name.startswith("grasp_"):
+                continue
+            
+            grasp_id = grasp_dir.name
+            ik_file = grasp_dir / "ik_data.pt"
+            
+            if not ik_file.exists():
+                continue
+            
+            try:
+                ik_data = torch.load(str(ik_file), weights_only=False)
+                
+                # Check if clustering stats exist
+                if "clustering_stats" not in ik_data:
+                    continue
+                
+                clustering_stats = ik_data["clustering_stats"]
+                clustering_params = clustering_stats.get("clustering_params", {})
+                
+                # Extract start IK stats
+                if "start_ik" in clustering_stats:
+                    start_stats = clustering_stats["start_ik"]
+                    record = {
+                        "scene_name": scene_name,
+                        "object_id": OBJECT_ID,
+                        "grasp_id": grasp_id,
+                        "ik_type": "start",
+                        "before_clustering": start_stats.get("before_clustering", 0),
+                        "initial_ik_count": start_stats.get("initial_ik_count", 0),
+                        "kmeans_applied": start_stats.get("kmeans_applied", False),
+                        "kmeans_clusters": start_stats.get("kmeans_clusters", 0),
+                        "ap_input_count": start_stats.get("ap_input_count", 0),
+                        "ap_unique_labels": start_stats.get("ap_unique_labels", 0),
+                        "clustering_method": start_stats.get("clustering_method", "unknown"),
+                        "kmeans_fallback_clusters": start_stats.get("kmeans_fallback_clusters", 0),
+                        "final_ik_count": start_stats.get("final_ik_count", 0),
+                        "ap_fallback_clusters": clustering_params.get("ap_fallback_clusters", 0),
+                        "ap_clusters_upperbound": clustering_params.get("ap_clusters_upperbound", 0),
+                        "ap_clusters_lowerbound": clustering_params.get("ap_clusters_lowerbound", 0),
+                    }
+                    records.append(record)
+                
+                # Extract goal IK stats
+                if "goal_ik" in clustering_stats:
+                    goal_stats = clustering_stats["goal_ik"]
+                    record = {
+                        "scene_name": scene_name,
+                        "object_id": OBJECT_ID,
+                        "grasp_id": grasp_id,
+                        "ik_type": "goal",
+                        "before_clustering": goal_stats.get("before_clustering", 0),
+                        "initial_ik_count": goal_stats.get("initial_ik_count", 0),
+                        "kmeans_applied": goal_stats.get("kmeans_applied", False),
+                        "kmeans_clusters": goal_stats.get("kmeans_clusters", 0),
+                        "ap_input_count": goal_stats.get("ap_input_count", 0),
+                        "ap_unique_labels": goal_stats.get("ap_unique_labels", 0),
+                        "clustering_method": goal_stats.get("clustering_method", "unknown"),
+                        "kmeans_fallback_clusters": goal_stats.get("kmeans_fallback_clusters", 0),
+                        "final_ik_count": goal_stats.get("final_ik_count", 0),
+                        "ap_fallback_clusters": clustering_params.get("ap_fallback_clusters", 0),
+                        "ap_clusters_upperbound": clustering_params.get("ap_clusters_upperbound", 0),
+                        "ap_clusters_lowerbound": clustering_params.get("ap_clusters_lowerbound", 0),
+                    }
+                    records.append(record)
+                    
+            except Exception as e:
+                print(f"Warning: Could not load clustering stats from {ik_file}: {e}")
+                continue
+    
+    if not records:
+        return None
+    
+    df = pd.DataFrame(records)
+    return df
+
+
+def analyze_grasp_results(grasp_path: str) -> Dict[str, Any]:
+    """Analyze result files for a single grasp."""
+    result = {
+        "grasp_path": grasp_path,
+        "ik_exists": False,
+        "start_iks_count": 0,
+        "goal_iks_count": 0,
+        "traj_exists": False,
+        "traj_total_count": 0,
+        "traj_success_count": 0,
+        "filtered_exists": False,
+        "filtered_total_count": 0,
+        "filtered_success_count": 0,
+    }
+
+    # Check IK results
+    ik_file = os.path.join(grasp_path, "ik_data.pt")
+    if os.path.exists(ik_file):
+        result["ik_exists"] = True
+        try:
+            ik_data = torch.load(ik_file, weights_only=False)
             # Count start and goal IKs
             if "start_iks" in ik_data:
                 result["start_iks_count"] = ik_data["start_iks"].shape[0]
@@ -444,6 +689,16 @@ def main():
         "--stats_only", action="store_true", help="Only generate statistics from existing results in plan-dir"
     )
     parser.add_argument("--robot_name", type=str, default="summit_franka", help="Name of the robot to use for planning")
+    parser.add_argument(
+        "--record-clustering-stats", 
+        action="store_true", 
+        help="Record detailed clustering statistics for ablation study (creates CSV in output/statistics/)"
+    )
+    parser.add_argument(
+        "--ik-only",
+        action="store_true",
+        help="Only run IK planning without trajectory generation (useful for collecting IK statistics)"
+    )
 
     args = parser.parse_args()
 
@@ -455,6 +710,27 @@ def main():
         with open(stats_file, "w") as f:
             json.dump(stats, f, indent=2)
         print(f"###################### Statistics saved to {stats_file} ######################")
+        
+        # Also collect clustering stats if requested
+        if args.record_clustering_stats:
+            print("#### Collecting clustering statistics from existing data... ####")
+            clustering_stats_df = collect_clustering_statistics(args.plan_dir, args.robot_name)
+            if clustering_stats_df is not None:
+                stats_output_dir = Path("output/statistics")
+                stats_output_dir.mkdir(parents=True, exist_ok=True)
+                csv_file = stats_output_dir / f"clustering_stats_{args.robot_name}.csv"
+                clustering_stats_df.to_csv(csv_file, index=False)
+                print(f"###################### Clustering statistics saved to {csv_file} ######################")
+                
+                # Print summary
+                print("\n#### Clustering Statistics Summary ####")
+                print(f"Total records: {len(clustering_stats_df)}")
+                print(f"\nClustering method distribution:")
+                print(clustering_stats_df['clustering_method'].value_counts())
+                print(f"\nAverage final IK count: {clustering_stats_df['final_ik_count'].mean():.2f}")
+                print(f"Average AP unique labels: {clustering_stats_df['ap_unique_labels'].mean():.2f}")
+            else:
+                print("###################### No clustering statistics found ######################")
     else:
         if not args.scene_dir:
             print(
@@ -464,7 +740,11 @@ def main():
         print("###################### Starting pipeline planning ######################")
         print(f"###################### Scene directory: {args.scene_dir} ######################")
         print(f"###################### Plan directory: {args.plan_dir} ######################")
-        run_pipelines_for_directory(args.scene_dir, args.plan_dir, args.robot_name)
+        if args.record_clustering_stats:
+            print("###################### Recording clustering statistics for ablation study ######################")
+        if args.ik_only:
+            print("###################### IK-only mode: trajectory planning will be skipped ######################")
+        run_pipelines_for_directory(args.scene_dir, args.plan_dir, args.robot_name, args.record_clustering_stats, args.ik_only)
 
 
 if __name__ == "__main__":
