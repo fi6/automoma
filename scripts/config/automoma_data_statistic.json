@@ -1,9 +1,9 @@
 {
   "task_name": "automoma_camera_collection",
   "statics": {
-    "summit_franka_fixed_base": {
+    "summit_franka": {
       "scene_0_seed_0": {
-        "7221": 6400
+        "7221": 12800
       }
     }
   }
