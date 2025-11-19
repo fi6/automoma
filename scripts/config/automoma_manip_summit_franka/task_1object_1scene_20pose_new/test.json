@@ -1,9 +1,9 @@
 {
-  "task_name": "task_1object_1scene_20pose_new_new",
+  "task_name": "task_1object_1scene_20pose_new",
   "statics": {
     "summit_franka": {
       "scene_0_seed_0": {
-        "7221": 12800
+        "7221": []
       }
     }
   }

@@ -239,7 +239,7 @@ class USDPreprocessor:
 
 def main():
     # Configuration
-    BASE_DIR = "/home/xinhai/Documents/automoma/output/infinigen_scene_10"
+    BASE_DIR = "/home/yida/projects/automoma/output/collect/traj/infinigen_scene_100"
     
     # Validate base directory
     base_path = Path(BASE_DIR)

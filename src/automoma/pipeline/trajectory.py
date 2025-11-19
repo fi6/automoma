@@ -61,7 +61,7 @@ class TrajectoryPipeline:
             goal_angle=self.task.goal["angle"][0],
             robot_cfg=self.task.robot.robot_cfg,
             handle_link=getattr(self.task.object, 'handle_link', 'link_0'),
-            record_clustering_stats=self.record_clustering_stats
+            # record_clustering_stats=self.record_clustering_stats
         )
         
         # Handle multiple goal angles
@@ -76,7 +76,7 @@ class TrajectoryPipeline:
                     goal_angle=goal_angle,
                     robot_cfg=self.task.robot.robot_cfg,
                     handle_link=getattr(self.task.object, 'handle_link', 'link_0'),
-                    record_clustering_stats=False  # Only record stats for first angle
+                    # record_clustering_stats=False  # Only record stats for first angle
                 )
                 all_start_iks.append(additional_ik.start_ik)
                 all_goal_iks.append(additional_ik.goal_ik)

@@ -5,12 +5,6 @@
             "asset_id": "7221",
             "urdf_path": "assets/object/Microwave/7221/mobility.urdf",
             "scale": 0.3563
-        },
-        {
-            "asset_type": "Dishwasher",
-            "asset_id": "11622",
-            "urdf_path": "assets/object/Dishwasher/11622/mobility.urdf",
-            "scale": 0.6446
         }
     ]
 }
