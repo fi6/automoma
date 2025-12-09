@@ -72,41 +72,79 @@ def import_automoma_modules():
 # =============================
 NUM_EPISODES = 1000  # Number of episodes to randomly sample and record
 RANDOM_SEED = 42  # For reproducible sampling
+SELECT_TYPE = "RANDOM"  # "RANDOM" or "LARGEST" - how to select trajectories
 
-# Optional scene cleanup toggles
-DEACTIVATE_PRIMS = [
+# Optional scene cleanup toggles - common elements always deactivated
+DEACTIVATE_PRIMS_COMMON = [
     "exterior",
     "ceiling", 
     "Ceiling",
-    # Original object factory prim used in example_replay to hide the duplicated static object
-    # "StaticCategoryFactory_Microwave_7221",
-    "StaticCategoryFactory_Dishwasher_11622",
 ]
 
-# Object registry - add objects with their metadata here
-OBJECT_REGISTRY = {
+def get_deactivate_prims_for_object(object_id: str) -> List[str]:
+    """Get list of prims to deactivate for a specific object.
+    
+    Args:
+        object_id: Object ID (e.g., "7221", "11622")
+    
+    Returns:
+        List of prim names to deactivate, including common scene elements and object-specific factory
+    """
+    deactivate_list = DEACTIVATE_PRIMS_COMMON.copy()
+    
+    # Add object-specific factory prim to hide the duplicated static object
+    if object_id in OBJECT_CONFIG_MAP:
+        obj_config = OBJECT_CONFIG_MAP[object_id]
+        asset_type = obj_config["asset_type"]
+        if asset_type == "StorageFurniture":
+            asset_type = "Cabinet"  # Adjust naming inconsistency
+        factory_prim = f"StaticCategoryFactory_{asset_type}_{object_id}"
+        deactivate_list.append(factory_prim)
+    
+    return deactivate_list
+
+# Object configuration mapping with asset type, scale, and URDF paths (matching pipeline_plan.py)
+OBJECT_CONFIG_MAP = {
     "7221": {
         "asset_type": "Microwave",
+        "asset_id": "7221",
         "scale": 0.3562990018302636,
         "urdf_path": "assets/object/Microwave/7221/7221_0_scaling.urdf",
         "handle_link": "link_0",
     },
     "11622": {
         "asset_type": "Dishwasher",
+        "asset_id": "11622",
         "scale": 0.6446,
         "urdf_path": "assets/object/Dishwasher/11622/11622_0_scaling.urdf",
         "handle_link": "link_0",
     },
-    "12066": {
-        "asset_type": "Refrigerator",
-        "scale": 0.6,  # placeholder value, adjust if needed
-        "urdf_path": "assets/object/Refrigerator/12066/12066_0_scaling.urdf",
+    "103634": {
+        "asset_type": "TrashCan",
+        "asset_id": "103634",
+        "scale": 0.48385408192053975,
+        "urdf_path": "assets/object/TrashCan/103634/103634_0_scaling.urdf",
         "handle_link": "link_0",
     },
-    "12543": {
-        "asset_type": "Dishwasher",
-        "scale": 0.6,  # placeholder value, adjust if needed
-        "urdf_path": "assets/object/Dishwasher/12543/12543_0_scaling.urdf",
+    "46197": {
+        "asset_type": "StorageFurniture",
+        "asset_id": "46197",
+        "scale": 0.5113198146209817,
+        "urdf_path": "assets/object/StorageFurniture/46197/46197_0_scaling.urdf",
+        "handle_link": "link_0",
+    },
+    "10944": {
+        "asset_type": "Refrigerator",
+        "asset_id": "10944",
+        "scale": 0.900,
+        "urdf_path": "assets/object/Refrigerator/10944/10944_0_scaling.urdf",
+        "handle_link": "link_0",
+    },
+    "101773": {
+        "asset_type": "Oven",
+        "asset_id": "101773",
+        "scale": 0.7231779244463762,
+        "urdf_path": "assets/object/Oven/101773/101773_0_scaling.urdf",
         "handle_link": "link_0",
     },
 }
@@ -127,24 +165,28 @@ def get_robot_config_path(robot_name: str) -> str:
     return ROBOT_CONFIG_MAP[robot_name]
 
 
+def get_object_config(object_id: str) -> Dict[str, Any]:
+    """Get the configuration for an object by ID."""
+    if object_id not in OBJECT_CONFIG_MAP:
+        raise ValueError(f"Unknown object ID: {object_id}. Available objects: {list(OBJECT_CONFIG_MAP.keys())}")
+    return OBJECT_CONFIG_MAP[object_id]
+
+
 def create_object(object_id: str):
     """Create an object from the registry.
     
     Args:
-        object_id: Object ID (e.g., "7221", "11622", "12066")
+        object_id: Object ID (e.g., "7221", "11622", "103634")
     
     Returns:
         ObjectDescription instance
     """
-    if object_id not in OBJECT_REGISTRY:
-        raise ValueError(f"Unknown object_id: {object_id}. Available objects: {list(OBJECT_REGISTRY.keys())}")
-    
     ObjectDescription, _, _, _, _, _, _, _, _ = import_automoma_modules()
-    obj_config = OBJECT_REGISTRY[object_id]
+    obj_config = get_object_config(object_id)
     
     obj = ObjectDescription(
         asset_type=obj_config["asset_type"],
-        asset_id=object_id,
+        asset_id=obj_config["asset_id"],
         scale=obj_config["scale"],
         urdf_path=obj_config["urdf_path"],
     )
@@ -194,7 +236,8 @@ def load_and_stack_trajectory_data(scene_asset_dir: str) -> Tuple[torch.Tensor, 
     
     # Load data from each grasp folder
     for grasp_folder in grasp_folders:
-        filtered_traj_path = grasp_folder / "filtered_traj_data.pt"
+        # filtered_traj_path = grasp_folder / "filtered_traj_data.pt"
+        filtered_traj_path = grasp_folder / "filtered_traj_data_interpolated.pt"
         
         if not filtered_traj_path.exists():
             print(f"Warning: No filtered_traj_data.pt found in {grasp_folder.name}, skipping")
@@ -259,9 +302,13 @@ def load_and_stack_trajectory_data(scene_asset_dir: str) -> Tuple[torch.Tensor, 
 def randomly_sample_trajectories(start_states: torch.Tensor, goal_states: torch.Tensor, 
                                 trajectories: torch.Tensor, success: torch.Tensor,
                                 grasp_sources: List[str], num_episodes: int, 
-                                random_seed: int = None, output_dir: str = None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, List[str], List[int]]:
+                                random_seed: int = None, output_dir: str = None,
+                                select_type: str = "RANDOM") -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, List[str], List[int]]:
     """
-    Randomly sample num_episodes trajectories from the stacked data.
+    Sample num_episodes trajectories from the stacked data.
+    
+    Args:
+        select_type: "RANDOM" for random sampling, "LARGEST" for largest opening angles
     
     Returns:
         Tuple of (sampled_start_states, sampled_goal_states, sampled_trajectories, sampled_success, sampled_grasp_sources, selected_indices)
@@ -284,16 +331,35 @@ def randomly_sample_trajectories(start_states: torch.Tensor, goal_states: torch.
         print(f"Requested {num_episodes} episodes >= available {total_trajectories}, using all trajectories")
         selected_indices = list(range(total_trajectories))
     else:
-        # Set random seed for reproducible sampling
-        if random_seed is not None:
-            random.seed(random_seed)
-            torch.manual_seed(random_seed)
+        if select_type == "LARGEST":
+            # Extract final opening angles from trajectories
+            # trajectories shape: (N, Length, Joint)
+            # Get the last joint angle from the last timestep
+            final_angles = trajectories[:, -1, -1].cpu().numpy()
+            
+            # Print angle statistics for debug
+            print(f"Opening angle statistics:")
+            print(f"  Largest angle: {final_angles.max():.4f} rad ({np.degrees(final_angles.max()):.2f} deg)")
+            print(f"  Smallest angle: {final_angles.min():.4f} rad ({np.degrees(final_angles.min()):.2f} deg)")
+            print(f"  Mean angle: {final_angles.mean():.4f} rad ({np.degrees(final_angles.mean()):.2f} deg)")
+            
+            # Get indices of largest angles
+            sorted_indices = np.argsort(final_angles)[::-1]  # Descending order
+            selected_indices = sorted_indices[:num_episodes].tolist()
+            selected_indices.sort()  # Sort for easier tracking
+            
+            print(f"Selected top {len(selected_indices)} trajectories with largest opening angles")
+            print(f"  Selected angle range: [{final_angles[sorted_indices[num_episodes-1]]:.4f}, {final_angles[sorted_indices[0]]:.4f}] rad")
+        else:  # RANDOM
+            # Set random seed for reproducible sampling
+            if random_seed is not None:
+                random.seed(random_seed)
+                torch.manual_seed(random_seed)
+            
+            selected_indices = random.sample(range(total_trajectories), num_episodes)
+            selected_indices.sort()  # Sort for easier tracking
+            print(f"Randomly selected {len(selected_indices)} trajectories")
         
-        selected_indices = random.sample(range(total_trajectories), num_episodes)
-        selected_indices.sort()  # Sort for easier tracking
-        
-    print(f"Selected {len(selected_indices)} trajectories for recording")
-    
     # Sample the data
     sampled_start_states = start_states[selected_indices]
     sampled_goal_states = goal_states[selected_indices]
@@ -405,10 +471,10 @@ def collect_for_scene_asset(scene_path: str, scene_name: str, asset_id: str,
             save_trajectory_data(scene_asset_dir, stacked_start, stacked_goal, stacked_traj, 
                                stacked_success, grasp_sources, "total_filtered_traj_data.pt")
 
-        # Step 3: Randomly sample trajectories (check if already exists)
-        print(f"Randomly sampling {num_episodes} trajectories")
+        # Step 3: Sample trajectories (check if already exists)
+        print(f"Sampling {num_episodes} trajectories using {SELECT_TYPE} selection")
         sampled_start, sampled_goal, sampled_traj, sampled_success, sampled_sources, selected_indices = randomly_sample_trajectories(
-            stacked_start, stacked_goal, stacked_traj, stacked_success, grasp_sources, num_episodes, RANDOM_SEED, scene_asset_dir)
+            stacked_start, stacked_goal, stacked_traj, stacked_success, grasp_sources, num_episodes, RANDOM_SEED, scene_asset_dir, SELECT_TYPE)
 
         # Step 4: Save selected data with additional metadata (only if it doesn't exist)
         selected_output_path = os.path.join(scene_asset_dir, "selected_filtered_traj_data.pt")
@@ -448,7 +514,10 @@ def collect_for_scene_asset(scene_path: str, scene_name: str, asset_id: str,
         replay_pipeline = ReplayPipeline(task, simulation_app=simulation_app, output_base_dir=plan_dir)
 
         # Optional: deactivate bulky prims to speed up and reduce occlusion
-        for prim_name in DEACTIVATE_PRIMS:
+        # Get dynamic list of prims to deactivate based on object_id
+        deactivate_prims = get_deactivate_prims_for_object(object_id)
+        print(f"Deactivating prims: {deactivate_prims}")
+        for prim_name in deactivate_prims:
             try:
                 replay_pipeline.replayer.set_deactivate_prims(prim_name)
             except Exception:
@@ -546,6 +615,146 @@ def _extract_scene_number(scene_name: str) -> int:
     except (ValueError, IndexError):
         return 0
 
+
+class StatisticCollect:
+    """Class to manage camera collection statistics generation and updates."""
+    
+    def __init__(self, plan_dir: str, robot_name: str, object_id: str = None):
+        """
+        Initialize StatisticCollect.
+        
+        Args:
+            plan_dir: Base plan directory
+            robot_name: Robot name
+            object_id: Optional object ID filter (if None, analyze all objects)
+        """
+        self.plan_dir = Path(plan_dir)
+        self.robot_name = robot_name
+        self.object_id = object_id
+        self.base_dir = self.plan_dir / robot_name
+        self.stats_file = self.base_dir / "camera_statistics.json"
+        
+        # Initialize statistics structure
+        self.stats = {
+            "plan_directory": str(self.base_dir),
+            "object_id": object_id,
+            "total_scenes": 0,
+            "scenes_with_camera_data": 0,
+            "total_scene_assets": 0,
+            "scene_assets_with_camera_data": 0,
+            "total_episodes": 0,
+            "statistics_by_scene": {}
+        }
+    
+    def analyze_scene_asset(self, scene_path: Path, asset_path: Path) -> Dict[str, Any]:
+        """Analyze camera data for a single scene+asset combination."""
+        camera_dir = asset_path / "camera_data"
+        result = {
+            "asset_id": asset_path.name,
+            "has_camera_data": False,
+            "episode_count": 0,
+            "total_trajectories": 0,
+            "selected_trajectories": 0,
+        }
+        
+        # Check for camera_data directory
+        if camera_dir.exists() and camera_dir.is_dir():
+            h5_files = list(camera_dir.glob("*.hdf5"))
+            if h5_files:
+                result["has_camera_data"] = True
+                result["episode_count"] = len(h5_files)
+        
+        # Check for trajectory data files
+        total_traj_file = asset_path / "total_filtered_traj_data.pt"
+        if total_traj_file.exists():
+            try:
+                data = torch.load(total_traj_file, weights_only=False)
+                result["total_trajectories"] = data.get("num_trajectories", len(data.get("traj", [])))
+            except Exception as e:
+                print(f"Warning: Could not load {total_traj_file}: {e}")
+        
+        selected_traj_file = asset_path / "selected_filtered_traj_data.pt"
+        if selected_traj_file.exists():
+            try:
+                data = torch.load(selected_traj_file, weights_only=False)
+                result["selected_trajectories"] = data.get("num_trajectories", len(data.get("traj", [])))
+            except Exception as e:
+                print(f"Warning: Could not load {selected_traj_file}: {e}")
+        
+        return result
+    
+    def generate_statistics(self) -> Dict[str, Any]:
+        """Scan plan directory for camera_data outputs and generate comprehensive statistics."""
+        if not self.base_dir.exists():
+            print(f"Warning: Base directory {self.base_dir} does not exist")
+            return self.stats
+        
+        # Find all scene directories
+        scenes = [p for p in self.base_dir.iterdir() if p.is_dir() and p.name.startswith("scene_")]
+        scenes.sort(key=lambda x: _extract_scene_number(x.name))
+        self.stats["total_scenes"] = len(scenes)
+        
+        for scene_path in scenes:
+            scene_name = scene_path.name
+            scene_stats = {
+                "scene_path": str(scene_path),
+                "assets": {},
+                "scene_total_episodes": 0,
+            }
+            
+            # Find all asset directories within this scene
+            if self.object_id:
+                # Only analyze specified object_id
+                asset_paths = [scene_path / self.object_id] if (scene_path / self.object_id).exists() else []
+            else:
+                # Analyze all object directories
+                asset_paths = [p for p in scene_path.iterdir() if p.is_dir()]
+            
+            asset_paths.sort()
+            self.stats["total_scene_assets"] += len(asset_paths)
+            
+            for asset_path in asset_paths:
+                asset_stats = self.analyze_scene_asset(scene_path, asset_path)
+                scene_stats["assets"][asset_path.name] = asset_stats
+                
+                if asset_stats["has_camera_data"]:
+                    self.stats["scene_assets_with_camera_data"] += 1
+                    scene_stats["scene_total_episodes"] += asset_stats["episode_count"]
+                    self.stats["total_episodes"] += asset_stats["episode_count"]
+            
+            if scene_stats["scene_total_episodes"] > 0:
+                self.stats["scenes_with_camera_data"] += 1
+            
+            self.stats["statistics_by_scene"][scene_name] = scene_stats
+        
+        return self.stats
+    
+    def save(self):
+        """Save statistics to JSON file."""
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+        with open(self.stats_file, "w") as f:
+            json.dump(self.stats, f, indent=2)
+        print(f"Camera statistics saved to {self.stats_file}")
+    
+    def print_summary(self):
+        """Print a summary of the statistics."""
+        print("\n" + "="*80)
+        print("CAMERA COLLECTION STATISTICS SUMMARY")
+        print("="*80)
+        print(f"Plan Directory: {self.stats['plan_directory']}")
+        if self.object_id:
+            print(f"Object ID Filter: {self.object_id}")
+        print(f"\nScenes:")
+        print(f"  Total scenes: {self.stats['total_scenes']}")
+        print(f"  Scenes with camera data: {self.stats['scenes_with_camera_data']}")
+        print(f"\nScene+Asset Combinations:")
+        print(f"  Total: {self.stats['total_scene_assets']}")
+        print(f"  With camera data: {self.stats['scene_assets_with_camera_data']}")
+        print(f"\nEpisodes:")
+        print(f"  Total episodes recorded: {self.stats['total_episodes']}")
+        print("="*80 + "\n")
+
+
 def generate_camera_statistics(plan_dir: str, robot_name: str, object_id: str = None) -> Dict[str, Any]:
     """Scan plan_dir for camera_data outputs and summarize counts per scene/asset.
     
@@ -554,6 +763,14 @@ def generate_camera_statistics(plan_dir: str, robot_name: str, object_id: str = 
         robot_name: Name of the robot
         object_id: If specified, only analyze this object_id; otherwise analyze all
     """
+    stats_collector = StatisticCollect(plan_dir, robot_name, object_id)
+    stats = stats_collector.generate_statistics()
+    stats_collector.print_summary()
+    return stats
+
+
+def _legacy_generate_camera_statistics(plan_dir: str, robot_name: str, object_id: str = None) -> Dict[str, Any]:
+    """Legacy implementation - kept for reference."""
     base_dir = os.path.join(plan_dir, robot_name)
     stats: Dict[str, Any] = {
         "plan_directory": base_dir,
@@ -740,14 +957,10 @@ def run_collection_for_directory(scene_dir: str, plan_dir: str, robot_name: str,
     print("#### Generating camera statistics... ####")
     print("######################")
 
-    stats = generate_camera_statistics(plan_dir, robot_name, object_id)
-    stats_file = os.path.join(plan_dir, robot_name, "camera_statistics.json")
-    try:
-        with open(stats_file, 'w') as f:
-            json.dump(stats, f, indent=2)
-        print(f"###################### Camera statistics saved to {stats_file} ######################")
-    except Exception as e:
-        print(f"Warning: Failed writing camera statistics: {e}")
+    stats_collector = StatisticCollect(plan_dir, robot_name, object_id)
+    stats_collector.generate_statistics()
+    stats_collector.print_summary()
+    stats_collector.save()
 
 
 def main():
@@ -755,14 +968,27 @@ def main():
     parser.add_argument("--scene_dir", type=str, default="output/test_collect/infinigen_scene_100", help="Directory containing scene subdirectories (e.g., /path/to/kitchen)")
     parser.add_argument("--plan_dir", type=str, default="output/test_collect/traj", help="Directory where planning results were saved")
     parser.add_argument("--robot_name", type=str, default="summit_franka", help="Robot name used in planning outputs")
-    parser.add_argument("--object_id", type=str, default="7221", help="Object ID to collect for (e.g., 7221, 11622, 12066)")
+    parser.add_argument("--object_id", type=str, default="7221", help=f"Object ID to collect for. Available: {', '.join(OBJECT_CONFIG_MAP.keys())}")
     parser.add_argument("--stats_only", action="store_true", help="Only generate camera statistics from plan-dir")
     parser.add_argument("--num_episodes", type=int, default=None, help="Override number of episodes to record (default: NUM_EPISODES constant)")
+    parser.add_argument("--select_type", type=str, default=None, choices=["RANDOM", "LARGEST"], help="Override trajectory selection type (default: SELECT_TYPE constant)")
 
     args = parser.parse_args()
 
+    # Validate object_id
+    if args.object_id not in OBJECT_CONFIG_MAP:
+        print(f"Error: Unknown object_id '{args.object_id}'")
+        print(f"Available object IDs: {', '.join(OBJECT_CONFIG_MAP.keys())}")
+        return
+
     # Resolve effective hyperparameters
     effective_num = args.num_episodes if args.num_episodes is not None else NUM_EPISODES
+    effective_select_type = args.select_type if args.select_type is not None else SELECT_TYPE
+    
+    # Update global SELECT_TYPE if overridden
+    if args.select_type is not None:
+        global SELECT_TYPE
+        SELECT_TYPE = effective_select_type
 
     if args.stats_only:
         print("###################### Generating camera statistics only ######################")
@@ -770,10 +996,8 @@ def main():
         print(f"###################### Robot name: {args.robot_name} ######################")
         print(f"###################### Object ID: {args.object_id} ######################")
         stats = generate_camera_statistics(args.plan_dir, args.robot_name, args.object_id)
-        stats_file = os.path.join(args.plan_dir, args.robot_name, "camera_statistics.json")
-        with open(stats_file, 'w') as f:
-            json.dump(stats, f, indent=2)
-        print(f"###################### Camera statistics saved to {stats_file} ######################")
+        stats_collector = StatisticCollect(args.plan_dir, args.robot_name, args.object_id)
+        stats_collector.save()
         return
 
     if not args.scene_dir:
@@ -786,6 +1010,7 @@ def main():
     print(f"###################### Robot name: {args.robot_name} ######################")
     print(f"###################### Object ID: {args.object_id} ######################")
     print(f"###################### Episodes to sample and record: {effective_num} ######################")
+    print(f"###################### Selection type: {effective_select_type} ######################")
     print(f"###################### Random seed: {RANDOM_SEED} ######################")
 
     run_collection_for_directory(args.scene_dir, args.plan_dir, args.robot_name, args.object_id, effective_num)

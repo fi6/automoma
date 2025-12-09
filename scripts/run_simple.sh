@@ -1,6 +1,14 @@
 python scripts/pipeline_plan.py --scene_dir output/collect/infinigen_scene_100 \
      --plan_dir output/collect/traj --robot_name summit_franka
 
+for object_id in 7221 11622 103634 46197 101773; do
+    python scripts/pipeline_plan.py --scene_dir assets/scene/infinigen/kitchen_1130 \
+         --plan_dir output/collect_1205/traj --robot_name summit_franka --object_id ${object_id}
+done
+
+python scripts/pipeline_plan.py --scene_dir assets/scene/infinigen/kitchen_1130 \
+     --plan_dir output/collect_1205/traj --robot_name summit_franka --object_id 7221
+
 python scripts/pipeline_plan.py --scene_dir output/collect/infinigen_scene_100 \
      --plan_dir output/collect/traj --robot_name summit_franka_fixed_base
 
@@ -51,10 +59,8 @@ python scripts/pipeline_plan.py --scene_dir output/collect_table1/infinigen_scen
 python scripts/pipeline_collect.py --scene_dir output/collect_table1/infinigen_scene \
      --plan_dir output/collect_table1/traj --robot_name summit_franka_fixed_base --num_episodes 6400
 
-python scripts/pick_data_automoma.py --mode collect --output_dir output/collect_table1_new_new/traj
-python scripts/pick_data_automoma.py --mode pick --output_dir output/collect_table1_new_new/traj --link
-
-
+python scripts/pick_data_automoma.py --mode collect --output_dir output/collect_table1/traj
+python scripts/pick_data_automoma.py --mode pick --output_dir output/collect_table1/traj --link
 
 
 python scripts/debug/batch_usd_preprocess.py

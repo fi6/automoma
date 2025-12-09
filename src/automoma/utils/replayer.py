@@ -1217,7 +1217,7 @@ class Replayer:
             "/World/summit_panda/panda_rightfinger/collisions",
             "/World/summit_panda/grasp_frame/collisions",
             "/World/summit_panda/panda_hand/collisions",
-            "/World/object/partnet_5b2633d960419bb2e5bf1ab8e7d0b/link_0/collisions",
-            "/World/object/partnet_5b2633d960419bb2e5bf1ab8e7d0b/link_1/collisions"
+            # "/World/object/partnet_5b2633d960419bb2e5bf1ab8e7d0b/link_0/collisions",
+            # "/World/object/partnet_5b2633d960419bb2e5bf1ab8e7d0b/link_1/collisions"
         ]:
             disable_collision(prim_path)

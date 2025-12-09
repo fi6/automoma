@@ -5,6 +5,36 @@
             "asset_id": "7221",
             "urdf_path": "assets/object/Microwave/7221/mobility.urdf",
             "scale": 0.3563
+        },
+        {
+            "asset_type": "Dishwasher",
+            "asset_id": "11622",
+            "urdf_path": "assets/object/Dishwasher/11622/mobility.urdf",
+            "scale": 0.6446
+        },
+        {
+            "asset_type": "TrashCan",
+            "asset_id": "103634",
+            "urdf_path": "assets/object/TrashCan/103634/mobility.urdf",
+            "scale": 0.48385408192053975
+        },
+        {
+            "asset_type": "Cabinet",
+            "asset_id": "46197",
+            "urdf_path": "assets/object/StorageFurniture/46197/mobility.urdf",
+            "scale": 0.5113198146209817
+        },
+        {
+            "asset_type": "Refrigerator",
+            "asset_id": "10944",
+            "urdf_path": "assets/object/Refrigerator/10944/mobility.urdf",
+            "scale": 0.900
+        },
+        {
+            "asset_type": "Oven",
+            "asset_id": "101773",
+            "urdf_path": "assets/object/Oven/101773/mobility.urdf",
+            "scale": 0.7231779244463762
         }
     ]
 }

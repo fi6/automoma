@@ -109,9 +109,6 @@ def capture_image(camera, output_path, world):
         output_path: Path to save image
         world: World instance for stepping simulation
     """
-    # Step simulation to update camera
-    for _ in range(1000):
-        world.step(render=True)
     
     # Get RGB data
     rgb_data = camera.get_rgba()
@@ -188,13 +185,17 @@ def visualize_scene(scene_path, output_dir, camera_config):
     )
     
     # Step simulation a few times to ensure everything is loaded
-    for _ in range(10):
+    for _ in range(500):
         world.step(render=True)
     
+    if "scene_0" in scene_name:
+        for _ in range(1500):
+            world.step(render=True)
+    
     # Capture image
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, f"{scene_name}.png")
-    capture_image(camera, output_path, world)
+    # os.makedirs(output_dir, exist_ok=True)
+    # output_path = os.path.join(output_dir, f"{scene_name}.png")
+    # capture_image(camera, output_path, world)
     
     # Clear world for next scene
     world.clear()
@@ -204,7 +205,7 @@ def visualize_scene(scene_path, output_dir, camera_config):
 def main():
     """Main function to process all scenes."""
     # Configuration
-    scenes_base_path = "/home/xinhai/Documents/automoma/output/collect/infinigen_scene_100"
+    scenes_base_path = "/home/xinhai/Documents/automoma/assets/scene/infinigen/kitchen_1130"
     output_base_dir = "/home/xinhai/Documents/automoma/output/paper/scene_visualization"
     
     camera_config = {
@@ -227,6 +228,9 @@ def main():
         for d in os.listdir(scenes_base_path)
         if os.path.isdir(os.path.join(scenes_base_path, d)) and d.startswith("scene_")
     ], key=natural_sort_key)
+    
+    # TODO: add filtering if needed
+    # scene_dirs = [i for i in scene_dirs if ('scene_8_seed_8' in i)]
     
     print(f"Found {len(scene_dirs)} scenes to process")
     

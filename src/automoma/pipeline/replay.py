@@ -148,7 +148,10 @@ class ReplayPipeline:
             self._init_isaac_sim()
         
         robot_name = self._get_robot_name()
-        successful_count = success.sum().item()
+        # successful_count = success.sum().item()
+        # print(f"Replaying {successful_count}/{len(success)} successful trajectories")
+        successful_count = success.shape[0]
+        success = torch.ones(successful_count, dtype=torch.bool)  # Assume all successful for replay
         print(f"Replaying {successful_count}/{len(success)} successful trajectories")
         
         # Replay trajectories
@@ -210,6 +213,8 @@ class ReplayPipeline:
         # Load filtered trajectory results from file
         output_dir = self._get_output_directory(grasp_id)
         filtered_path = os.path.join(output_dir, "filtered_traj_data.pt")
+        # filtered_path = os.path.join(output_dir, "filtered_traj_data_interpolated.pt")
+        
         
         if not os.path.exists(filtered_path):
             print(f"Filtered trajectory data not found at {filtered_path}")
