@@ -460,8 +460,8 @@ def run_pipeline_for_scene(
         # TODO: for summit_franka_fixed_base, the angle needs to be multiplied by 4
         # if robot_name == "summit_franka_fixed_base":
         #     task.goal["angle"] *= 4
-        # if robot_name == "summit_franka":
-        #     task.goal["angle"] *= 4
+        if robot_name == "summit_franka":
+            task.goal["angle"] *= 4
         print("###################### Task created successfully ######################")
 
         # Create trajectory pipeline with custom output directory
