@@ -236,8 +236,8 @@ def load_and_stack_trajectory_data(scene_asset_dir: str) -> Tuple[torch.Tensor, 
     
     # Load data from each grasp folder
     for grasp_folder in grasp_folders:
-        # filtered_traj_path = grasp_folder / "filtered_traj_data.pt"
-        filtered_traj_path = grasp_folder / "filtered_traj_data_interpolated.pt"
+        filtered_traj_path = grasp_folder / "filtered_traj_data.pt"
+        # filtered_traj_path = grasp_folder / "filtered_traj_data_interpolated.pt"
         
         if not filtered_traj_path.exists():
             print(f"Warning: No filtered_traj_data.pt found in {grasp_folder.name}, skipping")
@@ -981,14 +981,14 @@ def main():
         print(f"Available object IDs: {', '.join(OBJECT_CONFIG_MAP.keys())}")
         return
 
+    # Update global SELECT_TYPE if overridden
+    global SELECT_TYPE
+    if args.select_type is not None:
+        SELECT_TYPE = args.select_type
+    
     # Resolve effective hyperparameters
     effective_num = args.num_episodes if args.num_episodes is not None else NUM_EPISODES
-    effective_select_type = args.select_type if args.select_type is not None else SELECT_TYPE
-    
-    # Update global SELECT_TYPE if overridden
-    if args.select_type is not None:
-        global SELECT_TYPE
-        SELECT_TYPE = effective_select_type
+    effective_select_type = SELECT_TYPE
 
     if args.stats_only:
         print("###################### Generating camera statistics only ######################")
