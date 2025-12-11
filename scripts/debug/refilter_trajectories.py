@@ -252,8 +252,8 @@ def main():
     """Main function to re-filter all trajectory files"""
     
     # Configuration
-    base_path = "/home/xinhai/Documents/automoma/output/summit_franka"
-    akr_robot_cfg_path = "/home/xinhai/Documents/automoma/assets/object/Microwave/7221/summit_franka_7221_0_grasp_0000.yml"
+    base_path = "output/summit_franka"
+    akr_robot_cfg_path = "assets/object/Microwave/7221/summit_franka_7221_0_grasp_0000.yml"
     
     # Tighter tolerances than before
     position_tolerance = 0.005  # 5mm instead of 10mm

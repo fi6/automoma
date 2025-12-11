@@ -510,7 +510,7 @@ class USDPreprocessor:
 
 def main():
     # Configuration
-    BASE_DIR = "/home/xinhai/Documents/automoma/assets/scene/infinigen/kitchen_1130"
+    BASE_DIR = "assets/scene/infinigen/kitchen_1130"
     
     # Validate base directory
     base_path = Path(BASE_DIR)

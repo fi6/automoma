@@ -459,7 +459,7 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Configuration
-    cache_file = Path("/home/xinhai/Documents/automoma/output/statistics/ik_curobo_cache/scene_0_seed_0_grasp_0000_seeds_20000_ik.pt")
+    cache_file = Path("output/statistics/ik_curobo_cache/scene_0_seed_0_grasp_0000_seeds_20000_ik.pt")
     scene_name = "scene_0_seed_0"
     grasp_id = 0
     cluster_numbers = [10, 25, 50, 75, 100, 125, 150]

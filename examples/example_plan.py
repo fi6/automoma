@@ -64,7 +64,7 @@ def test():
     object = create_7221_object()
 
     # Load scene
-    scene_path = "/home/xinhai/Documents/automoma/output/test/kitchen_0919/scene_4_seed_4"
+    scene_path = "output/test/kitchen_0919/scene_4_seed_4"
     scene_result = load_scene(scene_path, [object])
 
     # Generate grasps

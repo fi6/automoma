@@ -9,7 +9,7 @@ def clean_existing_grasp_dirs():
     """
     Remove existing grasp directories in object folders to start fresh.
     """
-    assets_path = Path("/home/xinhai/Documents/automoma/assets")
+    assets_path = Path("/assets")
     object_path = assets_path / "object"
     
     removed_count = 0
@@ -31,7 +31,7 @@ def function1_copy_grasp_to_object():
     Copy grasp folder to corresponding object id folder, name as grasp.
     Only copies instance "0" from each object.
     """
-    assets_path = Path("/home/xinhai/Documents/automoma/assets")
+    assets_path = Path("/assets")
     grasp_path = assets_path / "grasp"
     object_path = assets_path / "object"
     
@@ -73,7 +73,7 @@ def function2_apply_scaling_and_convert():
     From: object/{category}/{id}/grasp/raw/pos/{file}.npz
     To: object/{category}/{id}/grasp/{file}.npy
     """
-    assets_path = Path("/home/xinhai/Documents/automoma/assets")
+    assets_path = Path("/assets")
     object_path = assets_path / "object"
     grasp_path = assets_path / "grasp"
     
@@ -142,7 +142,7 @@ def function3_cleanup_files():
     Clean up unnecessary files, keeping only the .npy grasp files.
     Remove init_state.npz, raw/ directory, and any other files except .npy files.
     """
-    assets_path = Path("/home/xinhai/Documents/automoma/assets")
+    assets_path = Path("/assets")
     object_path = assets_path / "object"
     
     # Iterate through all categories

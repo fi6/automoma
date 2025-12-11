@@ -41,7 +41,7 @@ def inspect_usd(usd_path):
 
 if __name__ == "__main__":
     # Test with first scene
-    usd_path = Path("/home/xinhai/Documents/automoma/assets/scene/infinigen/kitchen_1130/test/scene_0_seed_0/export/export_scene.blend/export_scene.usdc")
+    usd_path = Path("assets/scene/infinigen/kitchen_1130/test/scene_0_seed_0/export/export_scene.blend/export_scene.usdc")
     
     if not usd_path.exists():
         print(f"❌ File not found: {usd_path}")

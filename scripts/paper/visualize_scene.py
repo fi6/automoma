@@ -205,8 +205,8 @@ def visualize_scene(scene_path, output_dir, camera_config):
 def main():
     """Main function to process all scenes."""
     # Configuration
-    scenes_base_path = "/home/xinhai/Documents/automoma/assets/scene/infinigen/kitchen_1130"
-    output_base_dir = "/home/xinhai/Documents/automoma/output/paper/scene_visualization"
+    scenes_base_path = "assets/scene/infinigen/kitchen_1130"
+    output_base_dir = "output/paper/scene_visualization"
     
     camera_config = {
         "translate": (18, 18, 20),

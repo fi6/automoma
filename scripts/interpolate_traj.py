@@ -118,7 +118,7 @@ def get_robot_config_path(robot_name: str) -> str:
 
 def get_akr_robot_config_path(object_category: str, object_id: str, robot_name: str, grasp_id: int) -> str:
     """Get the configuration path for a robot by name."""
-    # "/home/xinhai/Documents/automoma/assets/object/Microwave/7221/summit_franka_7221_0_grasp_0000.yml"
+    # "assets/object/Microwave/7221/summit_franka_7221_0_grasp_0000.yml"
     return f"assets/object/{object_category}/{object_id}/{robot_name}_{object_id}_0_grasp_{grasp_id:04d}.yml"
 
 def main():

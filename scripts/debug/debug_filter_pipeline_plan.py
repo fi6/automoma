@@ -1187,12 +1187,12 @@ def main():
     # ===== CONFIGURATION =====
     # Scene configuration
     scene_cfg = {
-        "path": "/home/xinhai/Documents/automoma/output/infinigen_scene_10/scene_6_seed_6/export/export_scene.blend/export_scene.usdc",
+        "path": "output/infinigen_scene_10/scene_6_seed_6/export/export_scene.blend/export_scene.usdc",
         "pose": [0, 0, -0.12, 1, 0, 0, 0]  # for infinigen: lower -0.12 z-axis
     }
     
     # Robot configuration  
-    robot_cfg_path = "/home/xinhai/Documents/automoma/assets/robot/summit_franka/summit_franka.yml"
+    robot_cfg_path = "assets/robot/summit_franka/summit_franka.yml"
     from automoma.utils.file import process_robot_cfg
     
     robot_cfg = load_yaml(robot_cfg_path)["robot_cfg"]
@@ -1200,11 +1200,11 @@ def main():
         
     # Object configuration (URDF path and basic info, dimensions loaded from metadata)
     object_cfg = {
-        "path": "/home/xinhai/Documents/automoma/third_party/cuakr/tests/7221/7221_0_scaling.urdf",
+        "path": "third_party/cuakr/tests/7221/7221_0_scaling.urdf",
         "asset_type": "Microwave",
         "asset_id": "7221"
     }
-    metadata_path = "/home/xinhai/Documents/automoma/output/test/kitchen_0919/scene_6_seed_6/info/metadata.json"
+    metadata_path = "output/test/kitchen_0919/scene_6_seed_6/info/metadata.json"
     object_cfg = AKRPlanner.load_object_from_metadata(metadata_path, object_cfg=object_cfg)
     
     # ===== INITIALIZATION =====
@@ -1218,7 +1218,7 @@ def main():
     print("\n3. Loading grasp poses...")
     scaling_factor = 0.3562990018302636
     grasp_poses = planner.get_grasp_poses(
-        grasp_dir="/home/xinhai/Documents/automoma/assets/object/Microwave/7221/grasp",
+        grasp_dir="assets/object/Microwave/7221/grasp",
         num_grasps=20,
         scaling_factor=scaling_factor
     )
@@ -1248,13 +1248,13 @@ def main():
     
     # ===== SAVE IK RESULTS =====
     print("\n5. Saving IK results...")
-    output_dir = "/home/xinhai/Documents/automoma/third_party/cuakr/tests/output"
+    output_dir = "third_party/cuakr/tests/output"
     os.makedirs(output_dir, exist_ok=True)
     planner.save_ik(ik_result, f"{output_dir}/ik_data.pt")
     
     # ===== TRAJECTORY PLANNING =====
     print("\n6. Planning trajectories...")
-    akr_robot_cfg_path = "/home/xinhai/Documents/automoma/assets/object/Microwave/7221/summit_franka_7221_0_grasp_0000.yml"
+    akr_robot_cfg_path = "assets/object/Microwave/7221/summit_franka_7221_0_grasp_0000.yml"
     
     akr_robot_cfg = load_yaml(akr_robot_cfg_path)["robot_cfg"]
     akr_robot_cfg = process_robot_cfg(akr_robot_cfg)

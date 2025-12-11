@@ -74,7 +74,7 @@ def process_all_scenes(base_dir):
 
 # --- MAIN EXECUTION ---
 if __name__ == "__main__":
-    BASE_DIR = "/home/xinhai/Documents/automoma/output/test/kitchen_0919"
+    BASE_DIR = "output/test/kitchen_0919"
 
     if not os.path.exists(BASE_DIR):
         print(f"❌ Base directory does not exist: {BASE_DIR}")

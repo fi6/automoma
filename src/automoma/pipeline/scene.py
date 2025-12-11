@@ -280,5 +280,5 @@ if __name__ == "__main__":
     # Run pipeline
     pipeline = InfinigenScenePipeline(version="v1")
     result = pipeline.generate_scene(test_objects, seed=101)
-    # result = pipeline.load_scene("/home/xinhai/Documents/automoma/third_party/infinigen/output/kitchen/v1_seed100_1756884596", test_objects)
+    # result = pipeline.load_scene("third_party/infinigen/output/kitchen/v1_seed100_1756884596", test_objects)
     print(f"Scene USD Path: {result.scene.scene_usd_path}")

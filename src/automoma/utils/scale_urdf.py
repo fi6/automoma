@@ -153,4 +153,4 @@ Examples:
 if __name__ == '__main__':
     exit(main())
     
-# python tests/assets/scale_urdf.py /home/xinhai/Documents/automoma/assets/object/Microwave/7221/mobility.urdf /home/xinhai/Documents/automoma/output/test/kitchen_7221/mobility.urdf 0.5
+# python tests/assets/scale_urdf.py assets/object/Microwave/7221/mobility.urdf output/test/kitchen_7221/mobility.urdf 0.5

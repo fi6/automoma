@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 # Load the summary
-summary_path = Path("/home/xinhai/Documents/automoma/output/statistics/figures/ik_cluster_ablation/scene_0_seed_0_grasp_0000_cluster_ablation_summary.json")
+summary_path = Path("output/statistics/figures/ik_cluster_ablation/scene_0_seed_0_grasp_0000_cluster_ablation_summary.json")
 
 with open(summary_path, 'r') as f:
     data = json.load(f)

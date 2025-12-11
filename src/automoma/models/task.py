@@ -113,4 +113,5 @@ def ao_grasp_task_generator(object_grasp_folder: str):
             open_angles.append(data["data"].item()["object"]["qpos"][1])
         # select open angles
     open_angles = sorted(open_angles, reverse=True)
+    print(f"Available open angles: {open_angles}")
     return [*[open_angles[x] for x in [0, 5]]]

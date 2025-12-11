@@ -411,6 +411,7 @@ def load_scene(scene_path: str, objects: List):
         obj_pose = matrix_to_pose(obj_pose)
         # Set object pose directly (scene pose is already applied to scene)
         obj.set_pose(obj_pose)
+        print(f"Set pose for object {obj.asset_id}: {obj_pose}")
 
     return scene_result
 

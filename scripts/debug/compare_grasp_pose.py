@@ -124,8 +124,8 @@ def compare_grasp_files(old_pos_path, new_pos_path, translation_scale=0.35629900
 
 if __name__ == "__main__":
     # Configuration
-    old_pos_path = "/home/xinhai/Documents/automoma/assets/object/Microwave/7221/0/raw/pos"
-    new_pos_path = "/home/xinhai/Documents/automoma/assets/object/Microwave/7221/grasp"
+    old_pos_path = "assets/object/Microwave/7221/0/raw/pos"
+    new_pos_path = "assets/object/Microwave/7221/grasp"
     translation_scale = 0.3562990018302636
     
     # Run comparison

@@ -35,7 +35,7 @@ GRASP_IDS = [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 18]  # 11 grasps
 # ============================================================================
 
 # Base paths
-PROJECT_ROOT = Path("/home/xinhai/Documents/automoma")
+PROJECT_ROOT = Path("")
 DATA_ROOT = PROJECT_ROOT / "output" / "traj"
 OUTPUT_ROOT = PROJECT_ROOT / "output" / "statistics"
 FIGURE_ROOT = OUTPUT_ROOT / "figures"

@@ -464,7 +464,7 @@ python scripts/statistic/analyze_traj.py
 Or add to Python path explicitly:
 ```python
 import sys
-sys.path.insert(0, '/home/xinhai/Documents/automoma/src')
+sys.path.insert(0, 'src')
 ```
 
 ### Issue: Out of memory during t-SNE

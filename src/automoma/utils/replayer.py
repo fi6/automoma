@@ -18,7 +18,7 @@ Adapted from the existing test_replay.py script.
 
 
 from omni.isaac.core.utils.stage import add_reference_to_stage
-from omni.usd import get_world_transform_matrix
+from omni.usd import get_world_transform_matrix, get_context
 from omni.isaac.core import World
 from omni.isaac.core.objects import sphere
 from omni.isaac.core.prims.xform_prim import XFormPrim
@@ -70,6 +70,12 @@ class Replayer:
         self.usd_helper = UsdHelper()
         self.usd_helper.load_stage(self.isaac_world.stage)
         
+        self.scene_bounds = {
+            'x': [-5.0, 5.0],
+            'y': [-5.0, 5.0],
+            'z': [-5.0, 15.0]
+        }
+        
         self.root_pose = [0, 0, 0, 1, 0, 0, 0]
         self._init_root_pose()
         
@@ -82,7 +88,18 @@ class Replayer:
         self.isaac_world.initialize_physics()
         self.isaac_world.reset()
         self.tensor_args = TensorDeviceType()
+    
+    def compute_bounds(self, prim_path: str) -> None:
+        """
+        Set custom scene bounding box for camera positioning.
+        """
+        min_point_gf, max_point_gf = get_context().compute_path_world_bounding_box(prim_path)
+        min_arr = np.array(min_point_gf)
+        max_arr = np.array(max_point_gf)
         
+        bounding_box = np.concatenate((min_arr, max_arr))
+        
+        return bounding_box
     def _init_root_pose(self) -> None:
         """Initialize the world  pose"""
         scene_offset = self.scene_cfg["pose"]
@@ -132,6 +149,7 @@ class Replayer:
         log_info(f"Loading USD scene: {usd_path}")
         add_reference_to_stage(usd_path=usd_path, prim_path=prim_path)
         set_prim_transform(self.isaac_world.stage.GetPrimAtPath(prim_path), pose=self.root_pose)
+        self.compute_bounds(prim_path)
 
     def _load_robot(self, robot_cfg: Dict, robot_type: str = "robot", pose: Optional[List[float]] = None) -> XFormPrim:
         """Load a robot into the scene."""
@@ -392,7 +410,7 @@ class Replayer:
         """Replay IK solutions."""
         self._init_motion_gen()
         
-        pose_duration = 0.2
+        pose_duration = 1.0
         joint_names = self.robot_cfg["kinematics"]["cspace"]["joint_names"]
         robot = self.robot
         idx_list = [robot.get_dof_index(name) for name in joint_names]
@@ -405,6 +423,7 @@ class Replayer:
         spheres = []
         # Visualize start IK solutions
         for i, pose in enumerate(start_iks):
+            print(f"Start IK {i}:: {pose.tolist()}")
             robot_pose, handle_pose = pose.split([pose.shape[0] - 1, 1], dim=-1)
             joint_state = JointState.from_position(self.tensor_args.to_device(robot_pose))
 
@@ -421,6 +440,7 @@ class Replayer:
 
         # Visualize goal IK solutions
         for i, pose in enumerate(goal_iks):
+            print(f"Goal IK {i}: {pose.tolist()}")
             robot_pose, handle_pose = pose.split([pose.shape[0] - 1, 1], dim=-1)
             joint_state = JointState.from_position(self.tensor_args.to_device(robot_pose))
 
@@ -649,6 +669,12 @@ class Replayer:
             }
         }
         
+        # Check and mirror fix_local camera if outside scene bounds
+        if "fix_local" in camera_transforms:
+            camera_transforms["fix_local"] = self._check_and_mirror_camera(
+                camera_transforms["fix_local"]
+            )
+        
         # Convert to Isaac Sim format using cuakr's get_transform
         camera_configs = {}
         for camera_type, transform in camera_transforms.items():
@@ -667,6 +693,46 @@ class Replayer:
                 camera_configs[camera_type]["focal_length"] = 1.5
                 
         return camera_configs
+    
+    def _check_and_mirror_camera(self, camera_transform: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Check if fix_local camera is outside scene bounding box and mirror if needed.
+        
+        Mirror the camera across the X-Z plane (mirror Y coordinate) if it's outside Y bounds.
+        This keeps X and Z unchanged while flipping Y to bring the camera inside the scene.
+        
+        Args:
+            camera_transform: Camera transform dict with 'translate' and 'orient' keys
+            
+        Returns:
+            Modified camera transform if mirroring was needed, otherwise original
+        """
+        # Get scene bounds
+        scene_bounds = self.scene_bounds
+        
+        translate = camera_transform["translate"].copy() if isinstance(camera_transform["translate"], list) else list(camera_transform["translate"])
+        orient = camera_transform["orient"].copy() if isinstance(camera_transform["orient"], list) else list(camera_transform["orient"])
+        
+        x, y, z = translate
+        
+        # Check if camera Y coordinate is outside scene bounds
+        if y < scene_bounds['y'][0] or y > scene_bounds['y'][1]:
+            log_info(f"Camera Y={y:.2f} is outside bounds {scene_bounds['y']}")
+            log_info(f"Mirroring fix_local camera from ({x:.2f}, {y:.2f}, {z:.2f})")
+            
+            # Mirror Y coordinate (across X-Z plane)
+            translate[1] = -y
+            
+            # Mirror the yaw orientation to maintain view toward object
+            # For Euler angles [roll, pitch, yaw], mirror the yaw
+            orient[2] = -orient[2]
+            
+            log_info(f"Mirrored to ({translate[0]:.2f}, {translate[1]:.2f}, {translate[2]:.2f}), orient={orient}")
+        
+        return {
+            "translate": translate,
+            "orient": orient
+        }
     
     def _set_camera_pose(self, camera: Camera, camera_type: str, config: Dict[str, Any]) -> None:
         """Set camera pose based on configuration."""

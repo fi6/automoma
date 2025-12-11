@@ -108,7 +108,7 @@ if __name__ == "__main__":
     
     
     # urdf = URDFAsset("/home/xinhai/Documents/cuakr-docker/scene/infinigen/assets/partnet_mobility/processed_data/Microwave/7221/mobility.urdf")
-    urdf = URDFAsset("/home/xinhai/Documents/automoma/assets/object/Microwave/7221/mobility.urdf")
+    urdf = URDFAsset("assets/object/Microwave/7221/mobility.urdf")
     
     scene = urdf.scene()
     
@@ -125,12 +125,12 @@ if __name__ == "__main__":
     # new_urdf_asset = inverse_object(
     #     urdf, "base", "link_0"
     # )  # tip link is the link that will be attached to the robot
-    # new_urdf_asset._model.write_xml_file("/home/xinhai/Documents/automoma/assets/object/Microwave/7221/mobility_inversed.urdf")
+    # new_urdf_asset._model.write_xml_file("assets/object/Microwave/7221/mobility_inversed.urdf")
     robot_urdf = URDF.load(
         # "/home/yida/projects/cuakr-docker/assets/robot/robot/summit_franka/summit_franka.urdf"
-        "/home/xinhai/Documents/automoma/assets/robot/summit_franka/summit_franka.urdf"
+        "assets/robot/summit_franka/summit_franka.urdf"
     )
-    grasp_pose = np.load("/home/xinhai/Documents/automoma/assets/object/Microwave/7221/grasp/0000.npy")
+    grasp_pose = np.load("assets/object/Microwave/7221/grasp/0000.npy")
     print(grasp_pose)
     from automoma.utils.transform import pose_to_matrix
     grasp_pose = pose_to_matrix(grasp_pose)
@@ -170,7 +170,7 @@ if __name__ == "__main2__":
     
     robot_urdf = URDF.load(
         # "/home/yida/projects/cuakr-docker/assets/robot/robot/summit_franka/summit_franka.urdf"
-        "/home/xinhai/Documents/automoma/assets/robot/summit_franka/summit_franka.urdf"
+        "assets/robot/summit_franka/summit_franka.urdf"
     )
     grasp_pose = np.array(
         [

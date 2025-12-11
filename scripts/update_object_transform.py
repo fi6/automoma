@@ -16,7 +16,7 @@ import os, sys
 
 # Scene and object identification
 SCENE_DIR = '''
-/home/xinhai/Documents/automoma/assets/scene/infinigen/kitchen_1130/scene_55_seed_55/export/export_scene.blend/
+assets/scene/infinigen/kitchen_1130/scene_55_seed_55/export/export_scene.blend/
 '''
 SCENE_DIR = SCENE_DIR.strip()
 SCENE_PATH = SCENE_DIR.rsplit('/export/export_scene.blend/', 1)[0]

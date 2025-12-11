@@ -103,8 +103,8 @@ class BatchSceneRequirementsProcessor:
 
 def main():
     # Configuration
-    SOURCE_FILE = "/home/xinhai/Documents/automoma/scripts/debug/requirement.json"
-    BASE_DIR = "/home/xinhai/Documents/automoma/assets/scene/infinigen/kitchen_1130"
+    SOURCE_FILE = "scripts/debug/requirement.json"
+    BASE_DIR = "assets/scene/infinigen/kitchen_1130"
     
     print(f"🚀 Starting batch scene requirements processing")
     print(f"📝 Source file: {SOURCE_FILE}")

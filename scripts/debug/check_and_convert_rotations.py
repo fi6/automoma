@@ -13,7 +13,7 @@ from typing import List, Tuple
 # GLOBAL CONFIGURATION PARAMETERS
 # ============================================================================
 
-BASE_PATH = "/home/xinhai/Documents/automoma/assets/scene/infinigen/kitchen_1130"
+BASE_PATH = "assets/scene/infinigen/kitchen_1130"
 METADATA_FILENAME = "info/metadata.json"
 
 # Threshold to detect if rotation is in degrees vs radians
