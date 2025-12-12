@@ -363,153 +363,259 @@ def replay_traj(replayer, plan_dir: str, robot_name: str, scene_name: str,
         print(f"Trajectories: {trajectories.shape}, Success: {success.sum()}/{len(success)}")
         replayer.replay_traj_akr(start_states, goal_states, trajectories, success, robot_name)
 
-def record_traj(replayer, plan_dir: str, robot_name: str, scene_name: str,
-               object_id: str, grasp_id: int, stage: str, num_episodes: int = 10):
+def load_and_stack_stage_data(scene_asset_dir: str, stage: str):
     """
-    Record camera data for trajectories.
+    Load and stack all filtered_traj_data.pt files from grasp folders for a specific stage.
+    
+    Args:
+        scene_asset_dir: Path to scene+asset directory containing grasp_XXXX folders
+        stage: 'reach', 'open', or 'all'
+        
+    Returns:
+        Tuple of (stacked_start_states, stacked_goal_states, stacked_trajectories, stacked_success, grasp_sources)
+    """
+    from pathlib import Path
+    
+    scene_asset_path = Path(scene_asset_dir)
+    
+    # Check if total file already exists
+    total_traj_file = scene_asset_path / f"total_filtered_traj_data_{stage}.pt"
+    if total_traj_file.exists():
+        print(f"Loading existing total trajectory data from {total_traj_file}")
+        data = torch.load(total_traj_file, weights_only=False)
+        return (data["start_state"], data["goal_state"], data["traj"], 
+               data["success"], data["grasp_sources"])
+    
+    # Find all grasp folders
+    grasp_folders = [d for d in scene_asset_path.iterdir() if d.is_dir() and d.name.startswith("grasp_")]
+    grasp_folders.sort()
+    
+    if not grasp_folders:
+        raise ValueError(f"No grasp folders found in {scene_asset_dir}")
+    
+    print(f"Found {len(grasp_folders)} grasp folders for {stage} stage")
+    
+    # Determine key names based on stage
+    if stage == "reach":
+        start_key, goal_key, traj_key, success_key = "reach_start_state", "reach_goal_state", "reach_traj", "reach_success"
+    elif stage == "open":
+        start_key, goal_key, traj_key, success_key = "open_start_state", "open_goal_state", "open_traj", "open_success"
+    elif stage == "all":
+        start_key, goal_key, traj_key, success_key = "start_state", "goal_state", "traj", "success"
+    else:
+        raise ValueError(f"Unknown stage: {stage}")
+    
+    # Lists to collect data
+    all_start_states = []
+    all_goal_states = []
+    all_trajectories = []
+    all_success = []
+    grasp_sources = []
+    
+    # Load data from each grasp folder
+    for grasp_folder in grasp_folders:
+        filtered_traj_path = grasp_folder / f"{stage}_stage" / "filtered_traj_data.pt"
+        
+        if not filtered_traj_path.exists():
+            print(f"Warning: No filtered_traj_data.pt found in {grasp_folder.name}/{stage}_stage, skipping")
+            continue
+            
+        try:
+            traj_data = torch.load(filtered_traj_path, weights_only=False)
+            
+            # Load using stage-specific keys
+            start_states = traj_data[start_key]
+            goal_states = traj_data[goal_key]
+            trajectories = traj_data[traj_key]
+            success = traj_data[success_key]
+            
+            # Only keep successful trajectories
+            successful_mask = success.bool()
+            if successful_mask.sum() == 0:
+                print(f"Warning: No successful trajectories in {grasp_folder.name}/{stage}_stage, skipping")
+                continue
+            
+            successful_start = start_states[successful_mask]
+            successful_goal = goal_states[successful_mask]
+            successful_traj = trajectories[successful_mask]
+            successful_success = success[successful_mask]
+            
+            all_start_states.append(successful_start)
+            all_goal_states.append(successful_goal)
+            all_trajectories.append(successful_traj)
+            all_success.append(successful_success)
+            
+            # Track which grasp each trajectory came from
+            grasp_sources.extend([grasp_folder.name] * len(successful_start))
+            
+            print(f"  Loaded {len(successful_start)} successful trajectories from {grasp_folder.name}")
+            
+        except Exception as e:
+            print(f"Error loading data from {grasp_folder.name}/{stage}_stage: {e}")
+            continue
+    
+    if not all_start_states:
+        raise ValueError(f"No successful trajectory data found for {stage} stage in {scene_asset_dir}")
+    
+    # Stack all data
+    stacked_start_states = torch.cat(all_start_states, dim=0)
+    stacked_goal_states = torch.cat(all_goal_states, dim=0)
+    stacked_trajectories = torch.cat(all_trajectories, dim=0)
+    stacked_success = torch.cat(all_success, dim=0)
+    
+    print(f"Total stacked {stage} trajectories: {len(stacked_start_states)}")
+    
+    # Save total stacked data (always use generic keys)
+    torch.save({
+        "start_state": stacked_start_states.cpu(),
+        "goal_state": stacked_goal_states.cpu(),
+        "traj": stacked_trajectories.cpu(),
+        "success": stacked_success.cpu(),
+        "grasp_sources": grasp_sources,
+        "num_trajectories": len(stacked_start_states),
+    }, total_traj_file)
+    print(f"Saved total {stage} trajectory data to {total_traj_file}")
+    
+    return stacked_start_states, stacked_goal_states, stacked_trajectories, stacked_success, grasp_sources
+
+
+def record_traj(replayer, plan_dir: str, robot_name: str, scene_name: str,
+               object_id: str, stage: str, num_episodes: int = 10):
+    """
+    Record camera data for trajectories by stacking all grasp data.
     
     Args:
         stage: 'reach', 'open', or 'all'
         num_episodes: Number of episodes to record
     """
     print(f"\n{'='*80}")
-    print(f"Recording {num_episodes} episodes for {stage.upper()} stage (Grasp {grasp_id})")
+    print(f"Recording {num_episodes} episodes for {stage.upper()} stage")
     print(f"{'='*80}\n")
     
+    # Scene+asset directory (contains all grasp_XXXX folders)
+    scene_asset_dir = os.path.join(plan_dir, robot_name, scene_name, object_id)
+    if not os.path.exists(scene_asset_dir):
+        raise ValueError(f"Scene+asset directory not found: {scene_asset_dir}")
+    
     # Output directory for camera data
-    output_base = os.path.join(plan_dir, robot_name, scene_name, object_id,
-                               f"grasp_{grasp_id:04d}", f"{stage}_stage", "camera_data")
+    output_base = os.path.join(scene_asset_dir, "camera_data")
     os.makedirs(output_base, exist_ok=True)
     
     if stage == "all":
-        # Record combined trajectory (reach + open in sequence)
-        print("=== RECORDING COMBINED (REACH + OPEN) TRAJECTORIES ===")
+        # Record combined trajectory (already combined in all_stage folder)
+        print("=== STACKING AND RECORDING ALL (COMBINED) STAGE TRAJECTORIES ===")
         
-        # Load both stages
-        traj_data_reach = load_traj_data(plan_dir, robot_name, scene_name,
-                                        object_id, grasp_id, "reach", filtered=True)
-        traj_data_open = load_traj_data(plan_dir, robot_name, scene_name,
-                                       object_id, grasp_id, "open", filtered=True)
-        
-        reach_start = traj_data_reach["reach_start_state"]
-        reach_goal = traj_data_reach["reach_goal_state"]
-        reach_traj = traj_data_reach["reach_traj"]
-        reach_success = traj_data_reach["reach_success"]
-        
-        open_start = traj_data_open["open_start_state"]
-        open_goal = traj_data_open["open_goal_state"]
-        open_traj = traj_data_open["open_traj"]
-        open_success = traj_data_open["open_success"]
-        
-        # For combined recording, we need to match reach goal with open start
-        # This requires careful alignment - for now, record them separately
-        # TODO: Implement combined trajectory recording that sequences reach→open
-        print("WARNING: Combined trajectory recording not yet implemented.")
-        print("Recording reach and open stages separately...")
-        
-        # Randomly downsample reach stage
-        print("\n--- Recording Reach Stage ---")
-        reach_num_available = reach_traj.shape[0]
-        if reach_num_available > num_episodes:
-            # Random downsampling
-            indices = torch.randperm(reach_num_available)[:num_episodes]
-            reach_start = reach_start[indices]
-            reach_goal = reach_goal[indices]
-            reach_traj = reach_traj[indices]
-            reach_success = reach_success[indices]
-            print(f"Randomly downsampled from {reach_num_available} to {num_episodes} trajectories")
-        else:
-            print(f"Using all {reach_num_available} available trajectories")
-        
-        replayer.replay_traj_record(
-            reach_start, reach_goal, reach_traj, reach_success, robot_name,
-            output_dir=os.path.join(output_base, "reach"),
-            scene_id=scene_name, object_id=object_id,
-            angle_id="0", pose_id=str(grasp_id),
-            num_episodes=reach_traj.shape[0]  # Use actual number after downsampling
-        )
-        
-        # Randomly downsample open stage
-        print("\n--- Recording Open Stage ---")
-        open_num_available = open_traj.shape[0]
-        if open_num_available > num_episodes:
-            # Random downsampling
-            indices = torch.randperm(open_num_available)[:num_episodes]
-            open_start = open_start[indices]
-            open_goal = open_goal[indices]
-            open_traj = open_traj[indices]
-            open_success = open_success[indices]
-            print(f"Randomly downsampled from {open_num_available} to {num_episodes} trajectories")
-        else:
-            print(f"Using all {open_num_available} available trajectories")
-        
-        replayer.replay_traj_record(
-            open_start, open_goal, open_traj, open_success, robot_name,
-            output_dir=os.path.join(output_base, "open"),
-            scene_id=scene_name, object_id=object_id,
-            angle_id="0", pose_id=str(grasp_id),
-            num_episodes=open_traj.shape[0]  # Use actual number after downsampling
-        )
-    
-    elif stage == "reach":
-        traj_data = load_traj_data(plan_dir, robot_name, scene_name,
-                                   object_id, grasp_id, stage, filtered=True)
-        start_states = traj_data["reach_start_state"]
-        goal_states = traj_data["reach_goal_state"]
-        trajectories = traj_data["reach_traj"]
-        success = traj_data["reach_success"]
+        # Step 1: Stack all 'all' stage trajectories from all grasps
+        print("\n--- Stacking All Stage Data ---")
+        start_states, goal_states, trajectories, success, grasp_sources = load_and_stack_stage_data(
+            scene_asset_dir, "all")
         
         num_available = trajectories.shape[0]
-        print(f"Available trajectories: {num_available}")
+        print(f"Total available all-stage trajectories: {num_available}")
         
-        # Randomly downsample if needed
+        # Step 2: Randomly sample if needed
         if num_available > num_episodes:
-            indices = torch.randperm(num_available)[:num_episodes]
-            start_states = start_states[indices]
-            goal_states = goal_states[indices]
-            trajectories = trajectories[indices]
-            success = success[indices]
-            print(f"Randomly downsampled from {num_available} to {num_episodes} trajectories")
+            selected_traj_file = os.path.join(scene_asset_dir, f"selected_filtered_traj_data_all.pt")
+            if not os.path.exists(selected_traj_file):
+                torch.manual_seed(42)  # For reproducibility
+                indices = torch.randperm(num_available)[:num_episodes]
+                start_states = start_states[indices]
+                goal_states = goal_states[indices]
+                trajectories = trajectories[indices]
+                success = success[indices]
+                grasp_sources_sampled = [grasp_sources[i] for i in indices.tolist()]
+                
+                # Save selected data
+                torch.save({
+                    "start_state": start_states.cpu(),
+                    "goal_state": goal_states.cpu(),
+                    "traj": trajectories.cpu(),
+                    "success": success.cpu(),
+                    "grasp_sources": grasp_sources_sampled,
+                    "selected_indices": indices.tolist(),
+                    "num_trajectories": len(start_states),
+                }, selected_traj_file)
+                print(f"Saved selected all-stage trajectories to {selected_traj_file}")
+            else:
+                print(f"Loading existing selected all-stage trajectories from {selected_traj_file}")
+                data = torch.load(selected_traj_file, weights_only=False)
+                start_states = data["start_state"]
+                goal_states = data["goal_state"]
+                trajectories = data["traj"]
+                success = data["success"]
+            print(f"Randomly sampled {num_episodes} trajectories from {num_available} available")
         else:
             print(f"Using all {num_available} available trajectories")
         
+        # Step 3: Record camera data
+        print("\n--- Recording All Stage ---")
+        stage_output_dir = os.path.join(output_base, "all_stage")
+        os.makedirs(stage_output_dir, exist_ok=True)
         replayer.replay_traj_record(
             start_states, goal_states, trajectories, success, robot_name,
-            output_dir=output_base, scene_id=scene_name, object_id=object_id,
-            angle_id="0", pose_id=str(grasp_id),
-            num_episodes=trajectories.shape[0]  # Use actual number after downsampling
+            output_dir=stage_output_dir,
+            scene_id=scene_name, object_id=object_id,
+            angle_id="0", pose_id="combined",
+            num_episodes=None  # Use all sampled/available trajectories
         )
     
-    elif stage == "open":
-        traj_data = load_traj_data(plan_dir, robot_name, scene_name,
-                                   object_id, grasp_id, stage, filtered=True)
-        start_states = traj_data["open_start_state"]
-        goal_states = traj_data["open_goal_state"]
-        trajectories = traj_data["open_traj"]
-        success = traj_data["open_success"]
+    elif stage == "reach" or stage == "open":
+        # Step 1: Stack all trajectories from all grasps for this stage
+        print(f"\n--- Stacking {stage.upper()} Stage Data ---")
+        start_states, goal_states, trajectories, success, grasp_sources = load_and_stack_stage_data(
+            scene_asset_dir, stage)
         
         num_available = trajectories.shape[0]
-        print(f"Available trajectories: {num_available}")
+        print(f"Total available {stage} trajectories: {num_available}")
         
-        # Randomly downsample if needed
+        # Step 2: Randomly sample if needed
         if num_available > num_episodes:
-            indices = torch.randperm(num_available)[:num_episodes]
-            start_states = start_states[indices]
-            goal_states = goal_states[indices]
-            trajectories = trajectories[indices]
-            success = success[indices]
-            print(f"Randomly downsampled from {num_available} to {num_episodes} trajectories")
+            selected_traj_file = os.path.join(scene_asset_dir, f"selected_filtered_traj_data_{stage}.pt")
+            if not os.path.exists(selected_traj_file):
+                torch.manual_seed(42)  # For reproducibility
+                indices = torch.randperm(num_available)[:num_episodes]
+                start_states = start_states[indices]
+                goal_states = goal_states[indices]
+                trajectories = trajectories[indices]
+                success = success[indices]
+                grasp_sources_sampled = [grasp_sources[i] for i in indices.tolist()]
+                
+                # Save selected data
+                torch.save({
+                    "start_state": start_states.cpu(),
+                    "goal_state": goal_states.cpu(),
+                    "traj": trajectories.cpu(),
+                    "success": success.cpu(),
+                    "grasp_sources": grasp_sources_sampled,
+                    "selected_indices": indices.tolist(),
+                    "num_trajectories": len(start_states),
+                }, selected_traj_file)
+                print(f"Saved selected {stage} trajectories to {selected_traj_file}")
+            else:
+                print(f"Loading existing selected {stage} trajectories from {selected_traj_file}")
+                data = torch.load(selected_traj_file, weights_only=False)
+                start_states = data["start_state"]
+                goal_states = data["goal_state"]
+                trajectories = data["traj"]
+                success = data["success"]
+            print(f"Randomly sampled {num_episodes} trajectories from {num_available} available")
         else:
             print(f"Using all {num_available} available trajectories")
         
+        # Step 3: Record camera data
+        print(f"\n--- Recording {stage.upper()} Stage ---")
+        stage_output_dir = os.path.join(output_base, f"{stage}_stage")
+        os.makedirs(stage_output_dir, exist_ok=True)
         replayer.replay_traj_record(
             start_states, goal_states, trajectories, success, robot_name,
-            output_dir=output_base, scene_id=scene_name, object_id=object_id,
-            angle_id="0", pose_id=str(grasp_id),
-            num_episodes=trajectories.shape[0]  # Use actual number after downsampling
+            output_dir=stage_output_dir, scene_id=scene_name, object_id=object_id,
+            angle_id="0", pose_id="combined",
+            num_episodes=None  # Use all sampled/available trajectories
         )
     
-    print(f"\nCamera data saved to: {output_base}")
+    stage_suffix = stage if stage == "all" else stage
+    stage_output_dir = os.path.join(output_base, f"{stage_suffix}_stage")
+    print(f"\nCamera data saved to: {stage_output_dir}")
 
 # ============================================================================
 # Main Function
@@ -641,7 +747,7 @@ Examples:
         
         elif args.mode == "record":
             record_traj(replayer, args.plan_dir, args.robot_name, scene_name,
-                       args.object_id, args.grasp_id, args.stage, args.num_episodes)
+                       args.object_id, args.stage, args.num_episodes)
         
         # Keep simulation running
         print("\nReplay complete. Close the window to exit.")

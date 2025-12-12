@@ -22,7 +22,14 @@
 # done
 
 
-for object_id in 101773; do
-    python scripts/pipeline_collect.py --scene_dir assets/scene/infinigen/kitchen_1130 \
-         --plan_dir output/collect_1205/traj --robot_name summit_franka --object_id ${object_id} --num_episodes 10
-done
+# for object_id in 101773; do
+#     python scripts/pipeline_collect.py --scene_dir assets/scene/infinigen/kitchen_1130 \
+#          --plan_dir output/collect_1205/traj --robot_name summit_franka --object_id ${object_id} --num_episodes 10
+# done
+
+
+python ./third_party/cuakr/src/cuakr/planner/planner_reach.py
+
+python examples/example_replay_reach.py --scene-dir assets/scene/infinigen/kitchen_1130/scene_0_seed_0 \
+    --plan-dir output/collect_1211/traj --robot-name summit_franka --object-id 7221 \
+    --grasp-id 0 --mode record --stage reach --num-episodes 6400 --headless

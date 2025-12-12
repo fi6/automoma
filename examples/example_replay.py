@@ -24,11 +24,11 @@ from typing import Dict, List, Any
 # ============================================================================
 # HYPERPARAMETERS - Modify these for different scenarios
 # ============================================================================
-OBJECT_ID = "101773"  # Options: 7221, 11622, 103634, 46197, 10944, 101773
+OBJECT_ID = "7221"  # Options: 7221, 11622, 103634, 46197, 10944, 101773
 SCENE_PATH = "assets/scene/infinigen/kitchen_1130/scene_0_seed_0"
 OUTPUT_BASE_DIR = "output/collect_1205/traj"
 ROBOT_NAME = "summit_franka"
-GRASP_ID = 2
+GRASP_ID = 0
 # ============================================================================
 
 
