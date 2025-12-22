@@ -35,6 +35,8 @@ from automoma.utils.math_utils import (
     ik_clustering_kmeans_ap_fallback,
     expand_to_pairs,
     quaternion_distance,
+    get_open_ee_pose,
+    stack_iks_angle,
 )
 from automoma.utils.file_utils import (
     load_robot_cfg,
@@ -68,22 +70,141 @@ class CuroboPlanner(MotionPlannerInterface):
         self._load_scene()
         self._setup_collision_world()
 
-    def plan_ik(
-        self,
-        target_pose: torch.Tensor,
-        robot_cfg: Dict[str, Any] = None,
-        plan_cfg: Dict[str, Any] = None,
-    ) -> torch.Tensor:
-        pass
+    def plan_ik(self, target_pose: torch.Tensor,
+                robot_cfg: Dict[str, Any] = None,
+                plan_cfg: Dict[str, Any] = None,
+                motion_gen: MotionGen = None) -> IKResult:
+        """Plan inverse kinematics to reach the target pose"""
+        print("Starting IK planning...")
+        
+        if plan_cfg is None:
+            plan_cfg = {}
+        robot_cfg = self._load_robot(robot_cfg)
+        
+        # Initialize motion generator
+        if motion_gen is None:
+            motion_gen = self.init_motion_gen(robot_cfg)
 
-    def plan_traj(
+        # Update world collision
+        joint_cfg = plan_cfg.get("joint_cfg", None)
+        enable_collision = plan_cfg.get("enable_collision", True)
+        self._update_world_collision(motion_gen, joint_cfg, enable_collision)
+        
+        # Solve IK
+        retract_config = self.tensor_args.to_device(
+            robot_cfg["kinematics"]["cspace"]["retract_config"]
+        )
+        target_Pose = Pose.from_list(_convert_to_list(target_pose))
+        iks = self._solve_ik(motion_gen, target_Pose, retract_config)
+        
+        # Check for empty IK solutions
+        if iks is None or iks.shape[0] == 0:
+            print("No IK solutions found, returning empty tensor.")
+            iks = torch.zeros(0, motion_gen.dof)
+        
+        target_poses = target_pose.repeat(iks.shape[0], 1)
+        
+        return IKResult(target_poses=target_poses, iks=iks)
+        
+    def ik_clustering(self, ik_result: IKResult, **kwargs):
+        '''
+        Cluster IK solutions
+        
+        Args:
+            ik_result: IKResult object containing IK solutions
+            **kwargs: Additional clustering parameters
+            
+        Returns:
+            Clustered IK solutions tensor
+        '''
+        if ik_result.iks is None or ik_result.iks.shape[0] == 0:
+            print("No IK solutions to cluster, returning empty tensor.")
+            return ik_result
+        
+        idxs = ik_clustering_kmeans_ap_fallback(ik_result.iks, **kwargs)[-1]
+        return ik_result[idxs]
+    
+    def plan_traj(self, start_iks: torch.Tensor, goal_iks: torch.Tensor = None,
+                 robot_cfg: Dict[str, Any] = None,
+                 plan_cfg: Dict[str, Any] = None,
+                 motion_gen: MotionGen = None) -> TrajResult:
+        
+        if plan_cfg is None:
+                plan_cfg = {}
+        
+        # check goal_iks
+        if goal_iks is not None:
+            if plan_cfg.get("expand_to_pairs", False):
+                start_iks, goal_iks = expand_to_pairs(start_iks, goal_iks)
+            assert start_iks.shape[0] == goal_iks.shape[0], \
+                "Start and goal IK solutions must have the same number of samples"
+        
+        # Initialize motion generator
+        if motion_gen is None:
+            motion_gen = self.init_motion_gen(robot_cfg)
+
+        # Mapping stage type to planning function
+        stage_type = plan_cfg.get("stage_type", StageType.MOVE)
+        
+        stage_mapping = {
+            StageType.REACH: self.plan_traj_reach,
+            StageType.GRASP: self.plan_traj_grasp,
+            StageType.LIFT: self.plan_traj_lift,
+            StageType.RELEASE: self.plan_traj_release,
+            StageType.MOVE: self.plan_traj_move,
+            StageType.MOVE_HOLDING: self.plan_traj_move_holding,
+            StageType.MOVE_ARTICULATED: self.plan_traj_move_articulated,
+            StageType.WAIT: self.plan_traj_wait,
+            StageType.HOME: self.plan_traj_move,
+        }
+
+        plan_func = stage_mapping.get(stage_type)
+        if plan_func is None:
+            raise ValueError(f"Unsupported stage type: {stage_type}")
+        
+        print(f"Starting TrajOpt planning for stage: {stage_type}")
+        return plan_func(start_iks, goal_iks, robot_cfg, plan_cfg, motion_gen)
+
+    def filter_traj(
         self,
-        start_state: torch.Tensor,
-        goal_state: torch.Tensor = None,
+        traj_result: TrajResult,
         robot_cfg: Dict[str, Any] = None,
-        plan_cfg: Dict[str, Any] = None,
+        motion_gen: MotionGen = None,
+        filter_cfg: Dict[str, Any] = None,
     ) -> TrajResult:
-        pass
+        """
+        Filter trajectories based on success and optional forward kinematics validation.
+        
+        Args:
+            traj_result: The trajectory result to filter
+            motion_gen: Optional motion generator for FK validation
+            filter_cfg: Optional dictionary containing filter configuration parameters
+        """
+        if traj_result.trajectories is None or traj_result.trajectories.shape[0] == 0:
+            print("No trajectories to filter.")
+            return traj_result
+            
+        # Mapping stage type to planning function
+        stage_type = filter_cfg.get("stage_type", StageType.MOVE)
+        
+        stage_mapping = {
+            StageType.REACH: self.filter_traj_reach,
+            StageType.GRASP: self.filter_traj_grasp,
+            StageType.LIFT: self.filter_traj_lift,
+            StageType.RELEASE: self.filter_traj_release,
+            StageType.MOVE: self.filter_traj_move,
+            StageType.MOVE_HOLDING: self.filter_traj_move_holding,
+            StageType.MOVE_ARTICULATED: self.filter_traj_move_articulated,
+            StageType.WAIT: self.filter_traj_wait,
+            StageType.HOME: self.filter_traj_move,
+        }
+
+        filter_func = stage_mapping.get(stage_type)
+        if filter_func is None:
+            raise ValueError(f"Unsupported stage type: {stage_type}")
+        
+        print(f"Starting trajectory filtering for stage: {stage_type}")
+        return filter_func(traj_result, robot_cfg, motion_gen, filter_cfg)
 
     def _init_root_pose(self) -> None:
         """Initialize the world  pose"""
@@ -215,9 +336,8 @@ class CuroboPlanner(MotionPlannerInterface):
         )
 
         # Create expanded object cuboid for collision-free space (following test_plan.py)
-        expanded_dim = np.array(expanded_dim)
         expanded_dims = (
-            np.array(self.object_cfg["dimensions"]) + expanded_dim
+            np.array(self.object_cfg["dimensions"]) + expanded_dims
         ).tolist()
 
         self.expanded_object_cuboid = Cuboid(
@@ -247,21 +367,8 @@ class CuroboPlanner(MotionPlannerInterface):
             world_collision_config.world_model["mesh"] = [mesh]
         else:
             raise ValueError(f"Invalid collision checker type: {self.collision_type}")
-
-        # Initialize collision checkers for IK and trajectory planning
-        self._init_collision_checkers(world_collision_config, enable_collision)
-
-    def _init_collision_checkers(
-        self, world_collision_config, enable_collision=True
-    ) -> None:
-        """Initialize collision checkers for IK and trajectory planning"""
-        self.world_coll_checker = WorldVoxelCollision(world_collision_config)
-
-        if enable_collision:
-            self.world_coll_checker.clear_voxelization_cache()
-            self.world_coll_checker.clear_cache()
-            self.world_coll_checker.update_voxel_data(self.esdf)
-            torch.cuda.synchronize()
+        
+        self.world_collision_config = world_collision_config
 
     def _update_world_collision(
         self,
@@ -330,20 +437,35 @@ class CuroboPlanner(MotionPlannerInterface):
 
         return result
     
+    def _init_collision_checkers(
+        self, world_collision_config, enable_collision=True
+    ) -> None:
+        """Initialize collision checkers for IK and trajectory planning"""
+        world_coll_checker = WorldVoxelCollision(world_collision_config)
 
-    def _init_motion_gen(self, robot_cfg: Dict, fixed_base: bool=False) -> MotionGen:
+        if enable_collision:
+            world_coll_checker.clear_voxelization_cache()
+            world_coll_checker.clear_cache()
+            world_coll_checker.update_voxel_data(self.esdf)
+            torch.cuda.synchronize()
+            
+        return world_coll_checker
+    def init_motion_gen(self, robot_cfg: Dict, fixed_base: bool=False, enable_collision: bool=True) -> MotionGen:
         """Initialize motion generator for standard robot"""
         if robot_cfg is None:
             raise ValueError("Robot configuration path is required")
         
         robot_cfg = self._load_robot(robot_cfg)
         gradient_trajopt_file = "gradient_trajopt_fixbase.yml" if fixed_base else "gradient_trajopt.yml"
+        
+        # DEBUG: need new collision checker each time for different motion_gen
+        world_coll_checker = self._init_collision_checkers(self.world_collision_config, enable_collision)
 
         motion_gen_config = MotionGenConfig.load_from_robot_config(
             robot_cfg,
             WorldConfig(),
             self.tensor_args,
-            world_coll_checker=self.world_coll_checker,
+            world_coll_checker=world_coll_checker,
             num_trajopt_seeds=12,
             num_graph_seeds=12,
             interpolation_dt=0.05,
@@ -359,94 +481,6 @@ class CuroboPlanner(MotionPlannerInterface):
         motion_gen = MotionGen(motion_gen_config)
         print("Motion generator initialized")
         return motion_gen
-    
-    def plan_ik(self, target_pose: torch.Tensor,
-                robot_cfg: Dict[str, Any] = None,
-                plan_cfg: Dict[str, Any] = None,
-                motion_gen: MotionGen = None) -> torch.Tensor:
-        """Plan inverse kinematics to reach the target pose"""
-        print("Starting IK planning...")
-        
-        if plan_cfg is None:
-            plan_cfg = {}
-        robot_cfg = self._load_robot(robot_cfg)
-        
-        # Initialize motion generator
-        if motion_gen is None:
-            motion_gen = self._init_motion_gen(robot_cfg)
-
-        # Update world collision
-        joint_cfg = plan_cfg.get("joint_cfg", None)
-        enable_collision = plan_cfg.get("enable_collision", True)
-        self._update_world_collision(motion_gen, joint_cfg, enable_collision)
-        
-        # Solve IK
-        retract_config = self.tensor_args.to_device(
-            robot_cfg["kinematics"]["cspace"]["retract_config"]
-        )
-        target_Pose = Pose.from_list(_convert_to_list(target_pose))
-        iks = self._solve_ik(motion_gen, target_Pose, retract_config)
-        
-        # Check for empty IK solutions
-        if iks is None or iks.shape[0] == 0:
-            print("No IK solutions found, returning empty tensor.")
-            iks = torch.zeros(0, motion_gen.dof)
-        
-        return iks
-        
-    def ik_clustering(self, iks: torch.Tensor, **kwargs):
-        '''
-        Cluster IK solutions
-        
-        Args:
-            iks: Tensor of IK solutions
-            **kwargs: Additional clustering parameters
-            
-        Returns:
-            Clustered IK solutions tensor
-        '''
-        return ik_clustering_kmeans_ap_fallback(iks, **kwargs)
-    
-    def plan_traj(self, start_iks: torch.Tensor, goal_iks: torch.Tensor = None,
-                 robot_cfg: Dict[str, Any] = None,
-                 plan_cfg: Dict[str, Any] = None,
-                 motion_gen: MotionGen = None) -> TrajResult:
-        
-        if plan_cfg is None:
-                plan_cfg = {}
-        
-        # check goal_iks
-        if goal_iks is not None:
-            if plan_cfg.get("expand_to_pairs", False):
-                start_iks, goal_iks = expand_to_pairs(start_iks, goal_iks)
-            assert start_iks.shape[0] == goal_iks.shape[0], \
-                "Start and goal IK solutions must have the same number of samples"
-        
-        # Initialize motion generator
-        if motion_gen is None:
-            motion_gen = self._init_motion_gen(robot_cfg)
-
-        # Mapping stage type to planning function
-        stage_type = plan_cfg.get("stage_type", StageType.MOVE)
-        
-        stage_mapping = {
-            StageType.REACH: self.plan_traj_reach,
-            StageType.GRASP: self.plan_traj_grasp,
-            StageType.LIFT: self.plan_traj_lift,
-            StageType.RELEASE: self.plan_traj_release,
-            StageType.MOVE: self.plan_traj_move,
-            StageType.MOVE_HOLDING: self.plan_traj_move_holding,
-            StageType.MOVE_ARTICULATED: self.plan_traj_move_articulated,
-            StageType.WAIT: self.plan_traj_wait,
-            StageType.HOME: self.plan_traj_move,
-        }
-
-        plan_func = stage_mapping.get(stage_type)
-        if plan_func is None:
-            raise ValueError(f"Unsupported stage type: {stage_type}")
-        
-        print(f"Starting TrajOpt planning for stage: {stage_type}")
-        return plan_func(start_iks, goal_iks, robot_cfg, plan_cfg, motion_gen)
 
     def plan_traj_move(self, start_iks: torch.Tensor, goal_iks: torch.Tensor = None,
                  robot_cfg: Dict[str, Any] = None,
@@ -480,61 +514,18 @@ class CuroboPlanner(MotionPlannerInterface):
                 result = motion_gen.trajopt_solver.solve_batch(goal)
                 
                 # Convert to TrajResult
-                b_results = TrajResult(start_states=js_start.position,
-                                       goal_states=js_goal.position,
-                                       trajectories=result.solution.position,
-                                       success=result.success)
+                b_results = TrajResult(start_states=js_start.position.detach().clone().cpu(),
+                                       goal_states=js_goal.position.detach().clone().cpu(),
+                                       trajectories=result.solution.position.detach().clone().cpu(),
+                                       success=result.success.detach().clone().cpu())
                 all_results.append(b_results)
                 
                 torch.cuda.synchronize()
-                success_count += result.success.sum().item()
+                success_count += b_results.success.sum().item()
                 pbar.set_description(f"{stage_type.name.capitalize()} Batch {i+1}/{len(start_batches)} (Successes: {success_count})")
                 pbar.update(1)                
                 
         return TrajResult.cat(all_results)
-
-    def filter_traj(
-        self,
-        traj_result: TrajResult,
-        robot_cfg: Dict[str, Any] = None,
-        motion_gen: MotionGen = None,
-        filter_cfg: Dict[str, Any] = None,
-    ) -> TrajResult:
-        """
-        Filter trajectories based on success and optional forward kinematics validation.
-        
-        Args:
-            traj_result: The trajectory result to filter
-            motion_gen: Optional motion generator for FK validation
-            filter_cfg: Optional dictionary containing filter configuration parameters
-        """
-        if traj_result.trajectories is None or traj_result.trajectories.shape[0] == 0:
-            print("No trajectories to filter.")
-            return traj_result
-            
-        # Mapping stage type to planning function
-        stage_type = filter_cfg.get("stage_type", StageType.MOVE)
-        
-        stage_mapping = {
-            StageType.REACH: self.filter_traj_reach,
-            StageType.GRASP: self.filter_traj_grasp,
-            StageType.LIFT: self.filter_traj_lift,
-            StageType.RELEASE: self.filter_traj_release,
-            StageType.MOVE: self.filter_traj_move,
-            StageType.MOVE_HOLDING: self.filter_traj_move_holding,
-            StageType.MOVE_ARTICULATED: self.filter_traj_move_articulated,
-            StageType.WAIT: self.filter_traj_wait,
-            StageType.HOME: self.filter_traj_move,
-        }
-
-        filter_func = stage_mapping.get(stage_type)
-        if filter_func is None:
-            raise ValueError(f"Unsupported stage type: {stage_type}")
-        
-        print(f"Starting trajectory filtering for stage: {stage_type}")
-        return filter_func(traj_result, robot_cfg, motion_gen, filter_cfg)
-        
-        
     def _filter_traj_with_success(self, traj_result: TrajResult, stage_name: str) -> TrajResult:
         """Helper to filter trajectories by success mask and log progress."""
         success_mask = traj_result.success.to(torch.bool)
@@ -593,7 +584,7 @@ class CuroboPlanner(MotionPlannerInterface):
         
         # Initialize motion generator
         if motion_gen is None:
-            motion_gen = self._init_motion_gen(robot_cfg, fixed_base=True)
+            motion_gen = self.init_motion_gen(robot_cfg, fixed_base=True)
             
         pos_tol = filter_cfg.get("position_tolerance", 0.01)
         rot_tol = filter_cfg.get("rotation_tolerance", 0.05)
@@ -658,7 +649,7 @@ def test_planner():
     # ===== CONFIGURATION =====
     # Scene configuration
     scene_cfg = {
-        "path": "output/infinigen_scene_10/scene_1_seed_1/export/export_scene.blend/export_scene.usdc",
+        "path": "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/export/export_scene.blend/export_scene.usdc",
         "pose": [0, 0, -0.13, 1, 0, 0, 0]
     }
     
@@ -669,27 +660,29 @@ def test_planner():
         
     # Object configuration (URDF path and basic info, dimensions loaded from metadata)
     object_cfg = {
-        "path": "third_party/cuakr/tests/7221/7221_0_scaling.urdf",
+        "path": "assets/object/Microwave/7221/7221_0_scaling.urdf",
         "asset_type": "Microwave",
         "asset_id": "7221"
     }
-    metadata_path = "output/infinigen_scene_10/scene_1_seed_1/info/metadata.json"
-    object_cfg = CuroboPlanner.load_object_from_metadata(metadata_path, object_cfg=object_cfg)
+    metadata_path = "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/info/metadata.json"
+    object_cfg = load_object_from_metadata(metadata_path, object_cfg=object_cfg)
     
     # ===== INITIALIZATION =====
     print("\n1. Initializing Curobo Planner...")
     planner_cfg = {
         "voxel_dims": [5.0, 5.0, 5.0],
         "voxel_size": 0.02,
+        "expanded_dims": [1.0, 0.2, 0.2],
         "collision_checker_type": CollisionCheckerType.VOXEL
     }
     planner = CuroboPlanner(planner_cfg)
     planner.setup_env(scene_cfg, object_cfg)
     
+    
     # ===== LOAD GRASP POSES =====
     print("\n2. Loading grasp poses...")
     scaling_factor = 0.3562990018302636
-    grasp_poses = planner.get_grasp_poses(
+    grasp_poses = get_grasp_poses(
         grasp_dir="assets/object/Microwave/7221/grasp",
         num_grasps=20,
         scaling_factor=scaling_factor
@@ -701,6 +694,14 @@ def test_planner():
         
     print(f"Loaded {len(grasp_poses)} grasp poses")
     
+    motion_gen = planner.init_motion_gen(robot_cfg)
+    
+    clustering_params = {
+        "ap_fallback_clusters": 30,
+        "ap_clusters_upperbound": 80,
+        "ap_clusters_lowerbound": 10
+    }
+    
     # ===== PROCESS EACH GRASP POSE =====
     for grasp_id, grasp_pose in enumerate(grasp_poses):
         print(f"\n{'='*80}")
@@ -709,50 +710,99 @@ def test_planner():
         
         # ===== IK PLANNING =====
         print("\n3. Planning IK solutions...")
-        target_pose = torch.tensor(grasp_pose)
+        start_angles = [0.0]
+        # goal_angles = [1.333088176515062, 1.2300752695249741, 1.0739553834158821, 0.9968029606353053]
+        goal_angles = [0.9968029606353053]   
         
-        iks = planner.plan_ik(
-            target_pose=target_pose,
-            robot_cfg=robot_cfg
-        )
+        # IK collection limits
+        IK_LIMITS = {
+            StageType.MOVE: [50, 50],
+            StageType.MOVE_ARTICULATED: [50, 100],
+        }
         
-        if iks.shape[0] == 0:
-            print(f"No IK solutions found for grasp {grasp_id}, skipping...")
-            continue
+        start_ik_result = []
+        goal_ik_result = []
+        
+        def plan_single_ik(angle):
+            default_joint_cfg = {"joint_0": 0.0}
+            joint_cfg={"joint_0": angle}
+            target_Pose = get_open_ee_pose(
+                object_pose=Pose.from_list(planner.object_pose),
+                grasp_pose=Pose.from_list(grasp_pose),
+                object_urdf=planner.object_urdf,
+                handle="link_0",
+                joint_cfg=joint_cfg,
+                default_joint_cfg=default_joint_cfg
+            )
+            target_pose = torch.tensor(target_Pose.to_list())
             
-        # Cluster IKs
-        iks = planner.ik_clustering(iks)
+            ik_result = planner.plan_ik(
+                target_pose=target_pose,
+                robot_cfg=robot_cfg,
+                plan_cfg={
+                    "joint_cfg": joint_cfg,
+                    "enable_collision": True,
+                },
+                motion_gen=motion_gen,
+            )
+            # Stack angle
+            ik_result.iks = stack_iks_angle(ik_result.iks, -angle) # TODO: negative
+            
+            print(f"  Angle {angle:.4f} rad: Found {ik_result.iks.shape[0]} IK solutions")
+            
+            # IK clustering
+            ik_result = planner.ik_clustering(ik_result, **clustering_params)
+            print(f"    After clustering: {ik_result.iks.shape[0]} IK solutions")
+            return ik_result
         
-        # Create IKResult
-        retract_config = torch.tensor(robot_cfg["kinematics"]["cspace"]["retract_config"])
-        start_iks = retract_config.unsqueeze(0).repeat(iks.shape[0], 1)
-        goal_iks = iks
+        for angle in start_angles:
+            ik_result = plan_single_ik(angle)
+            start_ik_result.append(ik_result)
+            
+        start_ik_result = IKResult.cat(start_ik_result)
+    
+        for angle in goal_angles:
+            ik_result = plan_single_ik(angle)
+            goal_ik_result.append(ik_result)
         
-        ik_result = IKResult(start_iks=start_iks, goal_iks=goal_iks)
+        goal_ik_result = IKResult.cat(goal_ik_result)
         
         print(f"IK Planning completed:")
-        print(f"  Start IKs: {ik_result.start_iks.shape}")  
-        print(f"  Goal IKs: {ik_result.goal_iks.shape}")
+        print(f"  Start IKs: {start_ik_result.iks.shape}")  
+        print(f"  Goal IKs: {goal_ik_result.iks.shape}")
         
         # ===== SAVE IK RESULTS =====
         print("\n4. Saving IK results...")
-        base_dir = f"output/summit_franka/scene_1_seed_1/grasp_{grasp_id:04d}"
+        base_dir = f"data/collect_1222/traj/summit_franka/scene_0_seed_0/7221/grasp_{grasp_id:04d}"
         os.makedirs(base_dir, exist_ok=True)
-        planner.save_ik(ik_result, f"{base_dir}/ik_data.pt")
+        save_ik(start_ik_result, f"{base_dir}/start_iks.pt")
+        save_ik(goal_ik_result, f"{base_dir}/goal_iks.pt")
+        
+        if start_ik_result.iks.shape[0] == 0 or goal_ik_result.iks.shape[0] == 0:
+            print("No IK solutions found for start or goal, skipping trajectory planning.")
+            continue
         
         # ===== TRAJECTORY PLANNING =====
         print("\n5. Planning trajectories...")
         plan_cfg = {
             "stage_type": StageType.MOVE_ARTICULATED,
             "batch_size": 10,
-            "expand_to_pairs": False
+            "expand_to_pairs": True,
         }
         
+        akr_robot_cfg_path = f"assets/object/Microwave/7221/summit_franka_7221_0_grasp_{grasp_id:04d}.yml"
+        
+        akr_robot_cfg = load_robot_cfg(akr_robot_cfg_path)
+        akr_robot_cfg = process_robot_cfg(akr_robot_cfg)
+        
+        motion_gen_akr = planner.init_motion_gen(akr_robot_cfg, fixed_base=True)
+        
         traj_result = planner.plan_traj(
-            start_iks=ik_result.start_iks,
-            goal_iks=ik_result.goal_iks,
-            robot_cfg=robot_cfg,
-            plan_cfg=plan_cfg
+            start_iks=start_ik_result.iks,
+            goal_iks=goal_ik_result.iks,
+            robot_cfg=akr_robot_cfg,
+            plan_cfg=plan_cfg,
+            motion_gen=motion_gen_akr,
         )
         
         print(f"Trajectory Planning completed:")
@@ -761,7 +811,7 @@ def test_planner():
         
         # ===== SAVE TRAJECTORY RESULTS =====
         print("\n6. Saving trajectory results...")
-        planner.save_traj(traj_result, f"{base_dir}/traj_data.pt")
+        save_traj(traj_result, f"{base_dir}/traj_data.pt")
         
         # ===== TRAJECTORY FILTERING =====
         print("\n7. Filtering trajectories...")
@@ -770,10 +820,10 @@ def test_planner():
             "position_tolerance": 0.01,
             "rotation_tolerance": 0.05
         }
-        filtered_result = planner.filter_traj(traj_result, robot_cfg=robot_cfg, filter_cfg=filter_cfg)
+        filtered_result = planner.filter_traj(traj_result, robot_cfg=akr_robot_cfg, filter_cfg=filter_cfg, motion_gen=motion_gen_akr)
         
         print(f"Trajectory Filtering completed: {filtered_result.num_samples} trajectories")
-        planner.save_traj(filtered_result, f"{base_dir}/filtered_traj_data.pt")
+        save_traj(filtered_result, f"{base_dir}/filtered_traj_data.pt")
         
         print(f"\n=== Processing for Grasp {grasp_id} Completed ===")
 

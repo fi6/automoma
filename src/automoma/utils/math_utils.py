@@ -7,7 +7,8 @@ from curobo.types.math import Pose
 from curobo.geom.types import WorldConfig, Cuboid
 from scipy.spatial.transform import Rotation as R
 
-def quat_to_euler(quat: np.ndarray, order: str = 'xyz') -> np.ndarray:
+
+def quat_to_euler(quat: np.ndarray, order: str = "xyz") -> np.ndarray:
     """Convert a quaternion to Euler angles.
 
     Args:
@@ -24,7 +25,8 @@ def quat_to_euler(quat: np.ndarray, order: str = 'xyz') -> np.ndarray:
     euler_angles = rot.as_euler(order)
     return euler_angles
 
-def euler_to_quat(euler_angles: np.ndarray, order: str = 'xyz') -> np.ndarray:
+
+def euler_to_quat(euler_angles: np.ndarray, order: str = "xyz") -> np.ndarray:
     """Convert Euler angles to a quaternion.
 
     Args:
@@ -39,6 +41,7 @@ def euler_to_quat(euler_angles: np.ndarray, order: str = 'xyz') -> np.ndarray:
     quat_xyzw = rot.as_quat()  # XYZW
     quat_wxyz = np.array([quat_xyzw[3], quat_xyzw[0], quat_xyzw[1], quat_xyzw[2]])
     return quat_wxyz
+
 
 def pose_to_matrix(pose: np.ndarray) -> np.ndarray:
     """Convert a pose (position + quaternion(WXYZ)) to a 4x4 transformation matrix.
@@ -60,6 +63,7 @@ def pose_to_matrix(pose: np.ndarray) -> np.ndarray:
     matrix[:3, :3] = rot.as_matrix()
     matrix[:3, 3] = position
     return matrix
+
 
 def matrix_to_pose(matrix: np.ndarray) -> np.ndarray:
     """Convert a 4x4 transformation matrix to a pose (position + quaternion(WXYZ)).
@@ -91,15 +95,16 @@ def single_axis_self_rotation(matrix: np.ndarray, axis: str, angle: float) -> np
         rotated_matrix: np.ndarray, shape (4, 4)
     """
     assert matrix.shape == (4, 4)
-    
+
     rot = R.from_euler(axis, angle)
-    R_local = rot.as_matrix() # 3x3 rotation matrix
-    
+    R_local = rot.as_matrix()  # 3x3 rotation matrix
+
     # Current matrix
     result = matrix.copy()
     result[:3, :3] = matrix[:3, :3] @ R_local
-    
+
     return result
+
 
 def expand_to_pairs(start_iks: torch.Tensor, goal_iks: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """
@@ -109,11 +114,19 @@ def expand_to_pairs(start_iks: torch.Tensor, goal_iks: torch.Tensor) -> Tuple[to
     # Create Cartesian product
     # goal_iks: [M, D] -> repeat(N, 1) -> [N*M, D]
     # start_iks: [N, D] -> repeat_interleave(M) -> [N*M, D]
-    goal_iks_expanded = goal_iks.repeat(start_iks.shape[0], 1)
-    start_iks_expanded = torch.repeat_interleave(start_iks, goal_iks.shape[0], dim=0)
-    
+    goal_iks_expanded = goal_iks.repeat(start_iks.shape[0], 1).clone()
+    start_iks_expanded = torch.repeat_interleave(start_iks, goal_iks.shape[0], dim=0).clone()
+
     return start_iks_expanded, goal_iks_expanded
 
+def stack_iks_angle(iks: torch.Tensor, angle: float) -> torch.Tensor:
+        """Add joint angle information to IK solutions"""
+        joint_angle_expand = (
+            torch.tensor([angle], device=iks.device)
+            .unsqueeze(0)
+            .expand(iks.shape[0], -1)
+        )
+        return torch.cat((iks, joint_angle_expand), dim=1)
 def quaternion_distance(q1: np.ndarray, q2: np.ndarray) -> float:
     """
     Calculate the angular distance between two quaternions.
@@ -122,19 +135,20 @@ def quaternion_distance(q1: np.ndarray, q2: np.ndarray) -> float:
     # Ensure they are unit quaternions
     q1 = q1 / (np.linalg.norm(q1) + 1e-8)
     q2 = q2 / (np.linalg.norm(q2) + 1e-8)
-    
+
     # Inner product
     dot = np.abs(np.sum(q1 * q2))
     dot = np.clip(dot, -1.0, 1.0)
-    
+
     # Angular distance in radians
     angle = 2.0 * np.arccos(dot)
-    
+
     # Ensure the smallest angle (if the angle is greater than pi, subtract from 2*pi)
     if angle > np.pi:
         angle = 2 * np.pi - angle
-        
+
     return angle
+
 
 def _convert_to_list(x: Union[List[float], np.ndarray, torch.Tensor]) -> List[float]:
     """Helper function to reliably convert data into a Python list."""
@@ -241,8 +255,15 @@ def pose_multiply(p1, p2):
     return result_list
 
 
-def get_open_ee_pose(object_pose: Pose, grasp_pose: Pose, object_urdf: URDF, handle: str, joint_cfg: dict, default_joint_cfg: Optional[dict] = None) -> Pose:
-    '''
+def get_open_ee_pose(
+    object_pose: Pose,
+    grasp_pose: Pose,
+    object_urdf: URDF,
+    handle: str,
+    joint_cfg: dict,
+    default_joint_cfg: Optional[dict] = None,
+) -> Pose:
+    """
     Compute the open end-effector pose given the object pose, grasp pose, and robot joint configuration.
     Args:
         object_pose: Pose of the object in world frame
@@ -253,18 +274,17 @@ def get_open_ee_pose(object_pose: Pose, grasp_pose: Pose, object_urdf: URDF, han
         default_joint_cfg: Optional dictionary of joint names to angles for the default configuration
     Returns:
         open_grasp_pose: Pose of the grasp in world frame when in the open
-    '''
-    
+    """
+
     # 1. Fix default angle is not zero
     if default_joint_cfg is not None:
         object_urdf.update_cfg(default_joint_cfg)
-        
-        
+
     # 2: Compute relative pose of the grasp and handle in object frame
     T_object_handle_init = Pose.from_matrix(object_urdf.get_transform(handle))
     T_object_grasp_init = grasp_pose
     T_handle_grasp = T_object_handle_init.inverse().multiply(T_object_grasp_init)
-    
+
     # 3. Compute the open grasp pose in object frame
     object_urdf.update_cfg(joint_cfg)
     T_object_handle_open = Pose.from_matrix(object_urdf.get_transform(handle))
@@ -277,9 +297,7 @@ def get_open_ee_pose(object_pose: Pose, grasp_pose: Pose, object_urdf: URDF, han
     return T_world_grasp_open
 
 
-def mark_cuboid_as_empty(esdf,
-                         cuboid: Cuboid,
-                         empty_value: float | None = None):
+def mark_cuboid_as_empty(esdf, cuboid: Cuboid, empty_value: float | None = None):
     """
     Mark points in a specific cuboid region as empty by updating the feature_tensor.
     Args:
@@ -301,6 +319,7 @@ def mark_cuboid_as_empty(esdf,
     rot_matrix = np.eye(3)
     if len(cuboid.pose) == 7:
         from scipy.spatial.transform import Rotation as R
+
         quat = cuboid.pose[3:]  # [qw, qx, qy, qz]
         rot_matrix = R.from_quat([quat[1], quat[2], quat[3], quat[0]]).as_matrix()
 
@@ -319,119 +338,73 @@ def mark_cuboid_as_empty(esdf,
 
 
 def ik_clustering_kmeans_ap_fallback(
-    all_iks, kmeans_clusters=500, return_stats=False, **kwargs
+    all_iks,
+    kmeans_clusters=500,
+    ap_fallback_clusters=30,
+    ap_clusters_upperbound=50,
+    ap_clusters_lowerbound=10,
+    **kwargs,
 ):
-    # kmeans to 300 iks and then run ap
-    # Perform KMeans clustering to reduce the number of clusters to 300
-    from sklearn.cluster import KMeans
+    """
+    Cluster IK solutions using KMeans followed by Affinity Propagation.
+    Returns a list of boolean masks [kmeans_mask, ap_mask, final_mask].
+    """
+    from sklearn.cluster import KMeans, AffinityPropagation
     from sklearn.metrics import pairwise_distances_argmin_min
-
-    emb = all_iks.detach().cpu()
-    
-    initial_count = emb.size()[0]
-    stats = {
-        'initial_ik_count': initial_count,
-        'kmeans_applied': False,
-        'kmeans_clusters': 0,
-    }
-
-    # TODO: This is not a good idea, because we need to run AP on the kmeans centers
-    # if emb.size()[0] <= kmeans_clusters:
-    #     return emb
-    if emb.size()[0] <= kmeans_clusters:
-        kmeans_clusters = n_clusters = emb.size()[0]
-
-    kmeans = KMeans(n_clusters=kmeans_clusters, random_state=0).fit(emb)
-
-    # Collect the cluster centers from KMeans
-    kmeans_centers = (
-        emb[pairwise_distances_argmin_min(kmeans.cluster_centers_, emb)[0]]
-        .clone()
-        .detach()
-    )
-    
-    stats['kmeans_applied'] = True
-    stats['kmeans_clusters'] = kmeans_centers.size()[0]
-
-    result = ik_clustering_ap_fallback(kmeans_centers, return_stats=return_stats, **kwargs)
-    
-    if return_stats:
-        clustered_iks, ap_stats = result
-        stats.update(ap_stats)
-        return clustered_iks, stats
-    else:
-        return result
-
-def ik_clustering_ap_fallback(all_iks, ap_fallback_clusters=30, ap_clusters_upperbound=50, ap_clusters_lowerbound=10, return_stats=False):
-    from sklearn.cluster import AffinityPropagation, KMeans
     from sklearn.metrics.pairwise import cosine_similarity
     import numpy as np
-    import torch
 
     emb = all_iks.detach().cpu().numpy()
-    
-    initial_count = emb.shape[0]
-    
-    stats = {
-        'ap_input_count': initial_count,
-        'ap_unique_labels': 0,
-        'clustering_method': 'none',
-        'final_ik_count': 0,
-    }
+    n_samples = emb.shape[0]
+    masks = []
 
-    # TODO: Debug for those origial numbers small than fallback_clusters, causing NO iks
-    if emb.shape[0] <= ap_fallback_clusters:
-        result = torch.tensor(emb, device=all_iks.device)
-        stats['clustering_method'] = 'none'
-        stats['final_ik_count'] = result.shape[0]
-        if return_stats:
-            return result, stats
-        return result
-
-    # First try with AffinityPropagation
-    af = AffinityPropagation(affinity="precomputed", damping=0.9)
-    similarity_matrix = cosine_similarity(emb)
-    af.fit(similarity_matrix)
-    labels = af.labels_
-    unique_label_count = len(np.unique(labels))
-    
-    stats['ap_unique_labels'] = unique_label_count
-
-    print(
-        "Embedding shape:",
-        emb.shape,
-        "AP labels:",
-        len(labels),
-        "unique labels:",
-        unique_label_count
-    )
-
-    if (
-        unique_label_count > ap_clusters_upperbound or unique_label_count < ap_clusters_lowerbound
-    ):  # TODO: 25 is a magic number, get from data
-        # Fall back to KMeans with target number of clusters
-        print(
-            f"AP produced {unique_label_count} clusters, not in range [{ap_clusters_lowerbound}, {ap_clusters_upperbound}]. Falling back to KMeans with {ap_fallback_clusters} clusters."
-        )
-        kmeans = KMeans(n_clusters=ap_fallback_clusters).fit(emb)
-        labels = kmeans.labels_
-        stats['clustering_method'] = 'kmeans_fallback'
-        stats['kmeans_fallback_clusters'] = ap_fallback_clusters
+    # 1. KMeans Filter
+    if n_samples <= kmeans_clusters:
+        kmeans_mask = np.ones(n_samples, dtype=bool)
     else:
-        stats['clustering_method'] = 'affinity_propagation'
+        kmeans = KMeans(n_clusters=kmeans_clusters, random_state=0).fit(emb)
+        kmeans_indices = pairwise_distances_argmin_min(kmeans.cluster_centers_, emb)[0]
+        kmeans_mask = np.zeros(n_samples, dtype=bool)
+        kmeans_mask[kmeans_indices] = True
+    masks.append(kmeans_mask)
 
-    # Extract median from each cluster
-    unique_iks = []
-    for i in np.unique(labels):
-        cluster_set = all_iks[(labels == i).tolist()]
-        set_index = cluster_set[:, 0].argsort()
-        cluster_median = cluster_set[set_index[len(set_index) // 2]]
-        unique_iks.append(cluster_median)
+    # 2. AP Filter (on KMeans results)
+    kmeans_selected_indices = np.where(kmeans_mask)[0]
+    emb_reduced = emb[kmeans_selected_indices]
 
-    unique_iks = torch.stack(unique_iks)
-    stats['final_ik_count'] = unique_iks.shape[0]
-    print("Unique IKs shape:", unique_iks.shape)
-    
-    if return_stats:
-        return unique_iks, stats
-    return unique_iks
+    if emb_reduced.shape[0] <= ap_fallback_clusters:
+        ap_mask_reduced = np.ones(emb_reduced.shape[0], dtype=bool)
+    else:
+        af = AffinityPropagation(affinity="precomputed", damping=0.9, random_state=0)
+        similarity_matrix = cosine_similarity(emb_reduced)
+        af.fit(similarity_matrix)
+        labels = af.labels_
+        unique_labels = np.unique(labels)
+
+        if len(unique_labels) > ap_clusters_upperbound or len(unique_labels) < ap_clusters_lowerbound:
+            kmeans_ap = KMeans(n_clusters=min(ap_fallback_clusters, emb_reduced.shape[0]), random_state=0).fit(
+                emb_reduced
+            )
+            labels = kmeans_ap.labels_
+            unique_labels = np.unique(labels)
+
+        ap_indices_reduced = []
+        for i in unique_labels:
+            cluster_indices = np.where(labels == i)[0]
+            cluster_set = emb_reduced[cluster_indices]
+            set_index = cluster_set[:, 0].argsort()
+            median_idx = cluster_indices[set_index[len(set_index) // 2]]
+            ap_indices_reduced.append(median_idx)
+
+        ap_mask_reduced = np.zeros(emb_reduced.shape[0], dtype=bool)
+        ap_mask_reduced[ap_indices_reduced] = True
+
+    # Map back to original indices
+    ap_mask = np.zeros(n_samples, dtype=bool)
+    ap_mask[kmeans_selected_indices[ap_mask_reduced]] = True
+    masks.append(ap_mask)
+
+    # 3. Final Filter
+    masks.append(ap_mask.copy())
+
+    return masks

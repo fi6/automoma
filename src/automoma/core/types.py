@@ -36,15 +36,24 @@ class GripperState(Enum):
 
 @dataclass
 class IKResult:
-    start_iks: torch.Tensor
-    goal_iks: torch.Tensor = None
-
+    target_poses: torch.Tensor
+    iks: torch.Tensor
+    
     @classmethod
     def cat(cls, results: List[IKResult]) -> IKResult:
         """Merge multiple IKResult objects into one."""
+        if not results:
+            return None
         return cls(
-            start_iks=torch.cat([r.start_iks for r in results], dim=0),
-            goal_iks=torch.cat([r.goal_iks for r in results], dim=0) if results[0].goal_iks is not None else None
+            target_poses=torch.cat([r.target_poses for r in results], dim=0),
+            iks=torch.cat([r.iks for r in results], dim=0)
+        )
+        
+    def __getitem__(self, indices: Union[torch.Tensor, np.ndarray, slice, List[int]]) -> IKResult:
+        """Allow indexing and masking of the result object."""
+        return IKResult(
+            target_poses=self.target_poses[indices],
+            iks=self.iks[indices]
         )
 
 @dataclass

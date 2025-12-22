@@ -10,6 +10,10 @@ from scipy.spatial.transform import Rotation as R
 
 def get_project_dir() -> str:
     return os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+def get_abs_path(path: str) -> str:
+    return os.path.join(get_project_dir(), path)
+
 def process_robot_cfg(robot_cfg: Dict) -> Dict:
     if robot_cfg.get("kinematics", {}).get("urdf_path", ""):
         robot_cfg["kinematics"]["urdf_path"] = os.path.join(get_project_dir(), robot_cfg["kinematics"]["urdf_path"])
@@ -34,8 +38,8 @@ def load_robot_cfg(robot_cfg_path: Union[str, Dict]) -> Dict[str, Any]:
 def save_ik(ik_result: IKResult, path: str) -> None:
     """Save IKResult to a file."""
     ik_data = {
-        "start_iks": ik_result.start_iks.cpu(),
-        "goal_iks": ik_result.goal_iks.cpu() if ik_result.goal_iks is not None else None
+        "target_poses": ik_result.target_poses,
+        "iks": ik_result.iks,
     }
     torch.save(ik_data, path)
     print(f"IK data saved to {path}")
