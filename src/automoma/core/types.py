@@ -33,6 +33,25 @@ class GripperState(Enum):
     OPEN = auto()
     CLOSED = auto()
     MOVING = auto()    
+    
+class DatasetType(Enum):
+    TRAIN = auto()
+    VAL = auto()
+    TEST = auto()
+    
+class DatasetFormat(Enum):
+    LEROBOT = auto()
+    HDF5 = auto()
+    ZARR = auto()
+    
+class PoseType(Enum):
+    LOCAL = auto()
+    WORLD = auto()
+    
+class CameraType(Enum):
+    EGO_TOPDOWN = auto()
+    EGO_WRIST = auto()
+    FIX_LOCAL = auto()
 
 @dataclass
 class IKResult:

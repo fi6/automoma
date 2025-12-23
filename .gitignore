@@ -1,6 +1,9 @@
 # Specific to Python Project
-curobo/
+assets/
+data/
+tests/
 z-reference/
+.vscode/
 
 
 # Byte-compiled / optimized / DLL files

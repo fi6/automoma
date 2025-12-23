@@ -50,16 +50,48 @@ from automoma.utils.file_utils import (
 )
 
 
+class BasePlanner(MotionPlannerInterface):
+
+    def init_motion_gen(self, robot_cfg: Union[str, Dict], fixed_base: bool=False) -> MotionGen:
+        """Initialize motion generator for standard robot"""
+        if robot_cfg is None:
+            raise ValueError("Robot configuration path is required")
+        
+        robot_cfg = load_robot_cfg(robot_cfg)
+        gradient_trajopt_file = "gradient_trajopt_fixbase.yml" if fixed_base else "gradient_trajopt.yml"
+        
+        # DEBUG: need new collision checker each time for different motion_gen
+
+        motion_gen_config = MotionGenConfig.load_from_robot_config(
+            robot_cfg,
+            WorldConfig(),
+            TensorDeviceType(),
+            num_trajopt_seeds=12,
+            num_graph_seeds=12,
+            interpolation_dt=0.05,
+            collision_cache={"obb": 30, "mesh": 100},
+            optimize_dt=True,
+            trajopt_dt=None,
+            trajopt_tsteps=32,
+            trim_steps=None,
+            use_cuda_graph=False,
+            gradient_trajopt_file=gradient_trajopt_file,
+        )
+
+        self.motion_gen = MotionGen(motion_gen_config)
+        print("Motion generator initialized")
+        return self.motion_gen
+
 class CuroboPlanner(MotionPlannerInterface):
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, cfg: Dict[str, Any]):
         super().__init__()
 
         # Initialize core components
         self.tensor_args = TensorDeviceType()
         self.usd_helper = UsdHelper()
 
-        self.planner_cfg = config
+        self.planner_cfg = cfg
 
     def setup_env(self, scene_cfg: Dict[str, Any], object_cfg: Dict[str, Any]) -> None:
         self.scene_cfg = scene_cfg
@@ -315,6 +347,11 @@ class CuroboPlanner(MotionPlannerInterface):
             world_model,
             self.tensor_args,
         )
+        
+        # Disable collision
+        if not enable_collision:
+            self.world_collision_config = world_collision_config
+            return
 
         # Initialize collision checkers
         world_voxel_collision = WorldVoxelCollision(world_collision_config)

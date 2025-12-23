@@ -1,0 +1,10 @@
+[submodule "third_party/infinigen"]
+	path = third_party/infinigen
+	url = https://github.com/chang-xinhai/infinigen.git
+[submodule "third_party/curobo"]
+	path = third_party/curobo
+	url = https://github.com/fi6/curobo.git
+	# branch = develop
+[submodule "policy/RoboTwin"]
+	path = policy/RoboTwin
+	url = https://github.com/chang-xinhai/RoboTwin.git

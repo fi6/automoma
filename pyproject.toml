@@ -1,0 +1,68 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "automoma"
+authors = [
+    {name = "Your name", email = "your.email@example.com"},
+]
+description = "A Python package for robot trajectory generation and simulation"
+readme = "README.md"
+requires-python = ">=3.8"
+dynamic = ["version"]
+dependencies = [
+    "numpy",
+    "torch",
+    "scipy",
+    "PyYAML",
+    "h5py",
+    "ipywidgets",
+    "tqdm",
+    "matplotlib",
+    "opencv-python",
+    "gymnasium",
+    "pandas",
+    "tensordict",
+]
+
+[project.optional-dependencies]
+plan = [
+    "nvidia-curobo",
+    "yourdfpy",
+    "omegaconf",
+    "hydra-core",
+]
+record = [
+    "isaacsim",
+    "scene-synthesizer[recommend]",
+    "warp-lang",
+    "trimesh",
+]
+dev = [
+    "pytest>=6.0",
+    "black>=22.0",
+    "isort>=5.0",
+    "flake8>=4.0",
+    "pylint>=2.12",
+    "mypy>=0.910",
+]
+
+[project.urls]
+Repository = "https://github.com/chang-xinhai/AutoMoMa.git"
+
+[tool.flit.module]
+name = "automoma"
+
+[tool.black]
+line-length = 120
+target-version = ['py38']
+include = '\.pyi?$'
+
+[tool.isort]
+profile = "black"
+line_length = 120
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
