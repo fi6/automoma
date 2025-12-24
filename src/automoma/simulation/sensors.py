@@ -17,6 +17,9 @@ class SensorRig:
         2. ego_wrist: attached to robot end effector (panda_hand)
         3. fix_local: attached to object
         """
+        
+        self.sensor_cfgs = sensor_cfgs
+        
         cameras = {}
         
         camera_configs = sensor_cfgs.get("cameras", {})
@@ -53,23 +56,41 @@ class SensorRig:
         # Update sensor states in the simulation
         pass
     
-    def get_data(self):
+    def get_obs(self):
         # Retrieve sensor data from the simulation
         observations = {
             "images": {},
             "depth": {},
+            "pointcloud": {}
         }
         for camera_name, camera in self.cameras.items():
             # Get RGB data (remove alpha channel) 
             rgba = camera.get_rgba()
+            image = rgba[:, :, :3]
             if rgba is not None:
-                observations["images"][camera_name] = rgba[:, :, :3]
+                observations["images"][camera_name] = image
             # Get depth data
             depth = camera.get_depth()
             if depth is not None:
                 observations["depth"][camera_name] = depth
+            # Get point cloud data
+            pointcloud = camera.get_pointcloud()    
+            pointcloud = self._process_pointcloud(camera_name, pointcloud, image)
+            if pointcloud is not None:
+                observations["pointcloud"][camera_name] = pointcloud
+            
         return observations
-
+    
+    def _process_pointcloud(self, camera_name: str, pointcloud: Optional[Any], image: Optional[Any]) -> Optional[Any]:
+        """Process point cloud data if needed."""
+        if pointcloud is None:
+            return None
+        # Not required
+        pc_cfg = self.sensor_cfgs.get("pointcloud", {}).get(camera_name)
+        if pc_cfg is None:
+            return None
+        
+    
     def _set_camera_pose(self, camera: Camera, pose: List[float], pose_type: PoseType) -> None:
         """Set camera pose based on configuration."""
         if pose_type == PoseType.LOCAL:

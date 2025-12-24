@@ -1,10 +1,32 @@
+import numpy as np
+import os
 
 class BaseDatasetWrapper:
+    '''
+    Format:
+    {
+        "obs_data": {
+            "images": {
+                "camera_1": np.array,
+                "camera_2": np.array,
+                ...
+            },
+            "depth": {
+                "camera_1": np.array,
+                "camera_2": np.array,
+                ...
+            },
+        }
+        "joint_data": joint_data,
+        "eef_pose_data": eef_pose_data,
+        "action_data": action_data
+    }
+    '''
     def __init__(self):
         raise NotImplementedError("BaseDatasetWrapper is an abstract class and cannot be instantiated directly.")
     def create(self):
         raise NotImplementedError("The create method must be implemented by subclasses.")
-    def add(self, frame):
+    def add(self, data):
         raise NotImplementedError("The add method must be implemented by subclasses.")
     def save(self):
         raise NotImplementedError("The save method must be implemented by subclasses.")
@@ -14,8 +36,10 @@ class BaseDatasetWrapper:
 
 class LeRobotDatasetWrapper(BaseDatasetWrapper):
     def __init__(self, cfg):
+        
         self.dataset = None
         self.cfg = cfg
+        self.task = cfg.get("task", "manipulation")
         
     def _init_features(self):
         features = {
@@ -44,7 +68,7 @@ class LeRobotDatasetWrapper(BaseDatasetWrapper):
             
         for cam in self.cfg.camera.names:
             features[f"observation.depth.{cam}"] = {
-                "dtype": "depth",
+                "dtype": "float32",
                 "shape": (1, self.cfg.camera.height, self.cfg.camera.width),
                 "names": ["channels", "height", "width"],
             }   
@@ -52,6 +76,7 @@ class LeRobotDatasetWrapper(BaseDatasetWrapper):
 
     def create(self):
         from lerobot.datasets.lerobot_dataset import LeRobotDataset
+        
         # init features
         self._init_features()
         
@@ -64,9 +89,21 @@ class LeRobotDatasetWrapper(BaseDatasetWrapper):
             robot_type= self.cfg.robot_type,
             use_videos= self.cfg.use_videos,
         )
-    def add(self, frame):
+    def add(self, data):
+        frame = {
+            "observation.state": data["joint_data"],
+            "observation.eef": data["eef_pose_data"],
+            "action": data["action_data"],
+        }
+        # Add images
+        for cam_name, img in data["obs_data"]["images"].items():
+            frame[f"observation.images.{cam_name}"] = img
         
+        # Add depth
+        for cam_name, depth in data["obs_data"]["depth"].items():
+            frame[f"observation.depth.{cam_name}"] = depth
         
+        frame["task"] = self.task 
         
         self.dataset.add_frame(frame)
         

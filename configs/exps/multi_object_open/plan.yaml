@@ -1,0 +1,50 @@
+info_cfg:
+  task: "multi_object_open"
+  robot: "summit_franka"
+  scene: ["scene_0_seed_0", "scene_1_seed_1", "scene_2_seed_2", "scene_3_seed_3"]
+  object: ["7221", "11622", "101773"]
+plan_cfg:
+  voxel_dims: [64, 64, 64]
+  voxel_size: 0.02
+  expand_dims: 0.1
+  collision_checker_type: "VOXEL"
+  output_dir: "data/run_1223"
+  num_grasps: 20
+  cluster:
+    ap_fallback_clusters: 50
+    ap_clusters_upperbound: 200
+    ap_cluster_lowerbound: 20
+  plan_ik:
+    limit: [50, 50]
+  plan_traj:
+    stage_type: MOVE_ARTICULATED
+    batch_size: 10
+    expand_to_pairs: true
+  filter:
+    stage_type: MOVE_ARTICULATED
+    position_threshold: 0.05
+    orientation_threshold: 0.3
+scene_cfg:
+  scene_0_seed_0:
+    path: "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/export/export_scene.blend/export_scene.usdc"
+    pose: [0, 0, -0.13, 1, 0, 0, 0]
+    metadata_path: "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/info/metadata.json"
+  scene_1_seed_1:
+    path: "assets/scene/infinigen/kitchen_1130/scene_1_seed_1/export/export_scene.blend/export_scene.usdc"
+    pose: [0, 0, -0.13, 1, 0, 0, 0]
+    metadata_path: "assets/scene/infinigen/kitchen_1130/scene_1_seed_1/info/metadata.json"
+object_cfg:
+  "7221":
+    path: assets/object/Microwave/7221/7221_0_scaling.urdf
+    pose: [0, 0, 0, 1, 0, 0, 0]
+    asset_type: "Microwave"
+    asset_id: "7221"
+    scale: 0.3563
+    start_angles: [0]
+    goal_angles: [1.57, 0.9]
+  "11622":
+    path: assets/object/Dishwasher/11622/11622_0_scaling.urdf
+robot_cfg:
+  robot_type: "summit_franka"
+  path: "assets/robot/summit_franka/summit_franka.yaml"
+  

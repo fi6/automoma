@@ -24,7 +24,7 @@ class InfinigenBuilder(SceneBuilder):
     def __init__(self, sim, cfg):
         super().__init__(sim, cfg)
         
-    def init_root_pose(self, object_pose: torch.Tensor, type: str = "object_center") -> torch.Tensor:
+    def init_root_pose(self, object_pose: torch.Tensor, scene_pose: torch.Tensor, type: str = "object_center") -> torch.Tensor:
         """
         Calculate the root pose of an object in the scene.
 
@@ -36,15 +36,14 @@ class InfinigenBuilder(SceneBuilder):
         Returns:
             torch.Tensor: The calculated root pose 7 dim. [x, y, z, qw, qx, qy, qz]
         """
-        self.root_pose = torch.tensor([0, 0, 0, 1, 0, 0, 0], device=object_pose.device)
+        self.root_pose = scene_pose
         
         if type == "object_center":
             object_Pose = Pose.from_list(object_pose.tolist())
             object_pose_inverse = object_Pose.inverse().to_list()
             
             object_pose_inverse[2] = 0.0  # ignore z offset for root pose
-            # root_pose = pose_multiply(object_pose_inverse, scene_pose)
-            self.root_pose = object_pose_inverse
+            self.root_pose = pose_multiply(object_pose_inverse, scene_pose)
         
         return self.root_pose
     
@@ -88,7 +87,7 @@ class InfinigenBuilder(SceneBuilder):
             prim_path (str): The path to the object.
         '''
         path = object_cfg.get("path", None)
-        pose = object_cfg.get("pose", None) # TODO: pose is already shift with scene pose
+        pose = object_cfg.get("pose", None)
         pose = self.get_world_pose(pose)
         
         if not os.path.exists(path):

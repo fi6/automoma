@@ -8,6 +8,27 @@ from curobo.geom.types import WorldConfig, Cuboid
 from scipy.spatial.transform import Rotation as R
 
 
+def unpack_ik(ik: Union[torch.Tensor, np.ndarray, List[float]]) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Unpack IK solution into robot state and environment state.
+
+    Args:
+        ik: Union[torch.Tensor, np.ndarray, List[float]], IK solution with last element as env state
+    Returns:
+        Returns:
+        robot_state: torch.Tensor, robot joint positions
+        env_state: torch.Tensor, environment state (e.g., object position)
+    """
+    if isinstance(ik, list):
+        ik = torch.tensor(ik, dtype=torch.float32)
+    elif isinstance(ik, np.ndarray):
+        ik = torch.from_numpy(ik).float()
+
+    robot_state = ik[:-1]
+    env_state = ik[-1].unsqueeze(0)
+
+    return robot_state, env_state
+        
+        
 def quat_to_euler(quat: np.ndarray, order: str = "xyz") -> np.ndarray:
     """Convert a quaternion to Euler angles.
 
@@ -234,9 +255,9 @@ def pose_multiply(p1, p2):
         The resulting pose, in the same data type as `p1`.
     """
     # Store the original type and properties to reconstruct the output later
-    original_type = type(p1)
-    device = getattr(p1, "device", None)
-    dtype = getattr(p1, "dtype", None)
+    original_type = type(p2)
+    device = getattr(p2, "device", None)
+    dtype = getattr(p2, "dtype", None)
 
     # Use the curobo Pose object for the core calculation
     curobo_pose1 = Pose.from_list(_convert_to_list(p1))
@@ -408,3 +429,29 @@ def ik_clustering_kmeans_ap_fallback(
     masks.append(ap_mask.copy())
 
     return masks
+
+def create_colored_pointcloud(pc_xyz, rgb_image, ignore_nan=True):
+    """
+    Create a colored point cloud by combining XYZ data with RGB values
+
+    Args:
+        pc_xyz: Point cloud data of shape (H, W, 3)
+        rgb_image: RGB image of shape (H, W, 3) or (H, W, 4) for RGBA
+        ignore_nan: Whether to filter out NaN values (default: True)
+    Returns:
+        colored_pc: Combined XYZ+RGB data of shape (N, 6) where N is the number of valid points
+    """
+    height, width = pc_xyz.shape[:2]
+    points = pc_xyz.reshape(-1, 3)
+    rgb = rgb_image[:, :, :3] if rgb_image.shape[2] == 4 else rgb_image
+    colors = rgb.reshape(-1, 3)
+    valid_mask = np.ones(points.shape[0], dtype=bool)
+    if ignore_nan:
+        nan_mask = ~np.isnan(points).any(axis=1)
+        valid_mask = valid_mask & nan_mask
+    valid_points = points[valid_mask]
+    valid_colors = colors[valid_mask]
+    if valid_colors.max() > 1.0:
+        valid_colors = valid_colors / 255.0
+    colored_pc = np.hstack((valid_points, valid_colors))
+    return colored_pc

@@ -19,7 +19,6 @@ class TaskType(Enum):
     COMPOSITE = auto()
     
 class StageType(Enum):
-    REACH = auto()              # Reach to the object
     GRASP = auto()              # Grasp (close gripper)
     LIFT = auto()               # Lift the object
     RELEASE = auto()            # Release (open gripper)
@@ -68,6 +67,14 @@ class IKResult:
             iks=torch.cat([r.iks for r in results], dim=0)
         )
         
+    @classmethod
+    def fallback(cls, robot_dof: int, num_samples: int=0) -> IKResult:
+        """Create a fallback IKResult with failed IK solutions."""
+        return cls(
+            target_poses=torch.zeros((num_samples, 7)),
+            iks=torch.zeros((num_samples, robot_dof))
+        )
+        
     def __getitem__(self, indices: Union[torch.Tensor, np.ndarray, slice, List[int]]) -> IKResult:
         """Allow indexing and masking of the result object."""
         return IKResult(
@@ -100,6 +107,15 @@ class TrajResult:
             goal_states=torch.cat([r.goal_states for r in results], dim=0),
             trajectories=torch.cat([r.trajectories for r in results], dim=0),
             success=torch.cat([r.success for r in results], dim=0)
+        )
+    @classmethod
+    def fallback(cls, robot_dof: int, num_samples: int=0) -> TrajResult:
+        """Create a fallback TrajResult with failed trajectories."""
+        return cls(
+            start_states=torch.zeros((num_samples, robot_dof)),
+            goal_states=torch.zeros((num_samples, robot_dof)),
+            trajectories=torch.zeros((num_samples, 1, robot_dof)),
+            success=torch.zeros((num_samples,), dtype=torch.bool)
         )
 
     def __getitem__(self, indices: Union[torch.Tensor, np.ndarray, slice, List[int]]) -> TrajResult:
