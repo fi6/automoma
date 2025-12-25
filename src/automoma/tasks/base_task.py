@@ -1,5 +1,6 @@
 """Base task class for manipulation tasks."""
 
+import logging
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
@@ -7,6 +8,9 @@ import numpy as np
 import torch
 
 from automoma.core.types import TaskType, StageType, PlanResult
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -215,7 +219,7 @@ class BaseTask(ABC):
             self.state.current_stage = stage
             self.state.stage_index = i
             
-            print(f"Executing stage {i + 1}/{len(self.stages)}: {stage.name}")
+            logger.info(f"Executing stage {i + 1}/{len(self.stages)}: {stage.name}")
             
             stage_kwargs = kwargs.get(stage.name.lower(), {})
             result, success = self.execute_stage(stage, **stage_kwargs)
@@ -229,7 +233,7 @@ class BaseTask(ABC):
             if not success:
                 self.state.success = False
                 self.state.is_complete = True
-                print(f"Stage {stage.name} failed: {self.state.error_message}")
+                logger.warning(f"Stage {stage.name} failed: {self.state.error_message}")
                 return self.state
         
         self.state.is_complete = True

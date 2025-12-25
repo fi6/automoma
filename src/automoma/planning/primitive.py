@@ -216,7 +216,7 @@ class ComposePrimitive(PlanningPrimitive):
     """Compose multiple primitives into a sequence."""
     
     def __init__(self, primitives: List[PlanningPrimitive]):
-        super().__init__("compose", StageType.COMPOSITE if hasattr(StageType, 'COMPOSITE') else StageType.MOVE)
+        super().__init__("compose", StageType.COMPOSITE)
         self.primitives = primitives
     
     def execute(self, initial_state: torch.Tensor, **kwargs) -> List[Any]:

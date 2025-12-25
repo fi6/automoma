@@ -6,6 +6,10 @@ from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
 
 
+# Numerical constants
+QUATERNION_NORM_EPSILON = 1e-8  # Epsilon for quaternion normalization
+
+
 @dataclass
 class EvaluationMetrics:
     """Container for evaluation metrics."""
@@ -117,8 +121,8 @@ def compute_orientation_error(
         Tuple of (mean, std, max) orientation errors in radians
     """
     # Normalize quaternions
-    pred_quats = pred_quats / (np.linalg.norm(pred_quats, axis=-1, keepdims=True) + 1e-8)
-    gt_quats = gt_quats / (np.linalg.norm(gt_quats, axis=-1, keepdims=True) + 1e-8)
+    pred_quats = pred_quats / (np.linalg.norm(pred_quats, axis=-1, keepdims=True) + QUATERNION_NORM_EPSILON)
+    gt_quats = gt_quats / (np.linalg.norm(gt_quats, axis=-1, keepdims=True) + QUATERNION_NORM_EPSILON)
     
     # Compute inner product
     dot_products = np.abs(np.sum(pred_quats * gt_quats, axis=-1))

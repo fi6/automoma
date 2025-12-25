@@ -27,6 +27,7 @@ class StageType(Enum):
     MOVE_ARTICULATED = auto()   # Move articulated parts
     WAIT = auto()               # Wait in place
     HOME = auto()               # Back to initial position
+    COMPOSITE = auto()          # Composite stage (multiple primitives)
 
 class GripperState(Enum):
     OPEN = auto()
@@ -58,17 +59,21 @@ class IKResult:
     iks: torch.Tensor
     
     @classmethod
-    def cat(cls, results: List[IKResult]) -> IKResult:
+    def cat(cls, results: List["IKResult"]) -> "IKResult":
         """Merge multiple IKResult objects into one."""
         if not results:
-            return None
+            # Return empty IKResult with zero-sized tensors for consistent type
+            return cls(
+                target_poses=torch.empty((0, 7)),
+                iks=torch.empty((0, 0))
+            )
         return cls(
             target_poses=torch.cat([r.target_poses for r in results], dim=0),
             iks=torch.cat([r.iks for r in results], dim=0)
         )
         
     @classmethod
-    def fallback(cls, robot_dof: int, num_samples: int=0) -> IKResult:
+    def fallback(cls, robot_dof: int, num_samples: int=0) -> "IKResult":
         """Create a fallback IKResult with failed IK solutions."""
         return cls(
             target_poses=torch.zeros((num_samples, 7)),

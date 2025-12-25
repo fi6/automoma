@@ -1,6 +1,7 @@
 """Planning pipeline for motion planning with trajectory optimization."""
 
 import os
+import logging
 import torch
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
@@ -17,6 +18,9 @@ from automoma.utils.file_utils import (
     get_grasp_poses,
 )
 from automoma.utils.math_utils import get_open_ee_pose, stack_iks_angle
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -86,7 +90,7 @@ class PlanningPipeline:
         self.planner = CuroboPlanner(planner_cfg)
         self.planner.setup_env(scene_cfg, object_cfg)
         self.motion_gen = self.planner.init_motion_gen(self.robot_cfg)
-        print("Planning pipeline setup complete")
+        logger.info("Planning pipeline setup complete")
     
     def plan_single_grasp(self, grasp_id: int, grasp_pose: List[float],
                           start_angles: List[float], goal_angles: List[float],

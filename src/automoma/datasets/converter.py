@@ -246,8 +246,9 @@ class DatasetConverter:
                     if all(v is not None for v in values):
                         try:
                             ep_subgroup.create_dataset(key, data=np.array(values))
-                        except Exception:
-                            pass
+                        except (TypeError, ValueError) as e:
+                            # Log specific conversion errors for debugging
+                            print(f"Warning: Could not save key '{key}' in episode {ep_idx}: {e}")
     
     def _save_zarr(self, data: Dict[str, Any], path: Path, **kwargs) -> None:
         """Save to Zarr format."""
@@ -278,8 +279,9 @@ class DatasetConverter:
                 if all(v is not None for v in values):
                     try:
                         ep_subgroup.create_dataset(key, data=np.array(values))
-                    except Exception:
-                        pass
+                    except (TypeError, ValueError) as e:
+                        # Log specific conversion errors for debugging
+                        print(f"Warning: Could not save key '{key}' in episode {ep_idx}: {e}")
 
 
 def convert_to_lerobot(

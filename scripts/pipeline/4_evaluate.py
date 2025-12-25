@@ -174,7 +174,9 @@ def run_offline_evaluation(
     
     for traj_file in tqdm(traj_files[:eval_config.num_episodes], desc="Evaluating"):
         try:
-            traj_data = torch.load(traj_file, weights_only=False)
+            # Note: weights_only=False is required for loading complex tensor dicts
+            # Ensure trajectory files come from trusted sources
+            traj_data = torch.load(traj_file, weights_only=True)
             trajectories = traj_data["trajectories"]
             success = traj_data["success"]
             

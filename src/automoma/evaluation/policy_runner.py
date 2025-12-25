@@ -2,7 +2,6 @@
 
 import os
 import time
-import asyncio
 import threading
 import queue
 from abc import ABC, abstractmethod
@@ -51,12 +50,14 @@ class AsyncModelClient:
         self.timeout = timeout
         
         self._request_queue = queue.Queue()
-        self._response_queue = queue.Queue()
         self._request_id = 0
         self._running = False
         self._worker_thread = None
+        self._lock = threading.Lock()
         
         self._pending_requests: Dict[int, InferenceRequest] = {}
+        self._responses: Dict[int, InferenceResponse] = {}
+        self._response_events: Dict[int, threading.Event] = {}
     
     def start(self) -> None:
         """Start the async client worker thread."""
@@ -88,8 +89,14 @@ class AsyncModelClient:
                 # Process the request
                 response = self._process_request(request)
                 
-                # Put response in queue
-                self._response_queue.put(response)
+                # Store response and signal event (thread-safe)
+                with self._lock:
+                    self._responses[response.request_id] = response
+                    event = self._response_events.get(response.request_id)
+                
+                # Signal outside lock to avoid holding lock while event triggers
+                if event is not None:
+                    event.set()
                 
             except Exception as e:
                 print(f"Error in worker loop: {e}")
@@ -145,18 +152,27 @@ class AsyncModelClient:
         Returns:
             Request ID for tracking
         """
-        self._request_id += 1
+        with self._lock:
+            self._request_id += 1
+            request_id = self._request_id
+        
         request = InferenceRequest(
-            request_id=self._request_id,
+            request_id=request_id,
             observation=observation,
         )
-        self._pending_requests[self._request_id] = request
+        
+        # Create event for this request
+        event = threading.Event()
+        with self._lock:
+            self._pending_requests[request_id] = request
+            self._response_events[request_id] = event
+        
         self._request_queue.put(request)
-        return self._request_id
+        return request_id
     
     def get_response(self, request_id: int, timeout: float = None) -> Optional[InferenceResponse]:
         """
-        Get response for a specific request ID.
+        Get response for a specific request ID using event-driven mechanism.
         
         Args:
             request_id: The request ID to get response for
@@ -168,18 +184,26 @@ class AsyncModelClient:
         if timeout is None:
             timeout = self.timeout
         
-        start_time = time.time()
-        while time.time() - start_time < timeout:
-            try:
-                response = self._response_queue.get(timeout=0.1)
-                if response.request_id == request_id:
-                    self._pending_requests.pop(request_id, None)
-                    return response
-                else:
-                    # Put back if not the one we're looking for
-                    self._response_queue.put(response)
-            except queue.Empty:
-                continue
+        # Get the event for this request
+        with self._lock:
+            event = self._response_events.get(request_id)
+        
+        if event is None:
+            return None
+        
+        # Wait for the response
+        if event.wait(timeout=timeout):
+            # Response is ready
+            with self._lock:
+                response = self._responses.pop(request_id, None)
+                self._pending_requests.pop(request_id, None)
+                self._response_events.pop(request_id, None)
+            return response
+        
+        # Timeout - cleanup
+        with self._lock:
+            self._pending_requests.pop(request_id, None)
+            self._response_events.pop(request_id, None)
         
         return None
     
