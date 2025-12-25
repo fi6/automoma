@@ -230,7 +230,6 @@ class CuroboPlanner(MotionPlannerInterface):
         stage_type = filter_cfg.get("stage_type", StageType.MOVE)
         
         stage_mapping = {
-            StageType.REACH: self.filter_traj_reach,
             StageType.GRASP: self.filter_traj_grasp,
             StageType.LIFT: self.filter_traj_lift,
             StageType.RELEASE: self.filter_traj_release,

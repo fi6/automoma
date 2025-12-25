@@ -25,7 +25,7 @@ class OpenTask(BaseTask):
     """
     
     STAGES = [StageType.MOVE_ARTICULATED]
-    TASK_TYPE = TaskType.REACH_OPEN
+    TASK_TYPE = TaskType.OPEN
     
     def __init__(self, cfg: Config):
         """Initialize open task."""
@@ -107,6 +107,47 @@ class OpenTask(BaseTask):
     def get_stage_type(self, stage_index: int) -> StageType:
         """Get stage type - always MOVE_ARTICULATED for open task."""
         return StageType.MOVE_ARTICULATED
+    
+    def _plan_trajectories(
+        self,
+        start_iks: IKResult,
+        goal_iks: IKResult,
+        stage_type: StageType,
+        grasp_id: Optional[int] = None,
+    ):
+        """
+        Override trajectory planning to use AKR robot config for articulated motion.
+        
+        For articulated object manipulation, we need to use the AKR robot config
+        which includes the object attached to the robot (fixed base).
+        """
+        if grasp_id is None:
+            logger.warning("No grasp_id provided, using default motion_gen")
+            return super()._plan_trajectories(start_iks, goal_iks, stage_type)
+        
+        # Get object config (assume single object for now)
+        object_id = list(self.cfg.object_cfg.keys())[0]
+        object_cfg = self.cfg.object_cfg[object_id]
+        
+        # Get AKR robot config and motion gen
+        akr_robot_cfg, akr_motion_gen = self.get_akr_motion_gen(object_cfg, grasp_id)
+        
+        # Temporarily replace motion_gen and robot_cfg
+        original_motion_gen = self.motion_gen
+        original_robot_cfg = self.robot_cfg
+        
+        self.motion_gen = akr_motion_gen
+        self.robot_cfg = akr_robot_cfg
+        
+        try:
+            # Plan with AKR config
+            result = super()._plan_trajectories(start_iks, goal_iks, stage_type)
+        finally:
+            # Restore original configs
+            self.motion_gen = original_motion_gen
+            self.robot_cfg = original_robot_cfg
+        
+        return result
     
     def _get_stage_angles(self, stage_index: int, object_cfg: Config) -> Tuple[List[float], List[float]]:
         """

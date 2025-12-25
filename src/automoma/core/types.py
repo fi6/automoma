@@ -67,9 +67,24 @@ class IKResult:
                 target_poses=torch.empty((0, 7)),
                 iks=torch.empty((0, 0))
             )
+        
+        # Filter out empty results
+        non_empty_results = [r for r in results if r.iks.shape[0] > 0]
+        
+        if not non_empty_results:
+            # All results are empty, return empty with correct dof
+            dof = results[0].iks.shape[1] if results[0].iks.ndim > 1 else 0
+            return cls(
+                target_poses=torch.empty((0, 7)),
+                iks=torch.empty((0, dof))
+            )
+        
+        # Move all tensors to the same device (use first non-empty result's device)
+        device = non_empty_results[0].iks.device
+        
         return cls(
-            target_poses=torch.cat([r.target_poses for r in results], dim=0),
-            iks=torch.cat([r.iks for r in results], dim=0)
+            target_poses=torch.cat([r.target_poses.to(device) for r in non_empty_results], dim=0),
+            iks=torch.cat([r.iks.to(device) for r in non_empty_results], dim=0)
         )
         
     @classmethod
@@ -107,11 +122,29 @@ class TrajResult:
         """Merge multiple TrajResult objects into one."""
         if not results:
             return None
+        
+        # Filter out empty results
+        non_empty_results = [r for r in results if r.trajectories.shape[0] > 0]
+        
+        if not non_empty_results:
+            # All results are empty, return empty with correct shapes
+            dof = results[0].trajectories.shape[2] if results[0].trajectories.ndim > 2 else 0
+            steps = results[0].trajectories.shape[1] if results[0].trajectories.ndim > 1 else 1
+            return cls(
+                start_states=torch.empty((0, dof)),
+                goal_states=torch.empty((0, dof)),
+                trajectories=torch.empty((0, steps, dof)),
+                success=torch.empty((0,), dtype=torch.bool)
+            )
+        
+        # Move all tensors to the same device (use first non-empty result's device)
+        device = non_empty_results[0].trajectories.device
+        
         return cls(
-            start_states=torch.cat([r.start_states for r in results], dim=0),
-            goal_states=torch.cat([r.goal_states for r in results], dim=0),
-            trajectories=torch.cat([r.trajectories for r in results], dim=0),
-            success=torch.cat([r.success for r in results], dim=0)
+            start_states=torch.cat([r.start_states.to(device) for r in non_empty_results], dim=0),
+            goal_states=torch.cat([r.goal_states.to(device) for r in non_empty_results], dim=0),
+            trajectories=torch.cat([r.trajectories.to(device) for r in non_empty_results], dim=0),
+            success=torch.cat([r.success.to(device) for r in non_empty_results], dim=0)
         )
     @classmethod
     def fallback(cls, robot_dof: int, num_samples: int=0) -> TrajResult:

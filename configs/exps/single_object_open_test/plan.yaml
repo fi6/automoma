@@ -9,6 +9,7 @@ info_cfg:
   description: "Single object open test for pipeline validation"
 
 plan_cfg:
+  resume: true  # Skip already completed planning tasks
   voxel_dims: [5.0, 5.0, 5.0]
   voxel_size: 0.02
   expand_dims: [1.0, 0.2, 0.2]
@@ -60,8 +61,9 @@ ik_robot_cfg:
   path: "assets/robot/summit_franka/summit_franka.yml"
   fixed_base: false
 
-# Robot config for trajectory planning/filtering (arm only, fixed base for articulated motion)
+# Robot config template for articulated object planning (fixed base)
+# Path will be populated with: assets/object/{asset_type}/{asset_id}/summit_franka_{asset_id}_0_grasp_{grasp_id:04d}.yml
 akr_robot_cfg:
-  robot_type: "akr_summit_franka"
-  path: "assets/robot/summit_franka/summit_franka_akr.yml"
+  robot_type: "summit_franka"
+  path: ""  # Template path, populated dynamically with asset_type, asset_id, grasp_id
   fixed_base: true

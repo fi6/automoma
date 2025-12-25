@@ -22,15 +22,18 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from automoma.core.config_loader import load_config, Config
-from automoma.tasks.factory import create_task
-from automoma.utils.file_utils import load_object_from_metadata
-
+# Configure logging before imports
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
+# Reduce curobo logging to WARNING level
+logging.getLogger('curobo').setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
+
+from automoma.core.config_loader import load_config, Config
+from automoma.tasks.factory import create_task
+from automoma.utils.file_utils import load_object_from_metadata
 
 
 def run_planning(cfg: Config, scene_filter: str = None, object_filter: str = None):

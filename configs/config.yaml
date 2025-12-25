@@ -42,6 +42,7 @@ camera:
     
 # Default planning parameters
 planning:
+  resume: true  # Skip already completed planning tasks
   voxel_dims: [5.0, 5.0, 5.0]
   voxel_size: 0.02
   expanded_dims: [1.0, 0.2, 0.2]
@@ -52,6 +53,7 @@ planning:
   
 # Default dataset parameters
 dataset:
+  resume: true  # Skip already recorded trajectories
   fps: 15
   use_videos: true
   state_dim: 12
