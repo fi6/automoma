@@ -75,7 +75,17 @@ class BaseTask(ABC):
         # Components (initialized during setup)
         self.planner = None
         self.env = None
-        self.motion_gen = None
+        
+        # Support multiple motion generators for different phases
+        # motion_gen_ik: for IK planning (typically mobile base + arm)
+        # motion_gen_traj: for trajectory planning/filtering (typically fixed base)
+        self.motion_gen_ik = None
+        self.motion_gen_traj = None
+        
+        # Robot configurations
+        self.robot_cfg = None
+        self.ik_robot_cfg = None
+        self.akr_robot_cfg = None
         
         # Results storage
         self.stage_results: List[StageResult] = []
@@ -92,14 +102,14 @@ class BaseTask(ABC):
     
     # ==================== Setup Methods ====================
     
-    def setup_planner(self, scene_cfg: Config, object_cfg: Config, robot_cfg: Config) -> None:
+    def setup_planner(self, scene_cfg: Config, object_cfg: Config, robot_cfg: Config = None) -> None:
         """
         Setup the motion planner.
         
         Args:
             scene_cfg: Scene configuration
             object_cfg: Object configuration  
-            robot_cfg: Robot configuration
+            robot_cfg: Robot configuration (optional, can use cfg.robot_cfg)
         """
         from automoma.planning.planner import CuroboPlanner
         from automoma.utils.file_utils import load_robot_cfg, process_robot_cfg
@@ -116,13 +126,50 @@ class BaseTask(ABC):
         self.planner = CuroboPlanner(planner_cfg)
         self.planner.setup_env(scene_cfg.to_dict(), object_cfg.to_dict())
         
-        # Load and process robot config
+        # Load robot configurations
+        # Primary robot config (for general use)
+        if robot_cfg is None:
+            robot_cfg = self.cfg.robot_cfg
         robot_cfg_path = str(self.project_root / robot_cfg.path)
         loaded_robot_cfg = load_robot_cfg(robot_cfg_path)
         self.robot_cfg = process_robot_cfg(loaded_robot_cfg)
         
-        self.motion_gen = self.planner.init_motion_gen(self.robot_cfg)
-        logger.info("Planner setup complete")
+        # IK robot config (for IK planning, typically mobile base)
+        if self.cfg.ik_robot_cfg:
+            ik_robot_cfg_path = str(self.project_root / self.cfg.ik_robot_cfg.path)
+            loaded_ik_robot_cfg = load_robot_cfg(ik_robot_cfg_path)
+            self.ik_robot_cfg = process_robot_cfg(loaded_ik_robot_cfg)
+        else:
+            self.ik_robot_cfg = self.robot_cfg
+        
+        # AKR robot config (for trajectory planning/filtering, typically fixed base)
+        if self.cfg.akr_robot_cfg:
+            akr_robot_cfg_path = str(self.project_root / self.cfg.akr_robot_cfg.path)
+            loaded_akr_robot_cfg = load_robot_cfg(akr_robot_cfg_path)
+            self.akr_robot_cfg = process_robot_cfg(loaded_akr_robot_cfg)
+        else:
+            self.akr_robot_cfg = self.robot_cfg
+        
+        # Initialize motion generators
+        self._init_motion_generators()
+        logger.info("Planner setup complete with multiple robot configs")
+    
+    def _init_motion_generators(self) -> None:
+        """
+        Initialize motion generators for different phases.
+        
+        - motion_gen_ik: Uses ik_robot_cfg for IK planning
+        - motion_gen_traj: Uses akr_robot_cfg for trajectory planning/filtering
+        """
+        # Motion generator for IK planning
+        ik_fixed_base = getattr(self.cfg.ik_robot_cfg, 'fixed_base', False) if self.cfg.ik_robot_cfg else False
+        self.motion_gen_ik = self.planner.init_motion_gen(self.ik_robot_cfg, fixed_base=ik_fixed_base)
+        logger.info(f"Initialized IK motion generator (fixed_base={ik_fixed_base})")
+        
+        # Motion generator for trajectory planning
+        traj_fixed_base = getattr(self.cfg.akr_robot_cfg, 'fixed_base', True) if self.cfg.akr_robot_cfg else True
+        self.motion_gen_traj = self.planner.init_motion_gen(self.akr_robot_cfg, fixed_base=traj_fixed_base)
+        logger.info(f"Initialized trajectory motion generator (fixed_base={traj_fixed_base})")
     
     def setup_env(self, env_wrapper) -> None:
         """
@@ -182,6 +229,8 @@ class BaseTask(ABC):
         """
         Plan IK solutions for a stage.
         
+        Uses motion_gen_ik (with ik_robot_cfg) for IK planning.
+        
         Args:
             stage_index: Index of the stage
             grasp_pose: Grasp pose
@@ -205,11 +254,12 @@ class BaseTask(ABC):
                     stage_index, grasp_pose, angle, object_cfg
                 )
                 
+                # Use motion_gen_ik for IK planning (mobile base + arm)
                 ik_result = self.planner.plan_ik(
                     target_pose=target_pose,
-                    robot_cfg=self.robot_cfg,
+                    robot_cfg=self.ik_robot_cfg,
                     plan_cfg={"joint_cfg": {"joint_0": angle}, "enable_collision": True},
-                    motion_gen=self.motion_gen,
+                    motion_gen=self.motion_gen_ik,
                 )
                 
                 # Stack angle with IK solutions
@@ -295,7 +345,15 @@ class BaseTask(ABC):
                         stage_result.goal_iks,
                         stage_type,
                     )
-                    stage_result.success = stage_result.traj_result.success.sum() > 0
+                    
+                    # Filter trajectories using akr_robot_cfg and motion_gen_traj
+                    if stage_result.traj_result is not None and stage_result.traj_result.success.sum() > 0:
+                        stage_result.traj_result = self._filter_trajectories(
+                            stage_result.traj_result,
+                            stage_type,
+                        )
+                    
+                    stage_result.success = stage_result.traj_result.success.sum() > 0 if stage_result.traj_result else False
                 
                 # Save stage results
                 stage_output_dir = os.path.join(
@@ -337,7 +395,12 @@ class BaseTask(ABC):
         goal_iks: IKResult,
         stage_type: StageType,
     ) -> TrajResult:
-        """Plan trajectories between start and goal IKs."""
+        """
+        Plan trajectories between start and goal IKs.
+        
+        Uses motion_gen_traj (with akr_robot_cfg) for trajectory planning.
+        This is typically a fixed-base robot config for articulated motion.
+        """
         plan_cfg = self.cfg.plan_cfg
         
         traj_cfg = {
@@ -346,12 +409,40 @@ class BaseTask(ABC):
             "expand_to_pairs": plan_cfg.plan_traj.expand_to_pairs,
         }
         
+        # Use motion_gen_traj for trajectory planning (fixed base for articulated motion)
         return self.planner.plan_traj(
             start_iks=start_iks.iks,
             goal_iks=goal_iks.iks,
-            robot_cfg=self.robot_cfg,
+            robot_cfg=self.akr_robot_cfg,
             plan_cfg=traj_cfg,
-            motion_gen=self.motion_gen,
+            motion_gen=self.motion_gen_traj,
+        )
+    
+    def _filter_trajectories(
+        self,
+        traj_result: TrajResult,
+        stage_type: StageType,
+    ) -> TrajResult:
+        """
+        Filter trajectories based on FK validation and other criteria.
+        
+        Uses motion_gen_traj (with akr_robot_cfg) for trajectory filtering.
+        This ensures consistency with the trajectory planning phase.
+        """
+        plan_cfg = self.cfg.plan_cfg
+        
+        filter_cfg = {
+            "stage_type": stage_type,
+            "position_tolerance": plan_cfg.filter.position_threshold if plan_cfg.filter else 0.01,
+            "rotation_tolerance": plan_cfg.filter.orientation_threshold if plan_cfg.filter else 0.05,
+        }
+        
+        # Use motion_gen_traj for trajectory filtering (same as planning)
+        return self.planner.filter_traj(
+            traj_result=traj_result,
+            robot_cfg=self.akr_robot_cfg,
+            motion_gen=self.motion_gen_traj,
+            filter_cfg=filter_cfg,
         )
     
     # ==================== Recording Pipeline ====================
