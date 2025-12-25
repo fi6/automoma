@@ -9,16 +9,16 @@ info_cfg:
   description: "Single object open test for pipeline validation"
 
 plan_cfg:
-  voxel_dims: [64, 64, 64]
+  voxel_dims: [5.0, 5.0, 5.0]
   voxel_size: 0.02
-  expand_dims: 0.1
+  expand_dims: [1.0, 0.2, 0.2]
   collision_checker_type: "VOXEL"
   output_dir: "data/single_object_open_test"
   num_grasps: 20
   cluster:
-    ap_fallback_clusters: 50
-    ap_clusters_upperbound: 200
-    ap_cluster_lowerbound: 20
+    ap_fallback_clusters: 30
+    ap_clusters_upperbound: 80
+    ap_cluster_lowerbound: 10
   plan_ik:
     limit: [50, 50]
   plan_traj:
@@ -27,8 +27,8 @@ plan_cfg:
     expand_to_pairs: true
   filter:
     stage_type: MOVE_ARTICULATED
-    position_threshold: 0.05
-    orientation_threshold: 0.3
+    position_threshold: 0.01
+    orientation_threshold: 0.05
 
 scene_cfg:
   scene_0_seed_0:
@@ -52,4 +52,4 @@ object_cfg:
 
 robot_cfg:
   robot_type: "summit_franka"
-  path: "assets/robot/summit_franka/summit_franka.yaml"
+  path: "assets/robot/summit_franka/summit_franka.yml"

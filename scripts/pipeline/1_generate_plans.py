@@ -24,7 +24,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from automoma.core.config_loader import load_config, Config
 from automoma.tasks.factory import create_task
-
+from automoma.utils.file_utils import load_object_from_metadata
 
 logging.basicConfig(
     level=logging.INFO,
@@ -67,12 +67,16 @@ def run_planning(cfg: Config, scene_filter: str = None, object_filter: str = Non
             logger.warning(f"Scene config not found: {scene_name}")
             continue
         
+        metadata_path = scene_cfg.metadata_path
+        
         for object_id in objects:
             # Get object config
             object_cfg = cfg.object_cfg[object_id] if cfg.object_cfg else None
             if object_cfg is None:
                 logger.warning(f"Object config not found: {object_id}")
                 continue
+            
+            object_cfg = load_object_from_metadata(metadata_path, object_cfg)
             
             logger.info(f"\n{'='*60}")
             logger.info(f"Scene: {scene_name}, Object: {object_id}")

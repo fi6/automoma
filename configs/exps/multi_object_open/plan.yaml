@@ -4,9 +4,9 @@ info_cfg:
   scene: ["scene_0_seed_0", "scene_1_seed_1", "scene_2_seed_2", "scene_3_seed_3"]
   object: ["7221", "11622", "101773"]
 plan_cfg:
-  voxel_dims: [64, 64, 64]
+  voxel_dims: [5.0, 5.0, 5.0]
   voxel_size: 0.02
-  expand_dims: 0.1
+  expand_dims: [1.0, 0.2, 0.2]
   collision_checker_type: "VOXEL"
   output_dir: "data/run_1223"
   num_grasps: 20
@@ -46,5 +46,5 @@ object_cfg:
     path: assets/object/Dishwasher/11622/11622_0_scaling.urdf
 robot_cfg:
   robot_type: "summit_franka"
-  path: "assets/robot/summit_franka/summit_franka.yaml"
+  path: "assets/robot/summit_franka/summit_franka.yml"
   

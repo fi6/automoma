@@ -350,6 +350,12 @@ class CuroboPlanner(MotionPlannerInterface):
 
     def _setup_collision_world(self, enable_collision: bool = True) -> None:
         """Setup collision world for planning"""
+        self.collision_type = self.planner_cfg.get(
+            "collision_checker_type", CollisionCheckerType.VOXEL
+        )
+        if isinstance(self.collision_type, str):
+            self.collision_type = getattr(CollisionCheckerType, self.collision_type)
+
         object_Pose = Pose.from_list(self.object_pose)
         object_pose_inv = object_Pose.inverse().to_list()
 
@@ -370,7 +376,7 @@ class CuroboPlanner(MotionPlannerInterface):
         # Create world collision configuration
         world_collision_config = WorldCollisionConfig.load_from_dict(
             {
-                "checker_type": CollisionCheckerType.VOXEL,
+                "checker_type": self.collision_type,
                 "max_distance": 5.0,
                 "n_envs": 1,
             },
@@ -420,9 +426,6 @@ class CuroboPlanner(MotionPlannerInterface):
         self.esdf = mark_cuboid_as_empty(self.esdf, self.expanded_object_cuboid)
         # visualize_voxel_grid_with_cuboid(self.expanded_object_cuboid, self.esdf)
 
-        self.collision_type = self.planner_cfg.get(
-            "collision_checker_type", CollisionCheckerType.VOXEL
-        )
         if self.collision_type == CollisionCheckerType.VOXEL:
             pass
         elif self.collision_type == CollisionCheckerType.MESH:
@@ -441,7 +444,7 @@ class CuroboPlanner(MotionPlannerInterface):
         self,
         motion_gen: MotionGen,
         joint_cfg: Dict[str, float],
-        enable_collision: True,
+        enable_collision: bool = True,
     ):
         """Update world collision with current object state"""
         if not enable_collision:

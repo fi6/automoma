@@ -47,6 +47,7 @@ def _register_builtin_tasks():
     
     # Aliases
     _TASK_REGISTRY["multi_object_open"] = OpenTask
+    _TASK_REGISTRY["single_object_open_test"] = OpenTask
 
 
 class TaskFactory:

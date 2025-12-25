@@ -109,7 +109,7 @@ class BaseTask(ABC):
         planner_cfg = {
             "voxel_dims": plan_cfg.voxel_dims,
             "voxel_size": plan_cfg.voxel_size,
-            "expanded_dims": plan_cfg.expand_dims if plan_cfg.expand_dims else [1.0, 0.2, 0.2],
+            "expanded_dims": plan_cfg.expand_dims,
             "collision_checker_type": plan_cfg.collision_checker_type,
         }
         
