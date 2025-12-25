@@ -4,12 +4,14 @@ Script 2: Record dataset from planned trajectories.
 
 This script runs the recording pipeline:
 1. Load configuration from experiment
-2. Load planned trajectories
-3. Replay in simulation and record observations
-4. Save in LeRobot format
+2. Initialize SimulationApp (required for Isaac Sim)
+3. Load planned trajectories
+4. Replay in simulation and record observations
+5. Save in LeRobot format
 
 Usage:
     python 2_render_dataset.py --exp multi_object_open
+    python 2_render_dataset.py --exp multi_object_open --headless
 """
 
 import os
@@ -22,10 +24,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+# Import config loader first (doesn't require Isaac Sim)
 from automoma.core.config_loader import load_config, Config
 from automoma.tasks.factory import create_task
-from automoma.simulation.env_wrapper import SimEnvWrapper
-from automoma.datasets.dataset import LeRobotDatasetWrapper
 
 
 logging.basicConfig(
@@ -35,12 +36,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def run_recording(cfg: Config, max_episodes: int = None, dry_run: bool = False):
+def run_recording(cfg: Config, headless: bool = False, max_episodes: int = None, dry_run: bool = False):
     """
     Run recording pipeline.
     
     Args:
         cfg: Configuration object
+        headless: Whether to run in headless mode
         max_episodes: Maximum episodes to record
         dry_run: If True, skip environment setup
     """
@@ -50,6 +52,13 @@ def run_recording(cfg: Config, max_episodes: int = None, dry_run: bool = False):
     # Setup environment (if not dry run)
     if not dry_run:
         try:
+            # Initialize SimulationApp BEFORE importing simulation modules
+            from automoma.simulation import get_simulation_app
+            sim_app = get_simulation_app(headless=headless)
+            
+            # Now safe to import SimEnvWrapper
+            from automoma.simulation.env_wrapper import SimEnvWrapper
+            
             env = SimEnvWrapper(cfg)
             env.setup_env()
             task.setup_env(env)
@@ -60,6 +69,8 @@ def run_recording(cfg: Config, max_episodes: int = None, dry_run: bool = False):
             dry_run = True
     
     # Setup dataset wrapper
+    from automoma.datasets.dataset import LeRobotDatasetWrapper
+    
     record_cfg = cfg.record_cfg if cfg.record_cfg else cfg
     
     dataset_config = {
@@ -100,6 +111,11 @@ def main():
         help="Experiment name",
     )
     parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="Run in headless mode (no GUI)",
+    )
+    parser.add_argument(
         "--max-episodes",
         type=int,
         default=None,
@@ -117,7 +133,7 @@ def main():
     cfg = load_config(args.exp, PROJECT_ROOT)
     
     # Run recording
-    run_recording(cfg, args.max_episodes, args.dry_run)
+    run_recording(cfg, args.headless, args.max_episodes, args.dry_run)
     
     return 0
 

@@ -1,14 +1,49 @@
-from typing import Any, Dict, List, Optional
+"""
+Sensor rig for managing cameras and sensors in Isaac Sim.
 
-from omni.isaac.sensor import Camera
+IMPORTANT: SimulationApp must be initialized before using this module.
+Use automoma.simulation.sim_app_manager.get_simulation_app() first.
+"""
+
+from typing import Any, Dict, List, Optional
+import logging
 
 from automoma.core.types import PoseType
+
+
+logger = logging.getLogger(__name__)
+
+
+# Lazy imports for omni modules
+_omni_imported = False
+Camera = None
+
+
+def _import_omni_modules():
+    """Lazily import omni modules after SimulationApp is initialized."""
+    global _omni_imported, Camera
+    
+    if _omni_imported:
+        return
+    
+    # Check if SimulationApp is initialized
+    from automoma.simulation.sim_app_manager import require_simulation_app
+    require_simulation_app()
+    
+    # Now safe to import omni modules
+    from omni.isaac.sensor import Camera as _Camera
+    
+    Camera = _Camera
+    
+    _omni_imported = True
+    logger.debug("Omni modules for sensors imported successfully")
 
 
 class SensorRig:
     def __init__(self, sim):
         self.sim = sim
-        # Initialize sensors here
+        # Import omni modules when SensorRig is created
+        _import_omni_modules()
     def setup_sensors(self, sensor_cfgs):
         # Setup sensors based on the provided configurations
         """

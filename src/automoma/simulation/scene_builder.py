@@ -1,9 +1,21 @@
+"""
+Scene builder for loading scenes, objects, and robots into Isaac Sim.
+
+IMPORTANT: SimulationApp must be initialized before importing this module.
+Use automoma.simulation.sim_app_manager.get_simulation_app() first.
+"""
+
 from typing import Tuple, Optional, List, Dict, Any
 import numpy as np
 import torch
 import os
+import logging
 
 
+logger = logging.getLogger(__name__)
+
+
+# CuRobo imports are safe without SimulationApp
 from curobo.types.base import TensorDeviceType
 from curobo.types.math import Pose
 from curobo.util.logger import log_warn, log_info
@@ -15,14 +27,61 @@ from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig
 
 from automoma.utils.math_utils import pose_multiply
 
+
+# Lazy imports for omni modules
+_omni_imported = False
+
+
+def _import_omni_modules():
+    """Lazily import omni modules after SimulationApp is initialized."""
+    global _omni_imported
+    
+    if _omni_imported:
+        return
+    
+    # Check if SimulationApp is initialized
+    from automoma.simulation.sim_app_manager import require_simulation_app
+    require_simulation_app()
+    
+    # Now safe to import omni modules
+    global add_reference_to_stage, XFormPrim, Robot, execute, _urdf
+    
+    from omni.isaac.core.utils.stage import add_reference_to_stage as _add_ref
+    from omni.isaac.core.prims.xform_prim import XFormPrim as _XFormPrim
+    from omni.isaac.core.robots import Robot as _Robot
+    from omni.kit.commands import execute as _execute
+    from omni.importer.urdf import _urdf as __urdf
+    
+    add_reference_to_stage = _add_ref
+    XFormPrim = _XFormPrim
+    Robot = _Robot
+    execute = _execute
+    _urdf = __urdf
+    
+    _omni_imported = True
+    logger.debug("Omni modules for scene_builder imported successfully")
+
+
+def add_robot_to_scene(robot_cfg, world, subroot, robot_name, position):
+    """Helper function to add robot to scene - requires omni modules."""
+    _import_omni_modules()
+    # Implementation depends on robot config structure
+    # This is a placeholder - actual implementation would load the robot
+    from omni.isaac.core.robots import Robot
+    robot_prim = Robot(prim_path=subroot, name=robot_name)
+    world.scene.add(robot_prim)
+    return [robot_prim]
+
 class SceneBuilder:
     def __init__(self, sim, cfg):
         self.sim = sim
         self.cfg = cfg    
     
 class InfinigenBuilder(SceneBuilder):
-    def __init__(self, sim, cfg):
+    def __init__(self, sim, cfg=None):
         super().__init__(sim, cfg)
+        # Import omni modules when builder is created
+        _import_omni_modules()
         
     def init_root_pose(self, object_pose: torch.Tensor, scene_pose: torch.Tensor, type: str = "object_center") -> torch.Tensor:
         """

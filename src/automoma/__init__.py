@@ -2,7 +2,7 @@
 
 __version__ = "0.1.0"
 
-# Core modules
+# Core modules - always safe to import
 from automoma.core import (
     # Types
     TaskType,
@@ -39,14 +39,14 @@ from automoma.core import (
     get_component,
 )
 
-# Planning modules
+# Planning modules - safe to import without Isaac Sim
 from automoma.planning import (
     BasePlanner,
     CuroboPlanner,
     PlanningPipeline,
 )
 
-# Dataset modules
+# Dataset modules - safe to import without Isaac Sim
 from automoma.datasets import (
     BaseDatasetWrapper,
     LeRobotDatasetWrapper,
@@ -54,7 +54,7 @@ from automoma.datasets import (
     Recorder,
 )
 
-# Evaluation modules
+# Evaluation modules - safe to import without Isaac Sim
 from automoma.evaluation import (
     EvaluationMetrics,
     MetricsCalculator,
@@ -64,7 +64,7 @@ from automoma.evaluation import (
     get_model,
 )
 
-# Task modules
+# Task modules - safe to import without Isaac Sim
 from automoma.tasks import (
     BaseTask,
     TaskResult,
@@ -79,10 +79,22 @@ from automoma.tasks import (
     PickPlaceTask,
 )
 
-# Simulation modules
+# Simulation module management - safe to import
 from automoma.simulation import (
-    SimEnvWrapper,
+    get_simulation_app,
+    is_sim_app_initialized,
+    close_simulation_app,
+    require_simulation_app,
 )
+
+
+# Note: SimEnvWrapper and other simulation classes require SimulationApp
+# They can be imported after calling get_simulation_app():
+#
+#     from automoma import get_simulation_app
+#     sim_app = get_simulation_app(headless=False)
+#     from automoma.simulation import SimEnvWrapper
+
 
 __all__ = [
     # Version
@@ -149,6 +161,9 @@ __all__ = [
     "PickTask",
     "PlaceTask",
     "PickPlaceTask",
-    # Simulation
-    "SimEnvWrapper",
+    # Simulation management
+    "get_simulation_app",
+    "is_sim_app_initialized",
+    "close_simulation_app",
+    "require_simulation_app",
 ]

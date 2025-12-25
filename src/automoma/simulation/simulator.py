@@ -1,35 +1,74 @@
+"""
+Isaac Sim Manager module.
+
+This module provides the IsaacSimManager class which handles the Isaac Sim world
+and USD operations. It uses lazy imports to avoid loading Isaac Sim modules
+until SimulationApp is initialized.
+
+IMPORTANT: SimulationApp must be initialized before importing this module.
+Use automoma.simulation.sim_app_manager.get_simulation_app() first.
+"""
+
 import os
 import sys
-
-# Set up Isaac Sim before importing other modules
-import isaacsim
-from omni.isaac.kit import SimulationApp
-
-simulation_app = SimulationApp({"headless": False, "width": 1920, "height": 1080})
-
-import omni.kit.actions.core
-
-
-import torch
-import numpy as np
-import h5py
+import logging
 from typing import Dict, List, Any, Sequence, Optional, Union
-from tqdm import tqdm
-from pathlib import Path
 
-from omni.isaac.core.utils.stage import add_reference_to_stage
-from omni.usd import get_world_transform_matrix, get_context
-from omni.isaac.core import World
-from omni.isaac.core.objects import sphere
-from omni.isaac.core.prims.xform_prim import XFormPrim
-from omni.importer.urdf import _urdf
-from omni.isaac.core.robots import Robot
-from omni.kit.commands import execute
-from omni.isaac.sensor import Camera
-import omni.isaac.core.utils.torch.rotations as rot_utils
 
-from pxr import Gf, UsdGeom, UsdPhysics, UsdLux, UsdShade, Usd, Sdf
+logger = logging.getLogger(__name__)
 
+
+# Lazy imports - these are populated when SimulationApp is available
+_omni_imported = False
+
+
+def _import_omni_modules():
+    """Lazily import omni modules after SimulationApp is initialized."""
+    global _omni_imported
+    
+    if _omni_imported:
+        return
+    
+    # Check if SimulationApp is initialized
+    from automoma.simulation.sim_app_manager import require_simulation_app
+    require_simulation_app()
+    
+    # Now safe to import omni modules
+    global omni, World, add_reference_to_stage, XFormPrim, Robot, Camera, execute
+    global UsdPhysics, Gf, UsdGeom
+    global torch, np
+    
+    import omni.kit.actions.core
+    import torch as _torch
+    import numpy as _np
+    
+    from omni.isaac.core.utils.stage import add_reference_to_stage as _add_ref
+    from omni.isaac.core import World as _World
+    from omni.isaac.core.prims.xform_prim import XFormPrim as _XFormPrim
+    from omni.isaac.core.robots import Robot as _Robot
+    from omni.isaac.sensor import Camera as _Camera
+    from omni.kit.commands import execute as _execute
+    from pxr import UsdPhysics as _UsdPhysics, Gf as _Gf, UsdGeom as _UsdGeom
+    import omni as _omni
+    
+    omni = _omni
+    World = _World
+    add_reference_to_stage = _add_ref
+    XFormPrim = _XFormPrim
+    Robot = _Robot
+    Camera = _Camera
+    execute = _execute
+    UsdPhysics = _UsdPhysics
+    Gf = _Gf
+    UsdGeom = _UsdGeom
+    torch = _torch
+    np = _np
+    
+    _omni_imported = True
+    logger.debug("Omni modules imported successfully")
+
+
+# CuRobo imports are safe without SimulationApp
 from curobo.types.base import TensorDeviceType
 from curobo.types.math import Pose
 from curobo.util.logger import log_warn, log_info
@@ -42,10 +81,16 @@ from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig
 
 class IsaacSimManager:
     def __init__(self, cfg):
+        # Import omni modules lazily
+        _import_omni_modules()
+        
+        # Now import the simulation_app reference
+        from automoma.simulation.sim_app_manager import get_simulation_app
+        
         self.cfg = cfg
         self.world = None
         self.usd_helper = UsdHelper()
-        self.simulation_app = simulation_app
+        self.simulation_app = get_simulation_app()
         self.tensor_args = TensorDeviceType()
 
         self.init_world()

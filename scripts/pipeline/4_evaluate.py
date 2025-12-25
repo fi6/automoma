@@ -4,12 +4,14 @@ Script 4: Evaluate trained policy.
 
 This script evaluates a trained policy:
 1. Load evaluation configuration
-2. Load trained model with async LeRobot communication
-3. Initialize robot to test states (from trajectory data)
-4. Run policy inference and compute metrics
+2. Initialize SimulationApp (required for Isaac Sim)
+3. Load trained model with async LeRobot communication
+4. Initialize robot to test states (from trajectory data)
+5. Run policy inference and compute metrics
 
 Usage:
     python 4_evaluate.py --exp multi_object_open
+    python 4_evaluate.py --exp multi_object_open --headless
 """
 
 import os
@@ -22,9 +24,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+# Import config loader first (doesn't require Isaac Sim)
 from automoma.core.config_loader import load_config, Config
 from automoma.tasks.factory import create_task
-from automoma.simulation.env_wrapper import SimEnvWrapper
 from automoma.evaluation.policy_runner import get_model
 from automoma.evaluation.metrics import MetricsCalculator
 
@@ -36,7 +38,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def run_evaluation(cfg: Config, checkpoint_path: str = None, dry_run: bool = False):
+def run_evaluation(cfg: Config, headless: bool = False, checkpoint_path: str = None, dry_run: bool = False):
     """
     Run evaluation pipeline.
     
@@ -49,6 +51,7 @@ def run_evaluation(cfg: Config, checkpoint_path: str = None, dry_run: bool = Fal
     
     Args:
         cfg: Configuration object
+        headless: Whether to run in headless mode
         checkpoint_path: Optional override for checkpoint path
         dry_run: If True, skip actual evaluation
     """
@@ -90,6 +93,13 @@ def run_evaluation(cfg: Config, checkpoint_path: str = None, dry_run: bool = Fal
     # Setup environment
     if not dry_run:
         try:
+            # Initialize SimulationApp BEFORE importing simulation modules
+            from automoma.simulation import get_simulation_app
+            sim_app = get_simulation_app(headless=headless)
+            
+            # Now safe to import SimEnvWrapper
+            from automoma.simulation.env_wrapper import SimEnvWrapper
+            
             env = SimEnvWrapper(cfg)
             env.setup_env()
             task.setup_env(env)
@@ -217,6 +227,11 @@ def main():
         help="Experiment name",
     )
     parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="Run in headless mode (no GUI)",
+    )
+    parser.add_argument(
         "--checkpoint",
         type=str,
         default=None,
@@ -233,7 +248,7 @@ def main():
     cfg = load_config(args.exp, PROJECT_ROOT)
     
     # Run evaluation
-    run_evaluation(cfg, args.checkpoint, args.dry_run)
+    run_evaluation(cfg, args.headless, args.checkpoint, args.dry_run)
     
     return 0
 

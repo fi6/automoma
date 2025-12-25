@@ -4,12 +4,12 @@ A comprehensive Python framework for automated robot motion planning, trajectory
 
 ## Features
 
-- **Motion Planning**: Collision-aware trajectory planning using cuRobo
+- **Motion Planning**: Collision-aware trajectory planning using cuRobo (no Isaac Sim required)
 - **Data Generation**: Automated IK solving and trajectory optimization
 - **Data Recording**: Record manipulation demonstrations in LeRobot format
-- **Policy Training**: Train diffusion policies for manipulation tasks
+- **Policy Training**: Train diffusion policies (DP) and ACT models for manipulation tasks
 - **Policy Evaluation**: Evaluate policies with async LeRobot communication
-- **Simulation**: Isaac Sim integration for realistic robot simulation
+- **Simulation**: Isaac Sim integration for realistic robot simulation (lazy-loaded)
 
 ## Project Structure
 
@@ -18,11 +18,16 @@ AutoMoMa/
 ├── configs/                    # Configuration files
 │   ├── config.yaml            # Base configuration
 │   └── exps/                  # Experiment configurations
-│       └── multi_object_open/
-│           ├── plan.yaml      # Planning config
-│           ├── record.yaml    # Recording config
-│           ├── train.yaml     # Training config
-│           └── eval.yaml      # Evaluation config
+│       ├── multi_object_open/
+│       │   ├── plan.yaml      # Planning config
+│       │   ├── record.yaml    # Recording config
+│       │   ├── train.yaml     # Training config
+│       │   └── eval.yaml      # Evaluation config
+│       └── single_object_open_test/  # Test experiment
+│           ├── plan.yaml
+│           ├── record.yaml
+│           ├── train.yaml     # Supports DP and ACT
+│           └── eval.yaml
 ├── scripts/
 │   ├── pipeline/              # Main pipeline scripts
 │   │   ├── 1_generate_plans.py
@@ -35,7 +40,7 @@ AutoMoMa/
 │   ├── planning/              # Motion planning modules
 │   ├── datasets/              # Dataset handling
 │   ├── evaluation/            # Policy evaluation
-│   ├── simulation/            # Isaac Sim integration
+│   ├── simulation/            # Isaac Sim integration (lazy-loaded)
 │   ├── tasks/                 # Task definitions
 │   └── utils/                 # Utility functions
 ├── third_party/               # Third-party dependencies
@@ -50,7 +55,7 @@ AutoMoMa/
 
 - Python 3.10+
 - CUDA 12.1+
-- Isaac Sim 2023.1+ (for simulation)
+- Isaac Sim 2023.1+ (for simulation, not required for planning)
 
 ### Setup
 
@@ -86,10 +91,24 @@ pip install -e ".[dev]"
 
 ## Quick Start
 
-### 1. Generate Motion Plans
+### Using Experiment Configs
+
+All scripts support the `--exp` argument to load experiment-specific configurations:
 
 ```bash
-python scripts/pipeline/1_generate_plans.py --config configs/exps/multi_object_open/plan.yaml
+# Run the full pipeline with experiment name
+python scripts/pipeline/1_generate_plans.py --exp multi_object_open
+python scripts/pipeline/2_render_dataset.py --exp multi_object_open
+python scripts/pipeline/3_train.py --exp multi_object_open
+python scripts/pipeline/4_evaluate.py --exp multi_object_open
+```
+
+### 1. Generate Motion Plans (No Isaac Sim Required)
+
+```bash
+python scripts/pipeline/1_generate_plans.py --exp multi_object_open
+# Or filter by scene/object:
+python scripts/pipeline/1_generate_plans.py --exp multi_object_open --scene scene_0_seed_0 --object 7221
 ```
 
 This script:
@@ -98,13 +117,18 @@ This script:
 - Plans trajectories for articulated manipulation
 - Filters and saves valid trajectories
 
-### 2. Render Dataset
+**Note**: This script uses only cuRobo and does NOT require Isaac Sim!
+
+### 2. Render Dataset (Requires Isaac Sim)
 
 ```bash
-python scripts/pipeline/2_render_dataset.py --config configs/exps/multi_object_open/record.yaml
+python scripts/pipeline/2_render_dataset.py --exp multi_object_open
+# Run headless:
+python scripts/pipeline/2_render_dataset.py --exp multi_object_open --headless
 ```
 
 This script:
+- Initializes SimulationApp (only once)
 - Loads planned trajectories
 - Replays them in Isaac Sim
 - Records camera observations
@@ -113,28 +137,86 @@ This script:
 ### 3. Train Policy
 
 ```bash
-python scripts/pipeline/3_train.py --config configs/exps/multi_object_open/train.yaml
+python scripts/pipeline/3_train.py --exp multi_object_open
+# Or use single_object_open_test for quick testing:
+python scripts/pipeline/3_train.py --exp single_object_open_test
 ```
 
 This script:
 - Loads the LeRobot dataset
-- Configures the diffusion policy
+- Configures the diffusion policy or ACT model
 - Trains the model
 - Saves checkpoints
 
-### 4. Evaluate Policy
+### 4. Evaluate Policy (Requires Isaac Sim)
 
 ```bash
-python scripts/pipeline/4_evaluate.py --config configs/exps/multi_object_open/eval.yaml
+python scripts/pipeline/4_evaluate.py --exp multi_object_open
+# Run headless:
+python scripts/pipeline/4_evaluate.py --exp multi_object_open --headless
 ```
 
 This script:
+- Initializes SimulationApp (only once)
 - Loads the trained checkpoint
 - Runs policy inference with async communication
 - Computes evaluation metrics
 - Generates evaluation reports
 
+## Isaac Sim Integration
+
+AutoMoMa uses lazy-loading for Isaac Sim modules. This means:
+
+1. **Planning scripts do NOT load Isaac Sim** - They only use cuRobo and can run without Isaac Sim installed
+2. **Simulation modules require explicit initialization** - SimulationApp is initialized only once per process
+
+### Using SimulationApp
+
+For scripts that need Isaac Sim, use the `get_simulation_app()` function:
+
+```python
+# First, initialize SimulationApp (do this ONCE at the start)
+from automoma.simulation import get_simulation_app
+
+sim_app = get_simulation_app(headless=False, width=1920, height=1080)
+
+# Now you can import and use simulation modules
+from automoma.simulation.env_wrapper import SimEnvWrapper
+
+env = SimEnvWrapper(cfg)
+env.setup_env()
+```
+
+### Checking SimulationApp Status
+
+```python
+from automoma.simulation import is_sim_app_initialized, require_simulation_app
+
+if not is_sim_app_initialized():
+    sim_app = get_simulation_app(headless=True)
+
+# Or raise an error if not initialized:
+require_simulation_app()  # Raises RuntimeError if not initialized
+```
+
 ## Configuration
+
+### Experiment-Based Configuration
+
+AutoMoMa uses a hierarchical configuration system:
+
+1. **Base config** (`configs/config.yaml`): Default values
+2. **Experiment config** (`configs/exps/{exp_name}/*.yaml`): Overrides for specific experiments
+
+Access config values with attribute-style access (no `.get()` needed):
+
+```python
+from automoma import load_config
+
+cfg = load_config("multi_object_open")
+num_grasps = cfg.plan_cfg.num_grasps  # Attribute-style access
+task_name = cfg.info_cfg.task
+```
 
 ### Planning Configuration
 
@@ -161,15 +243,20 @@ camera_cfg:
   names: [ego_topdown, ego_wrist, fix_local]
 ```
 
-### Training Configuration
+### Training Configuration (DP and ACT)
 
 ```yaml
+# Diffusion Policy
 policy:
   type: diffusion
-training:
-  batch_size: 64
-  learning_rate: 1.0e-4
-  num_epochs: 100
+  n_action_steps: 8
+  horizon: 16
+
+# Or Action Chunking Transformer (ACT)
+policy:
+  type: act
+  chunk_size: 100
+  kl_weight: 10.0
 ```
 
 ### Evaluation Configuration
@@ -184,7 +271,7 @@ async_inference:
 
 ## API Usage
 
-### Planning
+### Planning (No Isaac Sim)
 
 ```python
 from automoma.planning import PlanningPipeline
@@ -194,9 +281,12 @@ pipeline.setup(scene_cfg, object_cfg, robot_cfg_path)
 results = pipeline.run_full_pipeline(...)
 ```
 
-### Dataset Recording
+### Dataset Recording (Requires Isaac Sim)
 
 ```python
+from automoma.simulation import get_simulation_app
+sim_app = get_simulation_app(headless=True)
+
 from automoma.datasets import LeRobotDatasetWrapper
 
 dataset = LeRobotDatasetWrapper(cfg)
@@ -249,6 +339,18 @@ client.stop()
 
 - **Pick and Place**: Pick up objects and place at target locations
 - **Reach and Open**: Reach handles and open articulated objects (doors, drawers, etc.)
+
+## Experiments
+
+### multi_object_open
+Full experiment with multiple objects (7221, 11622, 101773) and scenes.
+
+### single_object_open_test
+Quick test experiment with:
+- **Object**: 7221 only
+- **Training scenes**: scene_0_seed_0, scene_1_seed_1
+- **Test scenes**: scene_0_seed_0, scene_1_seed_1, scene_40_seed_40
+- **Models**: Supports both DP and ACT
 
 ## License
 

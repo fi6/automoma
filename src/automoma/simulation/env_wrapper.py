@@ -4,14 +4,16 @@ Environment wrapper - main API for simulation interactions.
 This module provides the SimEnvWrapper class which serves as the primary
 interface for recording and evaluation pipelines to interact with the
 Isaac Sim environment.
+
+IMPORTANT: SimulationApp must be initialized before using this module.
+Use automoma.simulation.sim_app_manager.get_simulation_app() first.
 """
 
-from automoma.simulation.simulator import IsaacSimManager
-from automoma.simulation.scene_builder import SceneBuilder, InfinigenBuilder
-from automoma.simulation.sensors import SensorRig
-from automoma.planning.planner import BasePlanner
-from automoma.core.config_loader import Config
+from typing import Any, Dict, List, Literal, Optional, Union
+import logging
 
+# Safe imports (don't require Isaac Sim)
+from automoma.core.config_loader import Config
 from automoma.utils.math_utils import pose_multiply
 
 from curobo.geom.types import Pose
@@ -19,8 +21,6 @@ from curobo.types.state import JointState
 
 import torch
 import numpy as np
-from typing import Any, Dict, List, Literal, Optional, Union
-import logging
 
 
 logger = logging.getLogger(__name__)
@@ -36,6 +36,11 @@ class SimEnvWrapper:
     - Evaluation pipeline: to run policy inference and evaluate performance
     
     Usage:
+        # First, initialize SimulationApp
+        from automoma.simulation import get_simulation_app
+        sim_app = get_simulation_app(headless=False)
+        
+        # Then create and use SimEnvWrapper
         cfg = load_config("multi_object_open")
         env = SimEnvWrapper(cfg)
         env.setup_env()
@@ -54,13 +59,26 @@ class SimEnvWrapper:
         
         Args:
             cfg: Configuration object or dictionary
+            
+        Raises:
+            RuntimeError: If SimulationApp is not initialized
         """
+        # Check that SimulationApp is initialized
+        from automoma.simulation.sim_app_manager import require_simulation_app
+        require_simulation_app()
+        
         self.cfg = cfg
         
         # Convert dict to Config if needed
         if isinstance(cfg, dict):
             from automoma.core.config_loader import Config as ConfigClass
             self.cfg = ConfigClass(cfg)
+        
+        # Import simulation components (safe now that SimulationApp is initialized)
+        from automoma.simulation.simulator import IsaacSimManager
+        from automoma.simulation.scene_builder import InfinigenBuilder
+        from automoma.simulation.sensors import SensorRig
+        from automoma.planning.planner import BasePlanner
         
         # Initialize components
         self.sim = IsaacSimManager(self.cfg.sim)
