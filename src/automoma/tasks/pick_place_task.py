@@ -7,7 +7,7 @@ import numpy as np
 
 from automoma.core.types import TaskType, StageType, IKResult
 from automoma.core.config_loader import Config
-from automoma.tasks.base_task_new import BaseTask, TaskResult, StageResult
+from automoma.tasks.base_task import BaseTask, TaskResult, StageResult
 
 
 logger = logging.getLogger(__name__)

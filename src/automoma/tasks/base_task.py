@@ -16,6 +16,10 @@ from automoma.core.config_loader import Config
 logger = logging.getLogger(__name__)
 
 
+# Configuration constants
+MAX_IK_ITERATIONS = 10  # Maximum iterations for IK sampling
+
+
 @dataclass
 class StageResult:
     """Result of a single stage execution."""
@@ -195,7 +199,7 @@ class BaseTask(ABC):
         
         all_ik_results = []
         
-        for _ in range(10):  # Max iterations
+        for _ in range(MAX_IK_ITERATIONS):
             for angle in angles:
                 target_pose = self.get_target_pose_for_stage(
                     stage_index, grasp_pose, angle, object_cfg

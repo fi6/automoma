@@ -23,7 +23,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from automoma.core.config_loader import load_config, Config
-from automoma.tasks.task_factory import create_task
+from automoma.tasks.factory import create_task
 from automoma.simulation.env_wrapper import SimEnvWrapper
 from automoma.datasets.dataset import LeRobotDatasetWrapper
 

@@ -5,7 +5,7 @@ from typing import Dict, Any, Optional, Type
 
 from automoma.core.types import TaskType
 from automoma.core.config_loader import Config
-from automoma.tasks.base_task_new import BaseTask
+from automoma.tasks.base_task import BaseTask
 
 
 logger = logging.getLogger(__name__)

@@ -7,7 +7,7 @@ import numpy as np
 
 from automoma.core.types import TaskType, StageType, IKResult
 from automoma.core.config_loader import Config
-from automoma.tasks.base_task_new import BaseTask, TaskResult, StageResult
+from automoma.tasks.base_task import BaseTask, TaskResult, StageResult
 
 
 logger = logging.getLogger(__name__)
@@ -130,7 +130,8 @@ class OpenTask(BaseTask):
             return False
         
         current_angle = obs.get("env_state", 0.0)
-        goal_angle = self.cfg.object_cfg.goal_angles[-1] if self.cfg.object_cfg.goal_angles else 1.57
+        goal_angles = self.cfg.object_cfg.goal_angles if self.cfg.object_cfg else None
+        goal_angle = goal_angles[-1] if goal_angles and len(goal_angles) > 0 else 1.57
         
         return abs(current_angle - goal_angle) < 0.1  # 0.1 radian tolerance
     
@@ -246,6 +247,7 @@ class ReachOpenTask(BaseTask):
             return False
         
         current_angle = obs.get("env_state", 0.0)
-        goal_angle = self.cfg.object_cfg.goal_angles[-1] if self.cfg.object_cfg.goal_angles else 1.57
+        goal_angles = self.cfg.object_cfg.goal_angles if self.cfg.object_cfg else None
+        goal_angle = goal_angles[-1] if goal_angles and len(goal_angles) > 0 else 1.57
         
         return abs(current_angle - goal_angle) < 0.1
