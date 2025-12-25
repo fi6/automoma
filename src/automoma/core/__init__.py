@@ -23,6 +23,15 @@ from automoma.core.config import (
     RobotConfig,
     CameraConfig,
 )
+from automoma.core.config_loader import (
+    Config,
+    ConfigLoader,
+    load_config,
+    load_plan_config,
+    load_record_config,
+    load_train_config,
+    load_eval_config,
+)
 from automoma.core.registry import Registry, register_component, get_component
 
 __all__ = [
@@ -39,7 +48,7 @@ __all__ = [
     "PlanResult",
     # Interfaces
     "MotionPlannerInterface",
-    # Config
+    # Config (dataclasses - legacy)
     "PlanConfig",
     "RecordConfig",
     "TrainConfig",
@@ -48,6 +57,14 @@ __all__ = [
     "ObjectConfig",
     "RobotConfig",
     "CameraConfig",
+    # Config loader (new)
+    "Config",
+    "ConfigLoader",
+    "load_config",
+    "load_plan_config",
+    "load_record_config", 
+    "load_train_config",
+    "load_eval_config",
     # Registry
     "Registry",
     "register_component",

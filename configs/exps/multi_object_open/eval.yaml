@@ -6,6 +6,17 @@ info_cfg:
   robot: "summit_franka"
   description: "Evaluate policy on articulated object manipulation"
 
+# Unified eval configuration (for scripts)
+eval_cfg:
+  checkpoint_path: "outputs/train/multi_object_open/model_final.pt"
+  policy_type: "diffusion"
+  num_episodes: 50
+  max_steps_per_episode: 500
+  success_threshold: 0.05
+  use_async_inference: true
+  device: "cuda"
+  output_dir: "outputs/eval/multi_object_open"
+
 # Model configuration
 model:
   checkpoint_path: "outputs/train/multi_object_open/model_final.pt"

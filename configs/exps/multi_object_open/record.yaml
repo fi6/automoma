@@ -6,6 +6,18 @@ info_cfg:
   robot: "summit_franka"
   description: "Record manipulation data for opening articulated objects"
 
+# Unified record configuration (for scripts)
+record_cfg:
+  repo_id: "automoma/multi_object_open"
+  root: "./datasets/multi_object_open"
+  fps: 15
+  use_videos: true
+  push_to_hub: false
+  max_episodes: 1000
+  episodes_per_grasp: 10
+  steps_per_episode: 100
+  skip_existing: true
+
 # Data source configuration
 data_cfg:
   traj_dir: "data/run_1223/traj"

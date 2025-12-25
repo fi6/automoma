@@ -6,6 +6,19 @@ info_cfg:
   robot: "summit_franka"
   description: "Train diffusion policy for opening articulated objects"
 
+# Unified train configuration (for scripts)
+train_cfg:
+  dataset_repo_id: "automoma/multi_object_open"
+  dataset_root: "./datasets/multi_object_open"
+  policy_type: "diffusion"
+  batch_size: 64
+  learning_rate: 1.0e-4
+  num_epochs: 100
+  warmup_steps: 500
+  output_dir: "outputs/train/multi_object_open"
+  save_freq: 10000
+  device: "cuda"
+
 # Dataset configuration
 dataset:
   repo_id: "automoma/multi_object_open"

@@ -4,6 +4,7 @@ __version__ = "0.1.0"
 
 # Core modules
 from automoma.core import (
+    # Types
     TaskType,
     StageType,
     GripperState,
@@ -15,6 +16,7 @@ from automoma.core import (
     TrajResult,
     PlanResult,
     MotionPlannerInterface,
+    # Config dataclasses (legacy)
     PlanConfig,
     RecordConfig,
     TrainConfig,
@@ -23,6 +25,15 @@ from automoma.core import (
     ObjectConfig,
     RobotConfig,
     CameraConfig,
+    # Config loader (new)
+    Config,
+    ConfigLoader,
+    load_config,
+    load_plan_config,
+    load_record_config,
+    load_train_config,
+    load_eval_config,
+    # Registry
     Registry,
     register_component,
     get_component,
@@ -33,9 +44,6 @@ from automoma.planning import (
     BasePlanner,
     CuroboPlanner,
     PlanningPipeline,
-    PlanningPrimitive,
-    IKPlanningPrimitive,
-    TrajectoryPlanningPrimitive,
 )
 
 # Dataset modules
@@ -59,10 +67,21 @@ from automoma.evaluation import (
 # Task modules
 from automoma.tasks import (
     BaseTask,
+    TaskResult,
+    StageResult,
     TaskFactory,
     create_task,
-    PickPlaceTask,
+    create_task_from_exp,
+    OpenTask,
     ReachOpenTask,
+    PickTask,
+    PlaceTask,
+    PickPlaceTask,
+)
+
+# Simulation modules
+from automoma.simulation import (
+    SimEnvWrapper,
 )
 
 __all__ = [
@@ -81,7 +100,7 @@ __all__ = [
     "PlanResult",
     # Core interfaces
     "MotionPlannerInterface",
-    # Core config
+    # Core config (dataclasses - legacy)
     "PlanConfig",
     "RecordConfig",
     "TrainConfig",
@@ -90,6 +109,14 @@ __all__ = [
     "ObjectConfig",
     "RobotConfig",
     "CameraConfig",
+    # Config loader (new - recommended)
+    "Config",
+    "ConfigLoader",
+    "load_config",
+    "load_plan_config",
+    "load_record_config",
+    "load_train_config",
+    "load_eval_config",
     # Registry
     "Registry",
     "register_component",
@@ -98,9 +125,6 @@ __all__ = [
     "BasePlanner",
     "CuroboPlanner",
     "PlanningPipeline",
-    "PlanningPrimitive",
-    "IKPlanningPrimitive",
-    "TrajectoryPlanningPrimitive",
     # Datasets
     "BaseDatasetWrapper",
     "LeRobotDatasetWrapper",
@@ -115,8 +139,16 @@ __all__ = [
     "get_model",
     # Tasks
     "BaseTask",
+    "TaskResult",
+    "StageResult",
     "TaskFactory",
     "create_task",
-    "PickPlaceTask",
+    "create_task_from_exp",
+    "OpenTask",
     "ReachOpenTask",
+    "PickTask",
+    "PlaceTask",
+    "PickPlaceTask",
+    # Simulation
+    "SimEnvWrapper",
 ]

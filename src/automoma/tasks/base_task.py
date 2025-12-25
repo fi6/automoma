@@ -1,262 +1,535 @@
-"""Base task class for manipulation tasks."""
+"""Base task class with planning, recording, and evaluation pipelines."""
 
+import os
 import logging
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any, Tuple, Type
 from dataclasses import dataclass, field
+from pathlib import Path
 import numpy as np
 import torch
 
-from automoma.core.types import TaskType, StageType, PlanResult
+from automoma.core.types import TaskType, StageType, IKResult, TrajResult
+from automoma.core.config_loader import Config
 
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class TaskState:
-    """State of the task execution."""
-    current_stage: StageType
+class StageResult:
+    """Result of a single stage execution."""
+    stage_type: StageType
     stage_index: int
-    is_complete: bool
-    success: bool
+    start_iks: Optional[IKResult] = None
+    goal_iks: Optional[IKResult] = None
+    traj_result: Optional[TrajResult] = None
+    success: bool = False
     error_message: str = ""
-    stage_results: List[Any] = field(default_factory=list)
+    output_dir: str = ""
+
+
+@dataclass  
+class TaskResult:
+    """Result of complete task execution."""
+    task_name: str
+    stages: List[StageResult] = field(default_factory=list)
+    success: bool = False
+    total_trajectories: int = 0
+    successful_trajectories: int = 0
 
 
 class BaseTask(ABC):
     """
     Base class for manipulation tasks.
     
-    A task defines a sequence of stages (e.g., reach, grasp, lift, move, release)
-    and the logic for executing and validating each stage.
+    Each task defines:
+    - Stages to execute (e.g., reach, grasp, open)
+    - Planning pipeline: How to generate motion plans
+    - Recording pipeline: How to record demonstrations
+    - Evaluation pipeline: How to evaluate trained policies
+    
+    Multi-stage tasks automatically chain IK results:
+    - Stage N+1 start IKs = Stage N goal IKs
     """
     
-    def __init__(
-        self,
-        task_type: TaskType,
-        stages: List[StageType],
-        name: str = "",
-    ):
+    # Class-level stage definition (override in subclasses)
+    STAGES: List[StageType] = []
+    TASK_TYPE: TaskType = TaskType.PICK_PLACE
+    
+    def __init__(self, cfg: Config):
         """
-        Initialize the task.
+        Initialize task from configuration.
         
         Args:
-            task_type: Type of the task
-            stages: Ordered list of stages to execute
-            name: Optional task name
+            cfg: Configuration object with attribute access
         """
-        self.task_type = task_type
-        self.stages = stages
-        self.name = name or task_type.name
+        self.cfg = cfg
+        self.name = cfg.info_cfg.task if cfg.info_cfg else "unknown"
+        self.stages = self.STAGES
         
-        self.state = TaskState(
-            current_stage=stages[0] if stages else StageType.MOVE,
-            stage_index=0,
-            is_complete=False,
-            success=False,
-        )
-        
+        # Components (initialized during setup)
         self.planner = None
         self.env = None
+        self.motion_gen = None
+        
+        # Results storage
+        self.stage_results: List[StageResult] = []
+        
+    @property
+    def output_dir(self) -> str:
+        """Get output directory from config."""
+        return self.cfg.plan_cfg.output_dir if self.cfg.plan_cfg else "data/output"
     
-    def setup(self, planner=None, env=None) -> None:
+    @property
+    def project_root(self) -> Path:
+        """Get project root from config."""
+        return Path(self.cfg._project_root) if self.cfg._project_root else Path.cwd()
+    
+    # ==================== Setup Methods ====================
+    
+    def setup_planner(self, scene_cfg: Config, object_cfg: Config, robot_cfg: Config) -> None:
         """
-        Setup the task with planner and environment.
+        Setup the motion planner.
         
         Args:
-            planner: Motion planner instance
-            env: Environment wrapper instance
+            scene_cfg: Scene configuration
+            object_cfg: Object configuration  
+            robot_cfg: Robot configuration
         """
-        self.planner = planner
-        self.env = env
+        from automoma.planning.planner import CuroboPlanner
+        from automoma.utils.file_utils import load_robot_cfg, process_robot_cfg
+        
+        plan_cfg = self.cfg.plan_cfg
+        
+        planner_cfg = {
+            "voxel_dims": plan_cfg.voxel_dims,
+            "voxel_size": plan_cfg.voxel_size,
+            "expanded_dims": plan_cfg.expand_dims if plan_cfg.expand_dims else [1.0, 0.2, 0.2],
+            "collision_checker_type": plan_cfg.collision_checker_type,
+        }
+        
+        self.planner = CuroboPlanner(planner_cfg)
+        self.planner.setup_env(scene_cfg.to_dict(), object_cfg.to_dict())
+        
+        # Load and process robot config
+        robot_cfg_path = str(self.project_root / robot_cfg.path)
+        loaded_robot_cfg = load_robot_cfg(robot_cfg_path)
+        self.robot_cfg = process_robot_cfg(loaded_robot_cfg)
+        
+        self.motion_gen = self.planner.init_motion_gen(self.robot_cfg)
+        logger.info("Planner setup complete")
+    
+    def setup_env(self, env_wrapper) -> None:
+        """
+        Setup the environment wrapper.
+        
+        Args:
+            env_wrapper: SimEnvWrapper instance
+        """
+        self.env = env_wrapper
+        logger.info("Environment setup complete")
+    
+    # ==================== Planning Pipeline ====================
     
     @abstractmethod
-    def get_stage_config(self, stage: StageType) -> Dict[str, Any]:
+    def get_grasp_poses(self, object_cfg: Config, **kwargs) -> List[List[float]]:
         """
-        Get configuration for a specific stage.
+        Get grasp poses for the task.
         
         Args:
-            stage: The stage type
+            object_cfg: Object configuration
             
         Returns:
-            Configuration dictionary for the stage
+            List of grasp poses [x, y, z, qw, qx, qy, qz]
         """
         pass
     
     @abstractmethod
-    def validate_stage(self, stage: StageType, result: Any) -> bool:
+    def get_target_pose_for_stage(
+        self,
+        stage_index: int,
+        grasp_pose: List[float],
+        angle: float,
+        object_cfg: Config,
+    ) -> torch.Tensor:
         """
-        Validate the result of a stage.
+        Get target end-effector pose for a stage.
         
         Args:
-            stage: The stage type
-            result: Result from executing the stage
+            stage_index: Index of the stage
+            grasp_pose: Base grasp pose
+            angle: Joint angle (for articulated objects)
+            object_cfg: Object configuration
             
         Returns:
-            True if the stage was successful
+            Target pose tensor [x, y, z, qw, qx, qy, qz]
         """
         pass
     
-    @abstractmethod
-    def get_success_criteria(self) -> Dict[str, Any]:
+    def plan_ik_for_stage(
+        self,
+        stage_index: int,
+        grasp_pose: List[float],
+        angles: List[float],
+        object_cfg: Config,
+        is_start: bool = True,
+    ) -> IKResult:
         """
-        Get the success criteria for the task.
-        
-        Returns:
-            Dictionary of success criteria
-        """
-        pass
-    
-    def execute_stage(self, stage: StageType, **kwargs) -> Tuple[Any, bool]:
-        """
-        Execute a single stage of the task.
+        Plan IK solutions for a stage.
         
         Args:
-            stage: The stage to execute
-            **kwargs: Additional arguments
+            stage_index: Index of the stage
+            grasp_pose: Grasp pose
+            angles: Joint angles to sample
+            object_cfg: Object configuration
+            is_start: Whether this is for start or goal IKs
             
         Returns:
-            Tuple of (result, success)
+            IKResult with IK solutions
         """
-        stage_config = self.get_stage_config(stage)
-        stage_config.update(kwargs)
+        from automoma.utils.math_utils import stack_iks_angle
         
-        try:
-            # Execute based on stage type
-            if stage in [StageType.MOVE, StageType.MOVE_HOLDING, StageType.MOVE_ARTICULATED, StageType.HOME]:
-                result = self._execute_move_stage(stage, stage_config)
-            elif stage == StageType.GRASP:
-                result = self._execute_grasp_stage(stage_config)
-            elif stage == StageType.RELEASE:
-                result = self._execute_release_stage(stage_config)
-            elif stage == StageType.LIFT:
-                result = self._execute_lift_stage(stage_config)
-            elif stage == StageType.WAIT:
-                result = self._execute_wait_stage(stage_config)
-            else:
-                result = None
+        plan_cfg = self.cfg.plan_cfg
+        ik_limit = plan_cfg.plan_ik.limit[0] if is_start else plan_cfg.plan_ik.limit[1]
+        
+        all_ik_results = []
+        
+        for _ in range(10):  # Max iterations
+            for angle in angles:
+                target_pose = self.get_target_pose_for_stage(
+                    stage_index, grasp_pose, angle, object_cfg
+                )
+                
+                ik_result = self.planner.plan_ik(
+                    target_pose=target_pose,
+                    robot_cfg=self.robot_cfg,
+                    plan_cfg={"joint_cfg": {"joint_0": angle}, "enable_collision": True},
+                    motion_gen=self.motion_gen,
+                )
+                
+                # Stack angle with IK solutions
+                ik_result.iks = stack_iks_angle(ik_result.iks, -angle)
+                
+                # Apply clustering
+                ik_result = self.planner.ik_clustering(
+                    ik_result,
+                    ap_fallback_clusters=plan_cfg.cluster.ap_fallback_clusters,
+                    ap_clusters_upperbound=plan_cfg.cluster.ap_clusters_upperbound,
+                    ap_clusters_lowerbound=plan_cfg.cluster.ap_cluster_lowerbound,
+                )
+                
+                all_ik_results.append(ik_result)
             
-            success = self.validate_stage(stage, result)
-            return result, success
-            
-        except Exception as e:
-            self.state.error_message = str(e)
-            return None, False
+            total_iks = sum(r.iks.shape[0] for r in all_ik_results)
+            if total_iks >= ik_limit:
+                break
+        
+        return IKResult.cat(all_ik_results)
     
-    def _execute_move_stage(self, stage: StageType, config: Dict[str, Any]) -> Any:
-        """Execute a move stage using the planner."""
-        if self.planner is None:
-            raise ValueError("Planner not set up")
+    def run_planning_pipeline(
+        self,
+        scene_name: str,
+        object_id: str,
+        object_cfg: Config,
+    ) -> TaskResult:
+        """
+        Run the complete planning pipeline for a scene/object.
         
-        start_iks = config.get("start_iks")
-        goal_iks = config.get("goal_iks")
+        For multi-stage tasks:
+        - Stage 0: Sample start and goal IKs
+        - Stage N (N>0): Use previous stage's goal IKs as start IKs
         
-        if start_iks is None or goal_iks is None:
-            raise ValueError("start_iks and goal_iks required for move stage")
+        Args:
+            scene_name: Scene identifier
+            object_id: Object identifier
+            object_cfg: Object configuration
+            
+        Returns:
+            TaskResult with all stage results
+        """
+        from automoma.utils.file_utils import save_ik, save_traj
         
-        plan_cfg = {
-            "stage_type": stage,
-            "batch_size": config.get("batch_size", 10),
-            "expand_to_pairs": config.get("expand_to_pairs", True),
+        grasp_poses = self.get_grasp_poses(object_cfg)
+        
+        task_result = TaskResult(task_name=self.name)
+        
+        for grasp_idx, grasp_pose in enumerate(grasp_poses):
+            logger.info(f"Processing grasp {grasp_idx + 1}/{len(grasp_poses)}")
+            
+            previous_goal_iks = None
+            
+            for stage_idx, stage_type in enumerate(self.stages):
+                stage_result = StageResult(
+                    stage_type=stage_type,
+                    stage_index=stage_idx,
+                )
+                
+                # Get angles for this stage
+                start_angles, goal_angles = self._get_stage_angles(stage_idx, object_cfg)
+                
+                # Get start IKs
+                if stage_idx == 0 or previous_goal_iks is None:
+                    # First stage: sample start IKs
+                    stage_result.start_iks = self.plan_ik_for_stage(
+                        stage_idx, grasp_pose, start_angles, object_cfg, is_start=True
+                    )
+                else:
+                    # Subsequent stages: use previous goal IKs
+                    stage_result.start_iks = previous_goal_iks
+                    logger.info(f"  Stage {stage_idx}: Using {previous_goal_iks.iks.shape[0]} IKs from previous stage")
+                
+                # Get goal IKs
+                stage_result.goal_iks = self.plan_ik_for_stage(
+                    stage_idx, grasp_pose, goal_angles, object_cfg, is_start=False
+                )
+                
+                # Plan trajectories
+                if stage_result.start_iks.iks.shape[0] > 0 and stage_result.goal_iks.iks.shape[0] > 0:
+                    stage_result.traj_result = self._plan_trajectories(
+                        stage_result.start_iks,
+                        stage_result.goal_iks,
+                        stage_type,
+                    )
+                    stage_result.success = stage_result.traj_result.success.sum() > 0
+                
+                # Save stage results
+                stage_output_dir = os.path.join(
+                    self.output_dir, "traj",
+                    self.cfg.robot_cfg.robot_type,
+                    scene_name, object_id,
+                    f"grasp_{grasp_idx:04d}",
+                    f"stage_{stage_idx}",
+                )
+                os.makedirs(stage_output_dir, exist_ok=True)
+                stage_result.output_dir = stage_output_dir
+                
+                save_ik(stage_result.start_iks, os.path.join(stage_output_dir, "start_iks.pt"))
+                save_ik(stage_result.goal_iks, os.path.join(stage_output_dir, "goal_iks.pt"))
+                if stage_result.traj_result is not None:
+                    save_traj(stage_result.traj_result, os.path.join(stage_output_dir, "traj_data.pt"))
+                
+                # Store for next stage
+                previous_goal_iks = stage_result.goal_iks
+                task_result.stages.append(stage_result)
+                
+                if stage_result.traj_result is not None:
+                    task_result.total_trajectories += stage_result.traj_result.success.shape[0]
+                    task_result.successful_trajectories += stage_result.traj_result.success.sum().item()
+        
+        task_result.success = all(s.success for s in task_result.stages)
+        return task_result
+    
+    def _get_stage_angles(self, stage_index: int, object_cfg: Config) -> Tuple[List[float], List[float]]:
+        """Get start and goal angles for a stage."""
+        # Default: use object config angles
+        start_angles = object_cfg.start_angles if object_cfg.start_angles else [0.0]
+        goal_angles = object_cfg.goal_angles if object_cfg.goal_angles else [1.57]
+        return start_angles, goal_angles
+    
+    def _plan_trajectories(
+        self,
+        start_iks: IKResult,
+        goal_iks: IKResult,
+        stage_type: StageType,
+    ) -> TrajResult:
+        """Plan trajectories between start and goal IKs."""
+        plan_cfg = self.cfg.plan_cfg
+        
+        traj_cfg = {
+            "stage_type": stage_type,
+            "batch_size": plan_cfg.plan_traj.batch_size,
+            "expand_to_pairs": plan_cfg.plan_traj.expand_to_pairs,
         }
         
         return self.planner.plan_traj(
-            start_iks=start_iks,
-            goal_iks=goal_iks,
-            plan_cfg=plan_cfg,
+            start_iks=start_iks.iks,
+            goal_iks=goal_iks.iks,
+            robot_cfg=self.robot_cfg,
+            plan_cfg=traj_cfg,
+            motion_gen=self.motion_gen,
         )
     
-    def _execute_grasp_stage(self, config: Dict[str, Any]) -> Any:
-        """Execute a grasp stage."""
-        if self.env is None:
-            return None
-        
-        gripper_value = config.get("gripper_value", 0.0)
-        
-        if hasattr(self.env, "set_gripper"):
-            self.env.set_gripper(gripper_value)
-        
-        return {"gripper_state": "closed", "gripper_value": gripper_value}
+    # ==================== Recording Pipeline ====================
     
-    def _execute_release_stage(self, config: Dict[str, Any]) -> Any:
-        """Execute a release stage."""
-        if self.env is None:
-            return None
-        
-        gripper_value = config.get("gripper_value", 0.04)
-        
-        if hasattr(self.env, "set_gripper"):
-            self.env.set_gripper(gripper_value)
-        
-        return {"gripper_state": "open", "gripper_value": gripper_value}
-    
-    def _execute_lift_stage(self, config: Dict[str, Any]) -> Any:
-        """Execute a lift stage."""
-        return self._execute_move_stage(StageType.LIFT, config)
-    
-    def _execute_wait_stage(self, config: Dict[str, Any]) -> Any:
-        """Execute a wait stage."""
-        wait_steps = config.get("wait_steps", 10)
-        
-        if self.env is not None and hasattr(self.env, "step"):
-            for _ in range(wait_steps):
-                self.env.step()
-        
-        return {"wait_steps": wait_steps}
-    
-    def run(self, **kwargs) -> TaskState:
+    def run_recording_pipeline(
+        self,
+        traj_dir: str,
+        dataset_wrapper,
+    ) -> int:
         """
-        Run the complete task.
+        Run the recording pipeline to create a dataset from trajectories.
         
         Args:
-            **kwargs: Additional arguments for stages
+            traj_dir: Directory containing trajectory files
+            dataset_wrapper: Dataset wrapper for saving
             
         Returns:
-            Final task state
+            Number of episodes recorded
         """
-        for i, stage in enumerate(self.stages):
-            self.state.current_stage = stage
-            self.state.stage_index = i
-            
-            logger.info(f"Executing stage {i + 1}/{len(self.stages)}: {stage.name}")
-            
-            stage_kwargs = kwargs.get(stage.name.lower(), {})
-            result, success = self.execute_stage(stage, **stage_kwargs)
-            
-            self.state.stage_results.append({
-                "stage": stage,
-                "result": result,
-                "success": success,
-            })
-            
-            if not success:
-                self.state.success = False
-                self.state.is_complete = True
-                logger.warning(f"Stage {stage.name} failed: {self.state.error_message}")
-                return self.state
+        from automoma.utils.file_utils import load_traj
         
-        self.state.is_complete = True
-        self.state.success = self._check_success()
+        traj_path = Path(traj_dir)
+        traj_files = list(traj_path.glob("**/traj_data.pt"))
         
-        return self.state
+        episodes_recorded = 0
+        
+        for traj_file in traj_files:
+            try:
+                traj_data = torch.load(traj_file, weights_only=True)
+                trajectories = traj_data["trajectories"]
+                success = traj_data["success"]
+                
+                successful_trajs = trajectories[success.bool()]
+                
+                for traj in successful_trajs:
+                    if self._record_trajectory(traj, dataset_wrapper):
+                        episodes_recorded += 1
+                        
+            except Exception as e:
+                logger.warning(f"Error processing {traj_file}: {e}")
+        
+        return episodes_recorded
     
-    def _check_success(self) -> bool:
-        """Check if the overall task was successful."""
-        criteria = self.get_success_criteria()
+    def _record_trajectory(self, trajectory: torch.Tensor, dataset_wrapper) -> bool:
+        """
+        Record a single trajectory to the dataset.
         
-        # All stages must have succeeded
-        all_stages_success = all(
-            r["success"] for r in self.state.stage_results
+        Args:
+            trajectory: Joint trajectory tensor
+            dataset_wrapper: Dataset wrapper
+            
+        Returns:
+            True if successful
+        """
+        if self.env is None:
+            return False
+        
+        for step_idx in range(len(trajectory)):
+            step_data = trajectory[step_idx]
+            robot_state = step_data[:-1]  # All but last (handle angle)
+            env_state = step_data[-1:]     # Last (handle angle)
+            
+            self.env.set_state(robot_state, env_state)
+            self.env.step()
+            
+            obs_data = self.env.get_data()
+            obs_data["task"] = self.name
+            dataset_wrapper.add(obs_data)
+        
+        dataset_wrapper.save()
+        return True
+    
+    # ==================== Evaluation Pipeline ====================
+    
+    def get_test_initial_states(self, test_data_dir: str) -> List[torch.Tensor]:
+        """
+        Load test initial states from trajectory data.
+        
+        For evaluation, we need to initialize the robot to specific states
+        (e.g., already grasping handle for open task).
+        
+        Args:
+            test_data_dir: Directory containing test trajectory data
+            
+        Returns:
+            List of initial state tensors
+        """
+        initial_states = []
+        test_path = Path(test_data_dir)
+        
+        # Load start IKs from trajectory data
+        ik_files = list(test_path.glob("**/start_iks.pt"))
+        
+        for ik_file in ik_files:
+            try:
+                ik_data = torch.load(ik_file, weights_only=True)
+                iks = ik_data["iks"] if isinstance(ik_data, dict) else ik_data.iks
+                
+                # Take first IK as initial state
+                if len(iks) > 0:
+                    initial_states.append(iks[0])
+                    
+            except Exception as e:
+                logger.warning(f"Error loading {ik_file}: {e}")
+        
+        return initial_states
+    
+    def run_evaluation_pipeline(
+        self,
+        policy_model,
+        test_data_dir: str,
+        num_episodes: int,
+    ) -> Dict[str, Any]:
+        """
+        Run evaluation pipeline.
+        
+        Args:
+            policy_model: Trained policy model
+            test_data_dir: Directory with test data for initial states
+            num_episodes: Number of evaluation episodes
+            
+        Returns:
+            Evaluation metrics dictionary
+        """
+        from automoma.evaluation.metrics import MetricsCalculator
+        
+        initial_states = self.get_test_initial_states(test_data_dir)
+        
+        if not initial_states:
+            logger.warning("No test initial states found")
+            return {}
+        
+        metrics_calc = MetricsCalculator(
+            success_threshold=self.cfg.evaluation.success_threshold
         )
         
-        return all_stages_success
+        for ep_idx in range(min(num_episodes, len(initial_states))):
+            initial_state = initial_states[ep_idx % len(initial_states)]
+            
+            # Set initial state
+            self.env.set_state(initial_state)
+            self.env.step()
+            
+            episode_traj = []
+            
+            for step in range(self.cfg.evaluation.max_steps_per_episode):
+                obs = self.env.get_data()
+                
+                # Get action from policy
+                action = policy_model.infer_sync(obs)
+                
+                if not action.success:
+                    break
+                
+                # Execute action
+                self.env.set_state(action.action)
+                self.env.step()
+                
+                episode_traj.append(action.action)
+                
+                # Check termination
+                if self._check_task_complete(obs):
+                    break
+            
+            # Add episode to metrics
+            if episode_traj:
+                metrics_calc.add_episode(
+                    pred_trajectory=np.array(episode_traj),
+                    gt_trajectory=np.array(episode_traj),  # Self-trajectory
+                    completed=True,
+                )
+        
+        return metrics_calc.compute_metrics()
     
-    def reset(self) -> None:
-        """Reset the task state."""
-        self.state = TaskState(
-            current_stage=self.stages[0] if self.stages else StageType.MOVE,
-            stage_index=0,
-            is_complete=False,
-            success=False,
-        )
+    def _check_task_complete(self, obs: Dict[str, Any]) -> bool:
+        """Check if the task is complete based on observation."""
+        # Override in subclasses for task-specific completion checks
+        return False
+    
+    # ==================== Abstract Methods for Subclasses ====================
+    
+    @abstractmethod
+    def get_stage_type(self, stage_index: int) -> StageType:
+        """Get the stage type for a given index."""
+        pass

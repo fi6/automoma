@@ -1,83 +1,118 @@
 """Task factory for creating task instances."""
 
+import logging
 from typing import Dict, Any, Optional, Type
+
 from automoma.core.types import TaskType
-from automoma.core.registry import TASK_REGISTRY, register_task
+from automoma.core.config_loader import Config
+from automoma.tasks.base_task_new import BaseTask
+
+
+logger = logging.getLogger(__name__)
+
+
+# Task registry
+_TASK_REGISTRY: Dict[str, Type[BaseTask]] = {}
+
+
+def register_task(name: str):
+    """Decorator to register a task class."""
+    def decorator(cls: Type[BaseTask]) -> Type[BaseTask]:
+        _TASK_REGISTRY[name.lower()] = cls
+        return cls
+    return decorator
+
+
+def get_task_class(task_name: str) -> Optional[Type[BaseTask]]:
+    """Get task class by name."""
+    return _TASK_REGISTRY.get(task_name.lower())
+
+
+def list_available_tasks():
+    """List all registered tasks."""
+    return list(_TASK_REGISTRY.keys())
+
+
+# Register built-in tasks
+def _register_builtin_tasks():
+    """Register all built-in task implementations."""
+    from automoma.tasks.open_task import OpenTask, ReachOpenTask
+    from automoma.tasks.pick_place_task import PickTask, PlaceTask, PickPlaceTask
+    
+    _TASK_REGISTRY["open"] = OpenTask
+    _TASK_REGISTRY["reach_open"] = ReachOpenTask
+    _TASK_REGISTRY["pick"] = PickTask
+    _TASK_REGISTRY["place"] = PlaceTask
+    _TASK_REGISTRY["pick_place"] = PickPlaceTask
+    
+    # Aliases
+    _TASK_REGISTRY["multi_object_open"] = OpenTask
 
 
 class TaskFactory:
-    """Factory for creating task instances."""
+    """
+    Factory for creating task instances from configuration.
+    
+    Usage:
+        cfg = load_config("multi_object_open")
+        task = TaskFactory.create(cfg)
+    """
     
     @staticmethod
-    def create(
-        task_type: TaskType,
-        config: Optional[Dict[str, Any]] = None,
-        **kwargs,
-    ):
+    def create(cfg: Config, task_name: Optional[str] = None) -> BaseTask:
         """
-        Create a task instance based on task type.
+        Create a task instance from configuration.
         
         Args:
-            task_type: Type of task to create
-            config: Optional configuration dictionary
-            **kwargs: Additional arguments
+            cfg: Configuration object
+            task_name: Optional task name override
             
         Returns:
             Task instance
         """
-        from automoma.tasks.pick_place import PickPlaceTask
-        from automoma.tasks.reach_open import ReachOpenTask
+        # Ensure tasks are registered
+        if not _TASK_REGISTRY:
+            _register_builtin_tasks()
         
-        if config is None:
-            config = {}
+        # Get task name from config or parameter
+        if task_name is None:
+            if cfg.info_cfg and cfg.info_cfg.task:
+                task_name = cfg.info_cfg.task
+            else:
+                raise ValueError("Task name not specified in config or parameter")
         
-        task_mapping = {
-            TaskType.PICK_PLACE: PickPlaceTask,
-            TaskType.REACH_OPEN: ReachOpenTask,
-            TaskType.PICK: PickPlaceTask,
-            TaskType.PLACE: PickPlaceTask,
-            TaskType.REACH: ReachOpenTask,
-            TaskType.OPEN: ReachOpenTask,
-        }
+        # Get task class
+        task_class = get_task_class(task_name)
+        if task_class is None:
+            available = list_available_tasks()
+            raise ValueError(f"Unknown task: {task_name}. Available: {available}")
         
-        if task_type not in task_mapping:
-            raise ValueError(f"Unknown task type: {task_type}")
-        
-        task_class = task_mapping[task_type]
-        return task_class(config, **kwargs)
+        logger.info(f"Creating task: {task_name}")
+        return task_class(cfg)
     
     @staticmethod
-    def register(task_type: TaskType, task_class: Type) -> None:
+    def create_from_exp(exp_name: str, project_root: str = None) -> BaseTask:
         """
-        Register a new task class.
+        Create a task from experiment name.
         
         Args:
-            task_type: Task type to register
-            task_class: Task class to register
+            exp_name: Experiment name (e.g., "multi_object_open")
+            project_root: Optional project root path
+            
+        Returns:
+            Task instance
         """
-        TASK_REGISTRY.register(task_type.name, task_class)
-    
-    @staticmethod
-    def get_available_tasks():
-        """Get list of available task types."""
-        return [TaskType.PICK_PLACE, TaskType.REACH_OPEN, TaskType.PICK, TaskType.PLACE, TaskType.REACH, TaskType.OPEN]
-
-
-def create_task(
-    task_type: str,
-    config: Optional[Dict[str, Any]] = None,
-    **kwargs,
-):
-    """
-    Convenience function to create a task.
-    
-    Args:
-        task_type: Task type as string (e.g., "pick_place", "reach_open")
-        config: Optional configuration
-        **kwargs: Additional arguments
+        from automoma.core.config_loader import load_config
         
-    Returns:
-        Task instance
-    """
-    task_type_enum = TaskType[task_type.upper()]
-    return TaskFactory.create(task_type_enum, config, **kwargs)
+        cfg = load_config(exp_name, project_root)
+        return TaskFactory.create(cfg)
+
+
+def create_task(cfg: Config, task_name: Optional[str] = None) -> BaseTask:
+    """Convenience function to create a task."""
+    return TaskFactory.create(cfg, task_name)
+
+
+def create_task_from_exp(exp_name: str, project_root: str = None) -> BaseTask:
+    """Convenience function to create a task from experiment name."""
+    return TaskFactory.create_from_exp(exp_name, project_root)
