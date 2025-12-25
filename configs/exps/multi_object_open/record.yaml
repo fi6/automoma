@@ -1,0 +1,90 @@
+# Record Configuration for Multi-Object Open Experiment
+# Configuration for rendering datasets from planned trajectories
+
+info_cfg:
+  task: "multi_object_open"
+  robot: "summit_franka"
+  description: "Record manipulation data for opening articulated objects"
+
+# Data source configuration
+data_cfg:
+  traj_dir: "data/run_1223/traj"
+  input_format: "pt"  # PyTorch tensor files
+  
+# Dataset output configuration
+dataset_cfg:
+  repo_id: "automoma/multi_object_open"
+  root: "./datasets/multi_object_open"
+  fps: 15
+  use_videos: true
+  push_to_hub: false
+  robot_type: "summit_franka"
+  state_dim: 12
+  state_names:
+    - base_x
+    - base_y
+    - base_z
+    - panda_joint1
+    - panda_joint2
+    - panda_joint3
+    - panda_joint4
+    - panda_joint5
+    - panda_joint6
+    - panda_joint7
+    - panda_finger_joint1
+    - panda_finger_joint2
+  task: "open_articulated_object"
+  
+# Camera configuration
+camera_cfg:
+  names:
+    - ego_topdown
+    - ego_wrist
+    - fix_local
+  width: 320
+  height: 240
+  cameras:
+    ego_topdown:
+      prim_path: "/World/summit_panda/panda_hand/ego_topdown"
+      resolution: [320, 240]
+      frequency: 30
+      pose:
+        translate: [0, 0, 10]
+        orient: [0, 0, -90]
+      pose_type: local
+    ego_wrist:
+      prim_path: "/World/summit_panda/panda_hand/ego_wrist"
+      resolution: [320, 240]
+      frequency: 30
+      focal_length: 1.5
+      pose:
+        translate: [-0.6, 0, -0.9]
+        orient: [180, -28, 90]
+      pose_type: local
+    fix_local:
+      prim_path: "/World/object/fix_local"
+      resolution: [320, 240]
+      frequency: 30
+      pose:
+        translate: [-4.3, 4.7, 6.2]
+        orient: [-34.0, -26.0, -140.0]
+      pose_type: local
+      
+# Recording parameters
+record_cfg:
+  max_episodes: 1000
+  episodes_per_grasp: 10
+  steps_per_episode: 100
+  skip_existing: true
+  
+# Environment configuration (for Isaac Sim)
+env_cfg:
+  sim:
+    headless: false
+    width: 1920
+    height: 1080
+    physics_dt: 1.0/60.0
+    rendering_dt: 1.0/60.0
+  robot_cfg:
+    path: "assets/robot/summit_franka/summit_franka.yml"
+    mobile_base_dof: 3

@@ -1,0 +1,76 @@
+# AutoMoMa Base Configuration
+# This is the base configuration file that can be extended by experiment configs
+
+defaults:
+  robot_type: summit_franka
+  scene_format: infinigen
+  dataset_format: lerobot
+  
+# Paths (relative to project root)
+paths:
+  assets: assets
+  data: data
+  outputs: outputs
+  robots: assets/robot
+  scenes: assets/scene
+  objects: assets/object
+  
+# Default robot configuration
+robot:
+  summit_franka:
+    path: assets/robot/summit_franka/summit_franka.yml
+    mobile_base_dof: 3
+    arm_dof: 7
+    gripper_dof: 2
+    total_dof: 12
+    
+# Default camera configuration  
+camera:
+  ego_topdown:
+    resolution: [320, 240]
+    frequency: 30
+    pose_type: local
+  ego_wrist:
+    resolution: [320, 240]
+    frequency: 30
+    focal_length: 1.5
+    pose_type: local
+  fix_local:
+    resolution: [320, 240]
+    frequency: 30
+    pose_type: local
+    
+# Default planning parameters
+planning:
+  voxel_dims: [5.0, 5.0, 5.0]
+  voxel_size: 0.02
+  expanded_dims: [1.0, 0.2, 0.2]
+  collision_checker_type: VOXEL
+  num_trajopt_seeds: 12
+  num_graph_seeds: 12
+  interpolation_dt: 0.05
+  
+# Default dataset parameters
+dataset:
+  fps: 15
+  use_videos: true
+  state_dim: 12
+  camera_names:
+    - ego_topdown
+    - ego_wrist
+    - fix_local
+    
+# Default training parameters
+training:
+  batch_size: 64
+  learning_rate: 0.0001
+  num_epochs: 100
+  warmup_steps: 500
+  grad_clip: 10.0
+  
+# Default evaluation parameters
+evaluation:
+  num_episodes: 50
+  max_steps_per_episode: 500
+  success_threshold: 0.05
+  use_async_inference: true

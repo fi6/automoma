@@ -1,0 +1,106 @@
+# Evaluation Configuration for Multi-Object Open Experiment
+# Configuration for evaluating trained policies
+
+info_cfg:
+  task: "multi_object_open"
+  robot: "summit_franka"
+  description: "Evaluate policy on articulated object manipulation"
+
+# Model configuration
+model:
+  checkpoint_path: "outputs/train/multi_object_open/model_final.pt"
+  policy_type: "diffusion"  # Must match training config
+  
+# Evaluation parameters
+evaluation:
+  num_episodes: 50
+  max_steps_per_episode: 500
+  success_threshold: 0.05  # Position error threshold in meters
+  
+  # Success criteria
+  criteria:
+    position_threshold: 0.05   # meters
+    orientation_threshold: 0.1  # radians
+    angle_threshold: 0.1        # radians for articulation
+    completion_required: true
+    
+# Async inference configuration (for LeRobot)
+async_inference:
+  enabled: true
+  host: "localhost"
+  port: 50051
+  timeout: 30.0
+  
+  # Queue configuration
+  max_queue_size: 100
+  worker_threads: 1
+  
+# Output configuration
+output:
+  output_dir: "outputs/eval/multi_object_open"
+  save_videos: true
+  save_trajectories: true
+  save_observations: false  # Save raw observations
+  
+  # Video settings
+  video:
+    fps: 15
+    codec: "mp4v"
+    resolution: [640, 480]
+    
+# Hardware configuration
+hardware:
+  device: "cuda"
+  
+# Environment configuration (for simulation evaluation)
+env_cfg:
+  sim:
+    headless: true  # Run headless for evaluation
+    width: 640
+    height: 480
+  robot_cfg:
+    path: "assets/robot/summit_franka/summit_franka.yml"
+    mobile_base_dof: 3
+
+# Scene configurations to evaluate on
+scene_cfg:
+  scene_0_seed_0:
+    path: "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/export/export_scene.blend/export_scene.usdc"
+    pose: [0, 0, -0.13, 1, 0, 0, 0]
+    metadata_path: "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/info/metadata.json"
+    
+# Object configurations to evaluate on
+object_cfg:
+  "7221":
+    path: "assets/object/Microwave/7221/7221_0_scaling.urdf"
+    asset_type: "Microwave"
+    asset_id: "7221"
+    scale: 0.3563
+    goal_angle: 1.57  # Target open angle
+  "11622":
+    path: "assets/object/Dishwasher/11622/11622_0_scaling.urdf"
+    asset_type: "Dishwasher"
+    asset_id: "11622"
+    scale: 0.6446
+    goal_angle: 1.57
+  "101773":
+    path: "assets/object/Oven/101773/101773_0_scaling.urdf"
+    asset_type: "Oven"
+    asset_id: "101773"
+    scale: 0.7232
+    goal_angle: 1.57
+    
+# Metrics to compute
+metrics:
+  position_error: true
+  orientation_error: true
+  joint_error: true
+  trajectory_smoothness: true
+  inference_time: true
+  success_rate: true
+  
+# Visualization settings
+visualization:
+  show_trajectory: true
+  show_goal: true
+  show_collision: false

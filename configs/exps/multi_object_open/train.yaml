@@ -1,0 +1,88 @@
+# Training Configuration for Multi-Object Open Experiment
+# Configuration for training policy models
+
+info_cfg:
+  task: "multi_object_open"
+  robot: "summit_franka"
+  description: "Train diffusion policy for opening articulated objects"
+
+# Dataset configuration
+dataset:
+  repo_id: "automoma/multi_object_open"
+  root: "./datasets/multi_object_open"
+  split: "train"
+  
+# Policy configuration
+policy:
+  type: "diffusion"  # Options: diffusion, act, vq_bet
+  pretrained_path: null
+  
+  # Diffusion policy specific
+  diffusion:
+    n_obs_steps: 2
+    n_action_steps: 8
+    horizon: 16
+    obs_as_cond: true
+    
+  # Network architecture
+  network:
+    type: "unet"
+    down_dims: [256, 512, 1024]
+    kernel_size: 5
+    n_groups: 8
+    cond_predict_scale: true
+    
+# Training configuration
+training:
+  batch_size: 64
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-6
+  num_epochs: 100
+  warmup_steps: 500
+  grad_clip: 10.0
+  
+  # Learning rate schedule
+  lr_scheduler:
+    type: "cosine"
+    warmup_steps: 500
+    
+  # Optimizer
+  optimizer:
+    type: "adamw"
+    betas: [0.95, 0.999]
+    eps: 1.0e-8
+    
+# Checkpointing
+checkpoint:
+  output_dir: "outputs/train/multi_object_open"
+  save_freq: 10000
+  eval_freq: 5000
+  log_freq: 100
+  keep_last_n: 5
+  
+# Hardware configuration
+hardware:
+  device: "cuda"
+  num_workers: 8
+  pin_memory: true
+  mixed_precision: true  # Use fp16 training
+  
+# Wandb logging
+wandb:
+  use_wandb: true
+  project: "automoma"
+  entity: null  # Set to your W&B username/team
+  name: "multi_object_open_diffusion"
+  tags:
+    - "diffusion"
+    - "manipulation"
+    - "articulated"
+    
+# Data augmentation
+augmentation:
+  enabled: true
+  joint_noise_std: 0.01
+  image_augmentation:
+    random_crop: true
+    color_jitter: true
+    gaussian_blur: false
