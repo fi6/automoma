@@ -1,0 +1,119 @@
+# Training Configuration for Single Object Open Test Experiment
+# Configuration for training DP (Diffusion Policy) and ACT models
+
+info_cfg:
+  task: "single_object_open_test"
+  robot: "summit_franka"
+  description: "Train diffusion policy and ACT for single object open test"
+
+# Training scenes
+train_scenes: ["scene_0_seed_0", "scene_1_seed_1"]
+train_objects: ["7221"]
+
+# Unified train configuration (for scripts)
+train_cfg:
+  dataset_repo_id: "automoma/single_object_open_test"
+  dataset_root: "./datasets/single_object_open_test"
+  policy_type: "diffusion"  # Options: "diffusion" (DP) or "act" (ACT)
+  batch_size: 64
+  learning_rate: 1.0e-4
+  num_epochs: 100
+  warmup_steps: 500
+  output_dir: "outputs/train/single_object_open_test"
+  save_freq: 10000
+  device: "cuda"
+
+# Dataset configuration
+dataset:
+  repo_id: "automoma/single_object_open_test"
+  root: "./datasets/single_object_open_test"
+  split: "train"
+  
+# Policy configuration - supports both DP and ACT
+policy:
+  type: "diffusion"  # Options: diffusion (DP), act
+  pretrained_path: null
+  
+  # Diffusion Policy (DP) specific
+  diffusion:
+    n_obs_steps: 2
+    n_action_steps: 8
+    horizon: 16
+    obs_as_cond: true
+    
+  # ACT (Action Chunking Transformer) specific
+  act:
+    n_obs_steps: 1
+    n_action_steps: 100
+    chunk_size: 100
+    kl_weight: 10.0
+    hidden_dim: 512
+    dim_feedforward: 3200
+    num_encoder_layers: 4
+    num_decoder_layers: 7
+    nheads: 8
+    dropout: 0.1
+    
+  # Network architecture
+  network:
+    type: "unet"
+    down_dims: [256, 512, 1024]
+    kernel_size: 5
+    n_groups: 8
+    cond_predict_scale: true
+    
+# Training configuration
+training:
+  batch_size: 64
+  learning_rate: 1.0e-4
+  weight_decay: 1.0e-6
+  num_epochs: 100
+  warmup_steps: 500
+  grad_clip: 10.0
+  
+  # Learning rate schedule
+  lr_scheduler:
+    type: "cosine"
+    warmup_steps: 500
+    
+  # Optimizer
+  optimizer:
+    type: "adamw"
+    betas: [0.95, 0.999]
+    eps: 1.0e-8
+    
+# Checkpointing
+checkpoint:
+  output_dir: "outputs/train/single_object_open_test"
+  save_freq: 10000
+  eval_freq: 5000
+  log_freq: 100
+  keep_last_n: 5
+  
+# Hardware configuration
+hardware:
+  device: "cuda"
+  num_workers: 8
+  pin_memory: true
+  mixed_precision: true  # Use fp16 training
+  
+# Wandb logging
+wandb:
+  use_wandb: true
+  project: "automoma"
+  entity: null  # Set to your W&B username/team
+  name: "single_object_open_test"
+  tags:
+    - "single_object"
+    - "manipulation"
+    - "articulated"
+    - "test"
+    
+# Data augmentation
+augmentation:
+  enabled: true
+  joint_noise_std: 0.01
+  image_augmentation:
+    random_crop: true
+    color_jitter: true
+    gaussian_blur: false
