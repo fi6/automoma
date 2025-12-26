@@ -1,13 +1,28 @@
-"""Pick and place task implementation."""
+"""
+Pick and place task implementation.
+
+This module implements pick-and-place manipulation tasks with multi-stage
+pipelines. Each task can have different combinations of stages:
+
+- PickTask: MOVE → MOVE → GRASP (reach, approach, grasp)
+- PlaceTask: MOVE → MOVE → RELEASE (approach, place, release)
+- PickPlaceTask: Full pick + move + place sequence
+
+Architecture:
+    Multi-stage IK chaining is used: Stage N+1 start IKs = Stage N goal IKs
+    This ensures smooth transitions between stages.
+"""
 
 import logging
 from typing import Dict, List, Optional, Any, Tuple
 import torch
 import numpy as np
+from pathlib import Path
 
-from automoma.core.types import TaskType, StageType, IKResult
+from automoma.core.types import TaskType, StageType, IKResult, TrajResult
 from automoma.core.config_loader import Config
-from automoma.tasks.base_task import BaseTask, TaskResult, StageResult
+from automoma.tasks.base_task import BaseTask, TaskResult, StageResult, MAX_IK_ITERATIONS
+from automoma.utils.type_utils import to_list, to_tensor
 
 
 logger = logging.getLogger(__name__)

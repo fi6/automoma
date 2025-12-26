@@ -7,6 +7,23 @@ Isaac Sim environment.
 
 IMPORTANT: SimulationApp must be initialized before using this module.
 Use automoma.simulation.sim_app_manager.get_simulation_app() first.
+
+Usage:
+    # First, initialize SimulationApp
+    from automoma.simulation import get_simulation_app
+    sim_app = get_simulation_app(headless=False)
+    
+    # Then create and use SimEnvWrapper
+    cfg = load_config("multi_object_open")
+    env = SimEnvWrapper(cfg)
+    env.setup_env()
+    
+    # Set robot state and step
+    env.set_state(robot_state, env_state)
+    env.step()
+    
+    # Get observations
+    data = env.get_data()
 """
 
 from typing import Any, Dict, List, Literal, Optional, Union
@@ -15,6 +32,7 @@ import logging
 # Safe imports (don't require Isaac Sim)
 from automoma.core.config_loader import Config
 from automoma.utils.math_utils import pose_multiply
+from automoma.utils.type_utils import to_list, to_numpy, to_float, ensure_positive
 
 from curobo.geom.types import Pose
 from curobo.types.state import JointState
@@ -239,16 +257,12 @@ class SimEnvWrapper:
         Set robot and environment state.
         
         Args:
-            robot_state: Robot joint positions
+            robot_state: Robot joint positions (tensor, array, or list)
             env_state: Environment state (e.g., object joint angle)
         """
-        # Set robot state
+        # Set robot state using type_utils for clean conversion
         if robot_state is not None:
-            if isinstance(robot_state, torch.Tensor):
-                robot_state_list = robot_state.tolist()
-            else:
-                robot_state_list = list(robot_state)
-            
+            robot_state_list = to_list(robot_state)
             self.robot.set_joint_positions(robot_state_list, self.robot_idx_list)
             self.robot._articulation_view.set_max_efforts(
                 values=np.array([5000] * len(self.robot_idx_list)), 
@@ -256,11 +270,10 @@ class SimEnvWrapper:
             )
             self.history_robot_state.append(robot_state)
 
-        # Set environment state
+        # Set environment state (e.g., object joint angle)
         if env_state is not None:
-            if isinstance(env_state, torch.Tensor):
-                env_state = env_state.item()
-            env_state = abs(float(env_state))  # Avoid negative values
+            # Convert to positive float (joint angles should be positive)
+            env_state_float = ensure_positive(to_float(env_state))
             
             obj = self.sim.world.scene.get_object("target_object")
             if not obj._articulation_view.initialized:
@@ -268,8 +281,8 @@ class SimEnvWrapper:
             
             object_cfg = self._to_dict(self.cfg.object_cfg)
             joint_id = object_cfg.get("joint_id", 0)
-            obj.set_joint_positions(env_state, [joint_id])
-            self.history_env_state.append(env_state)
+            obj.set_joint_positions(env_state_float, [joint_id])
+            self.history_env_state.append(env_state_float)
     
     def set_gripper(self, value: float) -> None:
         """
@@ -316,6 +329,7 @@ class SimEnvWrapper:
     def _compute_action(self, current_state, next_state):
         """
         Compute action as next_state - current_state.
+        
         For mobile base (first N DOFs), use delta.
         For arm joints, use absolute next position.
         
@@ -326,19 +340,17 @@ class SimEnvWrapper:
         Returns:
             Action array
         """
-        # Convert to numpy if needed
-        if isinstance(current_state, torch.Tensor):
-            current_state = current_state.detach().cpu().numpy()
-        if isinstance(next_state, torch.Tensor):
-            next_state = next_state.detach().cpu().numpy()
+        # Convert to numpy using type_utils
+        current_np = to_numpy(current_state)
+        next_np = to_numpy(next_state)
         
         # Copy next state as base action
-        action = next_state.copy()
+        action = next_np.copy()
         
         # For mobile base DOFs, compute delta
         base_dof = self.cfg.robot_cfg.get("mobile_base_dof", 3)
-        if len(current_state) >= base_dof and len(next_state) >= base_dof:
-            action[:base_dof] = next_state[:base_dof] - current_state[:base_dof]
+        if len(current_np) >= base_dof and len(next_np) >= base_dof:
+            action[:base_dof] = next_np[:base_dof] - current_np[:base_dof]
         
         return action
 

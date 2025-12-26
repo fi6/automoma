@@ -105,7 +105,16 @@ class Config:
 def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
     """
     Deep merge two dictionaries.
+    
     Override values take precedence over base values.
+    Nested dictionaries are merged recursively.
+    
+    Args:
+        base: Base dictionary with default values
+        override: Override dictionary with new values
+        
+    Returns:
+        Merged dictionary with base values overridden by override
     """
     result = copy.deepcopy(base)
     
@@ -114,6 +123,42 @@ def deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]
             result[key] = deep_merge(result[key], value)
         else:
             result[key] = copy.deepcopy(value)
+    
+    return result
+
+
+def _map_default_to_cfg_keys(config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Map default config section names to experiment config section names.
+    
+    This allows the default config to use descriptive names like 'planning'
+    while experiments use 'plan_cfg' for consistency with code access.
+    
+    Mapping:
+        planning -> plan_cfg
+        dataset -> record_cfg
+        training -> train_cfg
+        evaluation -> eval_cfg
+        camera -> camera_cfg (or sensors_cfg)
+    """
+    mappings = {
+        "planning": "plan_cfg",
+        "dataset": "record_cfg",
+        "training": "train_cfg",
+        "evaluation": "eval_cfg",
+    }
+    
+    result = copy.deepcopy(config)
+    
+    for old_key, new_key in mappings.items():
+        if old_key in result:
+            if new_key in result:
+                # Merge default into existing
+                result[new_key] = deep_merge(result[old_key], result[new_key])
+            else:
+                # Just rename
+                result[new_key] = result[old_key]
+            del result[old_key]
     
     return result
 
@@ -200,6 +245,10 @@ class ConfigLoader:
             if config_path.exists():
                 exp_config = load_yaml(config_path)
                 merged_config = deep_merge(merged_config, exp_config)
+        
+        # Map default section names to cfg section names
+        # e.g., 'planning' -> 'plan_cfg', 'dataset' -> 'record_cfg'
+        merged_config = _map_default_to_cfg_keys(merged_config)
         
         # Add metadata
         merged_config["_exp_name"] = exp_name

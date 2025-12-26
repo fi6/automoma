@@ -1,12 +1,18 @@
 # AutoMoMa Base Configuration
 # This is the base configuration file that can be extended by experiment configs
+# All values here serve as defaults and can be overridden in experiment configs
 
+# =============================================================================
+# Default Settings
+# =============================================================================
 defaults:
   robot_type: summit_franka
   scene_format: infinigen
   dataset_format: lerobot
-  
+
+# =============================================================================
 # Paths (relative to project root)
+# =============================================================================
 paths:
   assets: assets
   data: data
@@ -14,8 +20,10 @@ paths:
   robots: assets/robot
   scenes: assets/scene
   objects: assets/object
-  
-# Default robot configuration
+
+# =============================================================================
+# Robot Configurations
+# =============================================================================
 robot:
   summit_franka:
     path: assets/robot/summit_franka/summit_franka.yml
@@ -23,8 +31,10 @@ robot:
     arm_dof: 7
     gripper_dof: 2
     total_dof: 12
-    
-# Default camera configuration  
+
+# =============================================================================
+# Camera Configuration
+# =============================================================================
 camera:
   ego_topdown:
     resolution: [320, 240]
@@ -39,21 +49,60 @@ camera:
     resolution: [320, 240]
     frequency: 30
     pose_type: local
-    
-# Default planning parameters
+
+# =============================================================================
+# Environment Configuration
+# =============================================================================
+env_cfg:
+  lighting_mode: "default"
+  collision_free_prim_paths: []
+  physics_dt: 0.01
+  rendering_dt: 0.01
+
+# =============================================================================
+# Planning Parameters
+# =============================================================================
 planning:
-  resume: true  # Skip already completed planning tasks
+  # Resume support - skip already completed planning tasks
+  resume: true
+  
+  # Collision world parameters
   voxel_dims: [5.0, 5.0, 5.0]
   voxel_size: 0.02
-  expanded_dims: [1.0, 0.2, 0.2]
+  expand_dims: [1.0, 0.2, 0.2]
   collision_checker_type: VOXEL
+  
+  # Motion planning seeds
   num_trajopt_seeds: 12
   num_graph_seeds: 12
   interpolation_dt: 0.05
   
-# Default dataset parameters
+  # IK clustering parameters
+  cluster:
+    ap_fallback_clusters: 30
+    ap_clusters_upperbound: 80
+    ap_cluster_lowerbound: 10
+  
+  # IK planning limits [start_limit, goal_limit]
+  plan_ik:
+    limit: [100, 100]
+  
+  # Trajectory planning parameters
+  plan_traj:
+    batch_size: 10
+    expand_to_pairs: true
+  
+  # Trajectory filtering thresholds
+  filter:
+    position_threshold: 0.01
+    orientation_threshold: 0.05
+
+# =============================================================================
+# Dataset Recording Parameters
+# =============================================================================
 dataset:
-  resume: true  # Skip already recorded trajectories
+  # Resume support - skip already recorded trajectories
+  resume: true
   fps: 15
   use_videos: true
   state_dim: 12
@@ -61,8 +110,10 @@ dataset:
     - ego_topdown
     - ego_wrist
     - fix_local
-    
-# Default training parameters
+
+# =============================================================================
+# Training Parameters
+# =============================================================================
 training:
   batch_size: 64
   learning_rate: 0.0001
@@ -70,7 +121,25 @@ training:
   warmup_steps: 500
   grad_clip: 10.0
   
-# Default evaluation parameters
+  # DP (Diffusion Policy) defaults
+  diffusion:
+    n_action_steps: 8
+    horizon: 16
+    n_obs_steps: 2
+    
+  # ACT defaults
+  act:
+    chunk_size: 100
+    kl_weight: 10.0
+    hidden_dim: 512
+    dim_feedforward: 3200
+    num_encoder_layers: 4
+    num_decoder_layers: 7
+    nheads: 8
+
+# =============================================================================
+# Evaluation Parameters
+# =============================================================================
 evaluation:
   num_episodes: 50
   max_steps_per_episode: 500

@@ -1,6 +1,12 @@
 # Plan Configuration for Single Object Open Test Experiment
 # Test experiment for object 7221 with limited scenes
+#
+# This config overrides defaults from configs/config.yaml
+# Only specify values that differ from defaults
 
+# =============================================================================
+# Experiment Info
+# =============================================================================
 info_cfg:
   task: "single_object_open_test"
   robot: "summit_franka"
@@ -8,29 +14,24 @@ info_cfg:
   object: ["7221"]
   description: "Single object open test for pipeline validation"
 
+# =============================================================================
+# Planning Configuration (overrides defaults)
+# =============================================================================
 plan_cfg:
-  resume: true  # Skip already completed planning tasks
-  voxel_dims: [5.0, 5.0, 5.0]
-  voxel_size: 0.02
-  expand_dims: [1.0, 0.2, 0.2]
-  collision_checker_type: "VOXEL"
+  # Output directory for this experiment
   output_dir: "data/single_object_open_test"
+  
+  # Number of grasp poses to use
   num_grasps: 20
-  cluster:
-    ap_fallback_clusters: 30
-    ap_clusters_upperbound: 80
-    ap_cluster_lowerbound: 10
-  plan_ik:
-    limit: [100, 100]
-  plan_traj:
-    stage_type: MOVE_ARTICULATED
-    batch_size: 10
-    expand_to_pairs: true
-  filter:
-    stage_type: MOVE_ARTICULATED
-    position_threshold: 0.01
-    orientation_threshold: 0.05
+  
+  # Use defaults from configs/config.yaml for:
+  # - voxel_dims, voxel_size, expand_dims
+  # - collision_checker_type
+  # - cluster, plan_ik, plan_traj, filter
 
+# =============================================================================
+# Scene Configuration
+# =============================================================================
 scene_cfg:
   scene_0_seed_0:
     path: "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/export/export_scene.blend/export_scene.usdc"
@@ -41,6 +42,9 @@ scene_cfg:
     pose: [0, 0, -0.13, 1, 0, 0, 0]
     metadata_path: "assets/scene/infinigen/kitchen_1130/scene_1_seed_1/info/metadata.json"
 
+# =============================================================================
+# Object Configuration
+# =============================================================================
 object_cfg:
   "7221":
     path: assets/object/Microwave/7221/7221_0_scaling.urdf
@@ -51,14 +55,16 @@ object_cfg:
     start_angles: [0]
     goal_angles: [1.333, 1.23, 1.074, 0.997]
 
+# =============================================================================
+# Robot Configuration
+# =============================================================================
 robot_cfg:
   robot_type: "summit_franka"
   path: "assets/robot/summit_franka/summit_franka.yml"
 
-# Robot config template for articulated object planning (fixed base)
-# Path will be populated with: assets/object/{asset_type}/{asset_id}/summit_franka_{asset_id}_0_grasp_{grasp_id:04d}.yml
+# AKR robot config template for articulated object planning (fixed base)
+# Path pattern: assets/object/{asset_type}/{asset_id}/{robot_type}_{asset_id}_0_grasp_{grasp_id:04d}.yml
 akr_robot_cfg:
   robot_type: "summit_franka"
-  path: ""  # Template path, populated dynamically with asset_type, asset_id, grasp_id
-            # assets/object/{asset_type}/{asset_id}/{robot_type}_{asset_id}_0_grasp_{grasp_id:04d}.yml
+  path: ""  # Populated dynamically per grasp
   fixed_base: true

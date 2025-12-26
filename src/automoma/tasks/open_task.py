@@ -1,4 +1,28 @@
-"""Open task for articulated objects (doors, drawers, microwaves, etc.)."""
+"""
+Open task for articulated objects (doors, drawers, microwaves, etc.).
+
+This module implements the OpenTask class for opening articulated objects
+like microwave doors, drawers, and cabinet doors. The robot grasps the
+handle and moves to articulate the object from start angle to goal angle.
+
+Pipeline Overview:
+    Planning:
+        1. Load grasp poses from object directory
+        2. For each grasp, compute target poses at start/goal angles
+        3. Solve IK for start and goal configurations
+        4. Plan trajectories using AKR (articulated-kinematic-robot) config
+        5. Filter trajectories using FK validation
+    
+    Recording:
+        1. Load successful trajectories
+        2. Replay in simulation, recording observations and actions
+        3. Save to LeRobot format dataset
+    
+    Evaluation:
+        1. Load test initial states (robot grasping handle at start angle)
+        2. Run policy inference to get actions
+        3. Execute actions and measure success (goal angle reached)
+"""
 
 import os
 import logging
@@ -9,8 +33,9 @@ from pathlib import Path
 
 from automoma.core.types import TaskType, StageType, IKResult, TrajResult
 from automoma.core.config_loader import Config
-from automoma.tasks.base_task import BaseTask, TaskResult, StageResult
+from automoma.tasks.base_task import BaseTask, TaskResult, StageResult, MAX_IK_ITERATIONS
 from automoma.utils.robot_utils import adjust_pose_for_robot
+from automoma.utils.type_utils import to_list, to_tensor
 
 
 logger = logging.getLogger(__name__)
@@ -126,11 +151,18 @@ class OpenTask(BaseTask):
         """
         Plan IK solutions for a stage.
         
-        Uses self.motion_gen for IK planning (not AKR - that's only for trajectory planning).
+        This method:
+        1. Computes target poses for each articulation angle
+        2. Solves IK for each target using the main robot config
+        3. Appends the angle to each IK solution (for trajectory filtering)
+        4. Clusters IK solutions to reduce redundancy
+        
+        Note: Uses motion_gen (not AKR) for IK planning. AKR is only for
+        trajectory planning since it includes the attached object.
         
         Args:
             stage_index: Index of the stage
-            grasp_pose: Grasp pose
+            grasp_pose: Grasp pose [x, y, z, qw, qx, qy, qz]
             angles: Joint angles to sample
             object_cfg: Object configuration
             is_start: Whether this is for start or goal IKs
@@ -139,14 +171,17 @@ class OpenTask(BaseTask):
             IKResult with IK solutions
         """
         from automoma.utils.math_utils import stack_iks_angle
-        from automoma.tasks.base_task import MAX_IK_ITERATIONS
         
         plan_cfg = self.cfg.plan_cfg
         ik_limit = plan_cfg.plan_ik.limit[0] if is_start else plan_cfg.plan_ik.limit[1]
         
         all_ik_results = []
+        ik_type = "start" if is_start else "goal"
         
-        for _ in range(MAX_IK_ITERATIONS):
+        print(f"[OpenTask] Planning {ik_type} IKs for stage {stage_index}")
+        print(f"[OpenTask] Angles to sample: {angles}, limit: {ik_limit}")
+        
+        for iteration in range(MAX_IK_ITERATIONS):
             for angle in angles:
                 target_pose = self.get_target_pose_for_stage(
                     stage_index, grasp_pose, angle, object_cfg
