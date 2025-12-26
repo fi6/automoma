@@ -1,12 +1,17 @@
 # Record Configuration for Multi-Object Open Experiment
 # Configuration for rendering datasets from planned trajectories
 
+# =============================================================================
+# Experiment Info
+# =============================================================================
 info_cfg:
   task: "multi_object_open"
   robot: "summit_franka"
   description: "Record manipulation data for opening articulated objects"
 
-# Unified record configuration (for scripts)
+# =============================================================================
+# Record Configuration
+# =============================================================================
 record_cfg:
   repo_id: "automoma/multi_object_open"
   root: "./datasets/multi_object_open"
@@ -17,13 +22,18 @@ record_cfg:
   episodes_per_grasp: 10
   steps_per_episode: 100
   skip_existing: true
+  seed: 42
 
-# Data source configuration
+# =============================================================================
+# Data Source Configuration
+# =============================================================================
 data_cfg:
-  traj_dir: "data/run_1223/traj"
+  traj_dir: "data/multi_object_open/traj"
   input_format: "pt"  # PyTorch tensor files
   
-# Dataset output configuration
+# =============================================================================
+# Dataset Output Configuration
+# =============================================================================
 dataset_cfg:
   repo_id: "automoma/multi_object_open"
   root: "./datasets/multi_object_open"
@@ -47,7 +57,9 @@ dataset_cfg:
     - panda_finger_joint2
   task: "open_articulated_object"
   
-# Camera configuration
+# =============================================================================
+# Camera Configuration
+# =============================================================================
 camera_cfg:
   names:
     - ego_topdown
@@ -81,22 +93,21 @@ camera_cfg:
         translate: [-4.3, 4.7, 6.2]
         orient: [-34.0, -26.0, -140.0]
       pose_type: local
-      
-# Recording parameters
-record_cfg:
-  max_episodes: 1000
-  episodes_per_grasp: 10
-  steps_per_episode: 100
-  skip_existing: true
-  
-# Environment configuration (for Isaac Sim)
+
+# =============================================================================
+# Environment Configuration (for Isaac Sim)
+# =============================================================================
 env_cfg:
   sim:
     headless: false
     width: 1920
     height: 1080
-    physics_dt: 1.0/60.0
-    rendering_dt: 1.0/60.0
+    physics_dt: 0.01666666666  # 1/60
+    rendering_dt: 0.01666666666
   robot_cfg:
+    robot_type: "summit_franka"
+    path: "assets/robot/summit_franka/summit_franka.yml"
+    mobile_base_dof: 3
+
     path: "assets/robot/summit_franka/summit_franka.yml"
     mobile_base_dof: 3

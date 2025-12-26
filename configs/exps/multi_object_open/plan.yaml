@@ -1,29 +1,51 @@
+# Plan Configuration for Multi-Object Open Experiment
+# Experiment for multiple articulated objects (Microwave, Dishwasher, Oven)
+#
+# This config overrides defaults from configs/config.yaml
+
+# =============================================================================
+# Experiment Info
+# =============================================================================
 info_cfg:
   task: "multi_object_open"
   robot: "summit_franka"
-  scene: ["scene_0_seed_0", "scene_1_seed_1", "scene_2_seed_2", "scene_3_seed_3"]
+  scene: ["scene_0_seed_0", "scene_1_seed_1", "scene_3_seed_3"]
   object: ["7221", "11622", "101773"]
+  description: "Multi-object open experiment for Microwave, Dishwasher, and Oven"
+
+# =============================================================================
+# Planning Configuration
+# =============================================================================
 plan_cfg:
-  voxel_dims: [5.0, 5.0, 5.0]
-  voxel_size: 0.02
-  expand_dims: [1.0, 0.2, 0.2]
-  collision_checker_type: "VOXEL"
-  output_dir: "data/run_1223"
+  # Output directory for this experiment
+  output_dir: "data/multi_object_open"
+  
+  # Number of grasp poses to use
   num_grasps: 20
+  
+  # IK clustering parameters
   cluster:
     ap_fallback_clusters: 50
     ap_clusters_upperbound: 200
     ap_cluster_lowerbound: 20
+    
+  # IK planning limits
   plan_ik:
-    limit: [50, 50]
+    limit: [100, 100]
+    
+  # Trajectory planning parameters
   plan_traj:
-    stage_type: MOVE_ARTICULATED
     batch_size: 10
     expand_to_pairs: true
+    
+  # Trajectory filtering thresholds
   filter:
-    stage_type: MOVE_ARTICULATED
-    position_threshold: 0.05
-    orientation_threshold: 0.3
+    position_threshold: 0.01
+    orientation_threshold: 0.05
+
+# =============================================================================
+# Scene Configuration
+# =============================================================================
 scene_cfg:
   scene_0_seed_0:
     path: "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/export/export_scene.blend/export_scene.usdc"
@@ -33,30 +55,47 @@ scene_cfg:
     path: "assets/scene/infinigen/kitchen_1130/scene_1_seed_1/export/export_scene.blend/export_scene.usdc"
     pose: [0, 0, -0.13, 1, 0, 0, 0]
     metadata_path: "assets/scene/infinigen/kitchen_1130/scene_1_seed_1/info/metadata.json"
+  scene_3_seed_3:
+    path: "assets/scene/infinigen/kitchen_1130/scene_3_seed_3/export/export_scene.blend/export_scene.usdc"
+    pose: [0, 0, -0.13, 1, 0, 0, 0]
+    metadata_path: "assets/scene/infinigen/kitchen_1130/scene_3_seed_3/info/metadata.json"
+
+# =============================================================================
+# Object Configuration
+# =============================================================================
 object_cfg:
   "7221":
-    path: assets/object/Microwave/7221/7221_0_scaling.urdf
-    pose: [0, 0, 0, 1, 0, 0, 0]
+    path: "assets/object/Microwave/7221/7221_0_scaling.urdf"
     asset_type: "Microwave"
     asset_id: "7221"
     scale: 0.3563
     start_angles: [0]
     goal_angles: [1.57, 0.9]
   "11622":
-    path: assets/object/Dishwasher/11622/11622_0_scaling.urdf
+    path: "assets/object/Dishwasher/11622/11622_0_scaling.urdf"
+    asset_type: "Dishwasher"
+    asset_id: "11622"
+    scale: 0.6446
+    start_angles: [0]
+    goal_angles: [1.57, 1.0]
+  "101773":
+    path: "assets/object/Oven/101773/101773_0_scaling.urdf"
+    asset_type: "Oven"
+    asset_id: "101773"
+    scale: 0.4218
+    start_angles: [0]
+    goal_angles: [1.57, 0.8]
+
+# =============================================================================
+# Robot Configuration
+# =============================================================================
 robot_cfg:
   robot_type: "summit_franka"
   path: "assets/robot/summit_franka/summit_franka.yml"
 
-# Robot config for IK planning (mobile base + arm)
-ik_robot_cfg:
-  robot_type: "summit_franka"
-  path: "assets/robot/summit_franka/summit_franka.yml"
-  fixed_base: false
-
-# Robot config for trajectory planning/filtering (arm only, fixed base for articulated motion)
+# AKR robot config template for articulated object planning (fixed base)
 akr_robot_cfg:
-  robot_type: "akr_summit_franka"
-  path: "assets/robot/summit_franka/summit_franka_akr.yml"
+  robot_type: "summit_franka"
+  path: ""  # Populated dynamically per grasp
   fixed_base: true
-  
+

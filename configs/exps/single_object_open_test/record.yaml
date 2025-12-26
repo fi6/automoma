@@ -1,6 +1,9 @@
 # Record Configuration for Single Object Open Test Experiment
 # Configuration for rendering datasets from planned trajectories
 
+# =============================================================================
+# Experiment Info
+# =============================================================================
 info_cfg:
   task: "single_object_open_test"
   robot: "summit_franka"
@@ -8,47 +11,9 @@ info_cfg:
   object: ["7221"]
   description: "Record manipulation data for single object open test"
 
-# Environment configuration (for Isaac Sim)
-env_cfg:
-    headless: false
-    width: 1920
-    height: 1080
-    lighting_mode: 2
-    physics_dt: 1.0/60.0
-    rendering_dt: 1.0/60.0
-    collision_free_prim_paths:
-      - "/World/summit_panda/panda_leftfinger/collisions"
-      - "/World/summit_panda/panda_rightfinger/collisions"
-      - "/World/summit_panda/grasp_frame/collisions"
-      - "/World/summit_panda/panda_hand/collisions"
-
-robot_cfg:
-  robot_type: "summit_franka"
-  path: "assets/robot/summit_franka/summit_franka.yml"
-  mobile_base_dof: 3
-
-object_cfg:
-  "7221":
-    path: assets/object/Microwave/7221/7221_0_scaling.urdf
-    pose: [0, 0, 0, 1, 0, 0, 0]
-    asset_type: "Microwave"
-    asset_id: "7221"
-    scale: 0.3563
-    start_angles: [0]
-    goal_angles: [1.57, 0.9]
-
-scene_cfg:
-  scene_0_seed_0:
-    path: "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/export/export_scene.blend/export_scene.usdc"
-    pose: [0, 0, -0.13, 1, 0, 0, 0]
-    metadata_path: "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/info/metadata.json"
-  scene_1_seed_1:
-    path: "assets/scene/infinigen/kitchen_1130/scene_1_seed_1/export/export_scene.blend/export_scene.usdc"
-    pose: [0, 0, -0.13, 1, 0, 0, 0]
-    metadata_path: "assets/scene/infinigen/kitchen_1130/scene_1_seed_1/info/metadata.json"
-
-
-# Unified record configuration (for scripts)
+# =============================================================================
+# Record Configuration
+# =============================================================================
 record_cfg:
   repo_id: "lerobot/${info_cfg.task}"
   root: "data/${info_cfg.task}"
@@ -60,12 +25,16 @@ record_cfg:
   skip_existing: true
   seed: 42
 
-# Data source configuration
+# =============================================================================
+# Data Source Configuration
+# =============================================================================
 data_cfg:
   traj_dir: "data/${info_cfg.task}/traj"
   input_format: "pt"  # PyTorch tensor files
   
-# Dataset output configuration
+# =============================================================================
+# Dataset Output Configuration
+# =============================================================================
 dataset_cfg:
   repo_id: "lerobot/${info_cfg.task}"
   root: "data/${info_cfg.task}"
@@ -89,7 +58,9 @@ dataset_cfg:
     - panda_finger_joint2
   task: "open_articulated_object"
   
-# Camera configuration
+# =============================================================================
+# Camera Configuration
+# =============================================================================
 camera_cfg:
   names:
     - ego_topdown
@@ -103,8 +74,6 @@ camera_cfg:
     use_fps: true
   cameras:
     ego_topdown:
-      # prim_path: "/World/summit_panda/base_link_y/ego_topdown"
-      # prim_path: "/World/summit_panda/summit_base/ego_topdown"
       prim_path: "/World/summit_panda/panda_hand/ego_topdown"
       resolution: [320, 240]
       frequency: 30
@@ -129,4 +98,54 @@ camera_cfg:
         translate: [-4.3, 4.7, 6.2]
         orient: [-34.0, -26.0, -140.0]
       pose_type: local
+
+# =============================================================================
+# Environment Configuration (for Isaac Sim)
+# =============================================================================
+env_cfg:
+    headless: false
+    width: 1920
+    height: 1080
+    lighting_mode: 2
+    physics_dt: 0.01666666666
+    rendering_dt: 0.01666666666
+    collision_free_prim_paths:
+      - "/World/summit_panda/panda_leftfinger/collisions"
+      - "/World/summit_panda/panda_rightfinger/collisions"
+      - "/World/summit_panda/grasp_frame/collisions"
+      - "/World/summit_panda/panda_hand/collisions"
+
+# =============================================================================
+# Robot Configuration
+# =============================================================================
+robot_cfg:
+  robot_type: "summit_franka"
+  path: "assets/robot/summit_franka/summit_franka.yml"
+  mobile_base_dof: 3
+
+# =============================================================================
+# Object Configuration
+# =============================================================================
+object_cfg:
+  "7221":
+    path: assets/object/Microwave/7221/7221_0_scaling.urdf
+    pose: [0, 0, 0, 1, 0, 0, 0]
+    asset_type: "Microwave"
+    asset_id: "7221"
+    scale: 0.3563
+    start_angles: [0]
+    goal_angles: [1.57, 0.9]
+
+# =============================================================================
+# Scene Configuration
+# =============================================================================
+scene_cfg:
+  scene_0_seed_0:
+    path: "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/export/export_scene.blend/export_scene.usdc"
+    pose: [0, 0, -0.13, 1, 0, 0, 0]
+    metadata_path: "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/info/metadata.json"
+  scene_1_seed_1:
+    path: "assets/scene/infinigen/kitchen_1130/scene_1_seed_1/export/export_scene.blend/export_scene.usdc"
+    pose: [0, 0, -0.13, 1, 0, 0, 0]
+    metadata_path: "assets/scene/infinigen/kitchen_1130/scene_1_seed_1/info/metadata.json"
 

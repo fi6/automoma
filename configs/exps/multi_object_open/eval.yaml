@@ -1,30 +1,45 @@
 # Evaluation Configuration for Multi-Object Open Experiment
-# Configuration for evaluating trained policies
+# Configuration for evaluating trained DP and ACT policies
 
+# =============================================================================
+# Experiment Info
+# =============================================================================
 info_cfg:
   task: "multi_object_open"
   robot: "summit_franka"
-  description: "Evaluate policy on articulated object manipulation"
+  description: "Evaluate DP and ACT policies on multi-object open task"
 
-# Unified eval configuration (for scripts)
+# =============================================================================
+# Unified Eval Configuration
+# =============================================================================
 eval_cfg:
   checkpoint_path: "outputs/train/multi_object_open/model_final.pt"
-  policy_type: "diffusion"
-  num_episodes: 50
+  policy_type: "diffusion"  # Options: "diffusion" (DP) or "act" (ACT)
+  num_episodes: 60
   max_steps_per_episode: 500
   success_threshold: 0.05
   use_async_inference: true
   device: "cuda"
   output_dir: "outputs/eval/multi_object_open"
+  test_data_dir: "data/multi_object_open/traj"
 
-# Model configuration
+# =============================================================================
+# Model Configuration
+# =============================================================================
 model:
   checkpoint_path: "outputs/train/multi_object_open/model_final.pt"
-  policy_type: "diffusion"  # Must match training config
+  policy_type: "diffusion"
   
-# Evaluation parameters
+  # Model checkpoints for each policy type
+  checkpoints:
+    diffusion: "outputs/train/multi_object_open/dp/model_final.pt"
+    act: "outputs/train/multi_object_open/act/model_final.pt"
+  
+# =============================================================================
+# Evaluation Parameters
+# =============================================================================
 evaluation:
-  num_episodes: 50
+  num_episodes: 60  # 20 episodes per object (3 objects)
   max_steps_per_episode: 500
   success_threshold: 0.05  # Position error threshold in meters
   
@@ -35,23 +50,29 @@ evaluation:
     angle_threshold: 0.1        # radians for articulation
     completion_required: true
     
-# Async inference configuration (for LeRobot)
+# =============================================================================
+# Async Inference Configuration (for LeRobot)
+# =============================================================================
 async_inference:
   enabled: true
   host: "localhost"
   port: 50051
   timeout: 30.0
-  
-  # Queue configuration
   max_queue_size: 100
   worker_threads: 1
   
-# Output configuration
+# =============================================================================
+# Output Configuration
+# =============================================================================
 output:
   output_dir: "outputs/eval/multi_object_open"
   save_videos: true
   save_trajectories: true
-  save_observations: false  # Save raw observations
+  save_observations: false
+  
+  # Separate output for each model type
+  dp_output_dir: "outputs/eval/multi_object_open/dp"
+  act_output_dir: "outputs/eval/multi_object_open/act"
   
   # Video settings
   video:
@@ -59,35 +80,51 @@ output:
     codec: "mp4v"
     resolution: [640, 480]
     
-# Hardware configuration
+# =============================================================================
+# Hardware Configuration
+# =============================================================================
 hardware:
   device: "cuda"
   
-# Environment configuration (for simulation evaluation)
+# =============================================================================
+# Environment Configuration (for simulation evaluation)
+# =============================================================================
 env_cfg:
   sim:
-    headless: true  # Run headless for evaluation
+    headless: true
     width: 640
     height: 480
   robot_cfg:
     path: "assets/robot/summit_franka/summit_franka.yml"
     mobile_base_dof: 3
 
-# Scene configurations to evaluate on
+# =============================================================================
+# Scene Configuration
+# =============================================================================
 scene_cfg:
   scene_0_seed_0:
     path: "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/export/export_scene.blend/export_scene.usdc"
     pose: [0, 0, -0.13, 1, 0, 0, 0]
     metadata_path: "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/info/metadata.json"
+  scene_1_seed_1:
+    path: "assets/scene/infinigen/kitchen_1130/scene_1_seed_1/export/export_scene.blend/export_scene.usdc"
+    pose: [0, 0, -0.13, 1, 0, 0, 0]
+    metadata_path: "assets/scene/infinigen/kitchen_1130/scene_1_seed_1/info/metadata.json"
+  scene_3_seed_3:
+    path: "assets/scene/infinigen/kitchen_1130/scene_3_seed_3/export/export_scene.blend/export_scene.usdc"
+    pose: [0, 0, -0.13, 1, 0, 0, 0]
+    metadata_path: "assets/scene/infinigen/kitchen_1130/scene_3_seed_3/info/metadata.json"
     
-# Object configurations to evaluate on
+# =============================================================================
+# Object Configuration
+# =============================================================================
 object_cfg:
   "7221":
     path: "assets/object/Microwave/7221/7221_0_scaling.urdf"
     asset_type: "Microwave"
     asset_id: "7221"
     scale: 0.3563
-    goal_angle: 1.57  # Target open angle
+    goal_angle: 1.57
   "11622":
     path: "assets/object/Dishwasher/11622/11622_0_scaling.urdf"
     asset_type: "Dishwasher"
@@ -98,6 +135,21 @@ object_cfg:
     path: "assets/object/Oven/101773/101773_0_scaling.urdf"
     asset_type: "Oven"
     asset_id: "101773"
+    scale: 0.4218
+    goal_angle: 1.57
+
+# =============================================================================
+# Metrics to compute
+# =============================================================================
+metrics:
+  position_error: true
+  orientation_error: true
+  joint_error: true
+  trajectory_smoothness: true
+  inference_time: true
+  success_rate: true
+  per_scene_success_rate: true
+  per_object_success_rate: true
     scale: 0.7232
     goal_angle: 1.57
     

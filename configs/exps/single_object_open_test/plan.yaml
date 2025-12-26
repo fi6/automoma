@@ -2,7 +2,6 @@
 # Test experiment for object 7221 with limited scenes
 #
 # This config overrides defaults from configs/config.yaml
-# Only specify values that differ from defaults
 
 # =============================================================================
 # Experiment Info
@@ -15,7 +14,7 @@ info_cfg:
   description: "Single object open test for pipeline validation"
 
 # =============================================================================
-# Planning Configuration (overrides defaults)
+# Planning Configuration
 # =============================================================================
 plan_cfg:
   # Output directory for this experiment
@@ -24,10 +23,25 @@ plan_cfg:
   # Number of grasp poses to use
   num_grasps: 20
   
-  # Use defaults from configs/config.yaml for:
-  # - voxel_dims, voxel_size, expand_dims
-  # - collision_checker_type
-  # - cluster, plan_ik, plan_traj, filter
+  # IK clustering parameters
+  cluster:
+    ap_fallback_clusters: 30
+    ap_clusters_upperbound: 80
+    ap_cluster_lowerbound: 10
+  
+  # IK planning limits
+  plan_ik:
+    limit: [100, 100]
+  
+  # Trajectory planning parameters
+  plan_traj:
+    batch_size: 10
+    expand_to_pairs: true
+  
+  # Trajectory filtering thresholds
+  filter:
+    position_threshold: 0.01
+    orientation_threshold: 0.05
 
 # =============================================================================
 # Scene Configuration
@@ -63,7 +77,6 @@ robot_cfg:
   path: "assets/robot/summit_franka/summit_franka.yml"
 
 # AKR robot config template for articulated object planning (fixed base)
-# Path pattern: assets/object/{asset_type}/{asset_id}/{robot_type}_{asset_id}_0_grasp_{grasp_id:04d}.yml
 akr_robot_cfg:
   robot_type: "summit_franka"
   path: ""  # Populated dynamically per grasp

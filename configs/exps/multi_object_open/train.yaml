@@ -1,41 +1,63 @@
 # Training Configuration for Multi-Object Open Experiment
-# Configuration for training policy models
+# Configuration for training policy models (Diffusion Policy and ACT)
 
+# =============================================================================
+# Experiment Info
+# =============================================================================
 info_cfg:
   task: "multi_object_open"
   robot: "summit_franka"
-  description: "Train diffusion policy for opening articulated objects"
+  description: "Train diffusion policy and ACT for opening articulated objects"
 
-# Unified train configuration (for scripts)
+# =============================================================================
+# Unified Train Configuration
+# =============================================================================
 train_cfg:
   dataset_repo_id: "automoma/multi_object_open"
   dataset_root: "./datasets/multi_object_open"
-  policy_type: "diffusion"
+  policy_type: "diffusion"  # Options: "diffusion" (DP) or "act" (ACT)
   batch_size: 64
   learning_rate: 1.0e-4
-  num_epochs: 100
-  warmup_steps: 500
+  num_epochs: 200
+  warmup_steps: 1000
   output_dir: "outputs/train/multi_object_open"
   save_freq: 10000
   device: "cuda"
 
-# Dataset configuration
+# =============================================================================
+# Dataset Configuration
+# =============================================================================
 dataset:
   repo_id: "automoma/multi_object_open"
   root: "./datasets/multi_object_open"
   split: "train"
   
-# Policy configuration
+# =============================================================================
+# Policy Configuration
+# =============================================================================
 policy:
-  type: "diffusion"  # Options: diffusion, act, vq_bet
+  type: "diffusion"  # Options: diffusion, act
   pretrained_path: null
   
-  # Diffusion policy specific
+  # Diffusion Policy (DP) specific
   diffusion:
     n_obs_steps: 2
     n_action_steps: 8
     horizon: 16
     obs_as_cond: true
+    
+  # ACT (Action Chunking Transformer) specific
+  act:
+    n_obs_steps: 1
+    n_action_steps: 100
+    chunk_size: 100
+    kl_weight: 10.0
+    hidden_dim: 512
+    dim_feedforward: 3200
+    num_encoder_layers: 4
+    num_decoder_layers: 7
+    nheads: 8
+    dropout: 0.1
     
   # Network architecture
   network:
@@ -45,19 +67,21 @@ policy:
     n_groups: 8
     cond_predict_scale: true
     
-# Training configuration
+# =============================================================================
+# Training Parameters
+# =============================================================================
 training:
   batch_size: 64
   learning_rate: 1.0e-4
   weight_decay: 1.0e-6
-  num_epochs: 100
-  warmup_steps: 500
+  num_epochs: 200
+  warmup_steps: 1000
   grad_clip: 10.0
   
   # Learning rate schedule
   lr_scheduler:
     type: "cosine"
-    warmup_steps: 500
+    warmup_steps: 1000
     
   # Optimizer
   optimizer:
@@ -65,7 +89,9 @@ training:
     betas: [0.95, 0.999]
     eps: 1.0e-8
     
+# =============================================================================
 # Checkpointing
+# =============================================================================
 checkpoint:
   output_dir: "outputs/train/multi_object_open"
   save_freq: 10000
@@ -73,29 +99,37 @@ checkpoint:
   log_freq: 100
   keep_last_n: 5
   
-# Hardware configuration
+# =============================================================================
+# Hardware Configuration
+# =============================================================================
 hardware:
   device: "cuda"
   num_workers: 8
   pin_memory: true
   mixed_precision: true  # Use fp16 training
   
-# Wandb logging
+# =============================================================================
+# Wandb Logging
+# =============================================================================
 wandb:
   use_wandb: true
   project: "automoma"
-  entity: null  # Set to your W&B username/team
+  entity: null
   name: "multi_object_open_diffusion"
   tags:
+    - "multi_object"
     - "diffusion"
     - "manipulation"
     - "articulated"
     
-# Data augmentation
+# =============================================================================
+# Data Augmentation
+# =============================================================================
 augmentation:
   enabled: true
   joint_noise_std: 0.01
   image_augmentation:
     random_crop: true
     color_jitter: true
+    gaussian_blur: false
     gaussian_blur: false
