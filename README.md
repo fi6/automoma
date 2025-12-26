@@ -358,11 +358,3 @@ MIT License
 
 ## Citation
 
-```bibtex
-@software{automoma2024,
-  title={AutoMoMa: Automated Motion Planning for Manipulation},
-  author={AutoMoMa Contributors},
-  year={2024},
-  url={https://github.com/chang-xinhai/AutoMoMa}
-}
-```
