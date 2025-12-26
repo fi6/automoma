@@ -24,7 +24,19 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-# Import config loader first (doesn't require Isaac Sim)
+# --- CRITICAL INITIALIZATION ---
+# Isaac Sim's SimulationApp MUST be initialized before any other imports that might touch pxr or omni.
+# We do a quick parse of sys.argv to get the headless flag before importing anything else.
+import argparse
+temp_parser = argparse.ArgumentParser(add_help=False)
+temp_parser.add_argument("--headless", action="store_true")
+temp_args, _ = temp_parser.parse_known_args()
+
+from automoma.simulation.sim_app_manager import get_simulation_app
+sim_app = get_simulation_app(headless=temp_args.headless)
+# -------------------------------
+
+# Now safe to import other modules
 from automoma.core.config_loader import load_config, Config
 from automoma.tasks.factory import create_task
 from automoma.evaluation.policy_runner import get_model
@@ -93,9 +105,7 @@ def run_evaluation(cfg: Config, headless: bool = False, checkpoint_path: str = N
     # Setup environment
     if not dry_run:
         try:
-            # Initialize SimulationApp BEFORE importing simulation modules
-            from automoma.simulation import get_simulation_app
-            sim_app = get_simulation_app(headless=headless)
+            # SimulationApp is already initialized at the top of the script
             
             # Now safe to import SimEnvWrapper
             from automoma.simulation.env_wrapper import SimEnvWrapper

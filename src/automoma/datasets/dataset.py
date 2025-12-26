@@ -76,19 +76,31 @@ class LeRobotDatasetWrapper(BaseDatasetWrapper):
 
     def create(self):
         from lerobot.datasets.lerobot_dataset import LeRobotDataset
+        import shutil
+        from pathlib import Path
         
         # init features
         self._init_features()
         
+        # Check if dataset already exists and remove it to avoid FileExistsError
+        dataset_path = Path(self.cfg.root) / self.cfg.repo_id
+        os.makedirs(dataset_path, exist_ok=True)
+        if dataset_path.exists():
+            print(f"Removing existing dataset at {dataset_path}")
+            shutil.rmtree(dataset_path)
+        
+        print(f"Creating dataset at {dataset_path}")
+        
         # create dataset
         self.dataset = LeRobotDataset.create(
             repo_id = self.cfg.repo_id,
-            root= self.cfg.root,
+            root = dataset_path,
             fps = self.cfg.fps,
             features= self.features,
             robot_type= self.cfg.robot_type,
             use_videos= self.cfg.use_videos,
         )
+        print(f"Created dataset at {dataset_path}")
     def add(self, data):
         frame = {
             "observation.state": data["joint_data"],

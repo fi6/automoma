@@ -81,7 +81,7 @@ class SimEnvWrapper:
         from automoma.planning.planner import BasePlanner
         
         # Initialize components
-        self.sim = IsaacSimManager(self.cfg.sim)
+        self.sim = IsaacSimManager(self.cfg.env_cfg.sim)
         self.scene = InfinigenBuilder(self.sim)
         self.sensors = SensorRig(self.sim)
         
@@ -99,28 +99,64 @@ class SimEnvWrapper:
         self.history_env_state = []
         self.current_step = 0
         
-    def setup_env(self):
+    def setup_env(self, object_cfg=None, scene_cfg=None):
         """
         Setup the simulation environment.
         
         Loads scene, object, robot, and sensors based on configuration.
+        
+        Args:
+            object_cfg: Optional object configuration to override default
+            scene_cfg: Optional scene configuration to override default
         """
         logger.info("Setting up simulation environment...")
         
         # Get configs (support both dict and Config objects)
-        object_cfg = self._to_dict(self.cfg.object_cfg)
-        scene_cfg = self._to_dict(self.cfg.scene_cfg)
+        if object_cfg is None:
+            object_cfg = self._to_dict(self.cfg.object_cfg)
+            # Handle multi-object config: pick first one if 'pose' not present
+            if 'pose' not in object_cfg and object_cfg:
+                first_key = list(object_cfg.keys())[0]
+                logger.info(f"Multi-object config detected, using first object: {first_key}")
+                object_cfg = object_cfg[first_key]
+        else:
+            object_cfg = self._to_dict(object_cfg)
+                
+        if scene_cfg is None:
+            scene_cfg = self._to_dict(self.cfg.scene_cfg)
+            # Handle multi-scene config
+            if 'pose' not in scene_cfg and scene_cfg:
+                first_key = list(scene_cfg.keys())[0]
+                scene_cfg = scene_cfg[first_key]
+        else:
+            scene_cfg = self._to_dict(scene_cfg)
+            
+        # TODO: fix robot_cfg robot_config can be either a dict with 'path' key or already loaded robot config
+        from automoma.utils.file_utils import load_robot_cfg, process_robot_cfg
+        self.cfg.robot_cfg.robot = process_robot_cfg(load_robot_cfg(self.cfg.robot_cfg["path"]))
         robot_cfg = self._to_dict(self.cfg.robot_cfg)
+        # print(f"Robot config used for setup: {robot_cfg}")
         sensors_cfg = self._to_dict(self.cfg.sensors_cfg) if self.cfg.sensors_cfg else {}
         
         # Setup scene, object, and robot
-        self.scene.init_root_pose(object_cfg.get('pose'), scene_cfg.get('pose'), type="object_center")
+        obj_pose = object_cfg.get('pose')
+        scn_pose = scene_cfg.get('pose')
+        
+        if obj_pose is not None and scn_pose is not None:
+            self.scene.init_root_pose(obj_pose, scn_pose, type="object_center")
+        else:
+            logger.warning(f"Missing pose in config: object_pose={obj_pose}, scene_pose={scn_pose}")
+            
         self.scene.load_scene(scene_cfg, prim_path="/World/Scene")
         self.scene.load_object(object_cfg, prim_path="/World/Object")
-        self.scene.load_robot(robot_cfg, prim_path="/World/Robot")
+        self.scene.load_robot(robot_cfg["robot"], prim_path="/World/Robot")
+
+        self.sim.set_isaacsim_collision_free(prim_paths=self.cfg.env_cfg.sim.collision_free_prim_paths)
+        self.sim.init_world_physics()
+        
         
         self.robot = self.scene.robot
-        self.robot_joint_names = robot_cfg.get("kinematics", {}).get("cspace", {}).get("joint_names", [])
+        self.robot_joint_names = robot_cfg["robot"].get("kinematics", {}).get("cspace", {}).get("joint_names", [])
         self.robot_idx_list = [self.robot.get_dof_index(name) for name in self.robot_joint_names]
         
         # Setup sensors
@@ -128,7 +164,7 @@ class SimEnvWrapper:
             self.sensors.setup_sensors(sensors_cfg)
         
         # Initialize planner for FK utilities
-        self.planner.init_motion_gen(robot_cfg)
+        self.planner.init_motion_gen(robot_cfg["robot"])
         
         self.is_setup = True
         logger.info("Environment setup complete")

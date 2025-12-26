@@ -26,14 +26,18 @@ def process_robot_cfg(robot_cfg: Dict) -> Dict:
             get_project_dir(), robot_cfg["kinematics"]["asset_root_path"]
         )
     return robot_cfg
+
 def load_robot_cfg(robot_cfg_path: Union[str, Dict]) -> Dict[str, Any]:
-    """Load robot configuration from YAML file or return dict."""
+    """Load robot configuration from YAML file and update if robot_cfg is provided."""
+    
+    # 1. Load the initial config
     if isinstance(robot_cfg_path, str):
-        robot_cfg = load_yaml(robot_cfg_path)["robot_cfg"]
+        loaded_cfg = load_yaml(robot_cfg_path)["robot_cfg"]
         print(f"Robot configuration loaded from {robot_cfg_path}")
     else:
-        robot_cfg = robot_cfg_path
-    return robot_cfg
+        loaded_cfg = robot_cfg_path
+
+    return loaded_cfg
 
 def save_ik(ik_result: IKResult, path: str) -> None:
     """Save IKResult to a file."""

@@ -39,45 +39,9 @@ from automoma.core import (
     get_component,
 )
 
-# Planning modules - safe to import without Isaac Sim
-from automoma.planning import (
-    BasePlanner,
-    CuroboPlanner,
-    PlanningPipeline,
-)
-
-# Dataset modules - safe to import without Isaac Sim
-from automoma.datasets import (
-    BaseDatasetWrapper,
-    LeRobotDatasetWrapper,
-    DatasetConverter,
-    Recorder,
-)
-
-# Evaluation modules - safe to import without Isaac Sim
-from automoma.evaluation import (
-    EvaluationMetrics,
-    MetricsCalculator,
-    PolicyRunner,
-    AsyncModelClient,
-    LeRobotModelClient,
-    get_model,
-)
-
-# Task modules - safe to import without Isaac Sim
-from automoma.tasks import (
-    BaseTask,
-    TaskResult,
-    StageResult,
-    TaskFactory,
-    create_task,
-    create_task_from_exp,
-    OpenTask,
-    ReachOpenTask,
-    PickTask,
-    PlaceTask,
-    PickPlaceTask,
-)
+# Note: Planning, Dataset, Evaluation, and Task modules are NOT safe to import 
+# before SimulationApp is initialized if they depend on curobo or pxr.
+# They should be imported from their respective submodules when needed.
 
 # Simulation module management - safe to import
 from automoma.simulation import (
@@ -133,34 +97,6 @@ __all__ = [
     "Registry",
     "register_component",
     "get_component",
-    # Planning
-    "BasePlanner",
-    "CuroboPlanner",
-    "PlanningPipeline",
-    # Datasets
-    "BaseDatasetWrapper",
-    "LeRobotDatasetWrapper",
-    "DatasetConverter",
-    "Recorder",
-    # Evaluation
-    "EvaluationMetrics",
-    "MetricsCalculator",
-    "PolicyRunner",
-    "AsyncModelClient",
-    "LeRobotModelClient",
-    "get_model",
-    # Tasks
-    "BaseTask",
-    "TaskResult",
-    "StageResult",
-    "TaskFactory",
-    "create_task",
-    "create_task_from_exp",
-    "OpenTask",
-    "ReachOpenTask",
-    "PickTask",
-    "PlaceTask",
-    "PickPlaceTask",
     # Simulation management
     "get_simulation_app",
     "is_sim_app_initialized",

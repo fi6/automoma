@@ -58,6 +58,18 @@ class BasePlanner(MotionPlannerInterface):
         # Initialize core components
         self.tensor_args = TensorDeviceType()
 
+    def setup_env(self, scene_cfg: Dict[str, Any], object_cfg: Dict[str, Any]) -> None:
+        """Dummy implementation of abstract method"""
+        pass
+
+    def plan_ik(self, target_pose: torch.Tensor, robot_cfg: Dict[str, Any] = None, plan_cfg: Dict[str, Any] = None, motion_gen = None) -> IKResult:
+        """Dummy implementation of abstract method"""
+        return IKResult(target_poses=target_pose, iks=torch.zeros(0))
+
+    def plan_traj(self, start_states: torch.Tensor, goal_states: torch.Tensor = None, robot_cfg: Dict[str, Any] = None, plan_cfg: Dict[str, Any] = None, motion_gen = None) -> TrajResult:
+        """Dummy implementation of abstract method"""
+        return TrajResult.fallback()
+
     def init_motion_gen(self, robot_cfg: Union[str, Dict], fixed_base: bool=False) -> MotionGen:
         """Initialize motion generator for standard robot"""
         if robot_cfg is None:
@@ -587,13 +599,14 @@ class CuroboPlanner(MotionPlannerInterface):
                                        goal_states=js_goal.position.detach().clone().cpu(),
                                        trajectories=result.solution.position.detach().clone().cpu(),
                                        success=result.success.detach().clone().cpu())
+                print("b_results shape: ", b_results.trajectories.shape, b_results.success.shape)
                 all_results.append(b_results)
                 
                 torch.cuda.synchronize()
                 success_count += b_results.success.sum().item()
                 pbar.set_description(f"{stage_type.name.capitalize()} Batch {i+1}/{len(start_batches)} (Successes: {success_count})")
                 pbar.update(1)                
-                
+            
         return TrajResult.cat(all_results)
     def _filter_traj_with_success(self, traj_result: TrajResult, stage_name: str) -> TrajResult:
         """Helper to filter trajectories by success mask and log progress."""

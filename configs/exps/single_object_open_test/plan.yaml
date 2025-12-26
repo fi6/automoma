@@ -17,11 +17,11 @@ plan_cfg:
   output_dir: "data/single_object_open_test"
   num_grasps: 20
   cluster:
-    ap_fallback_clusters: 30
-    ap_clusters_upperbound: 80
+    ap_fallback_clusters: 15
+    ap_clusters_upperbound: 20
     ap_cluster_lowerbound: 10
   plan_ik:
-    limit: [50, 50]
+    limit: [10, 10]
   plan_traj:
     stage_type: MOVE_ARTICULATED
     batch_size: 10
@@ -55,15 +55,10 @@ robot_cfg:
   robot_type: "summit_franka"
   path: "assets/robot/summit_franka/summit_franka.yml"
 
-# Robot config for IK planning (mobile base + arm)
-ik_robot_cfg:
-  robot_type: "summit_franka"
-  path: "assets/robot/summit_franka/summit_franka.yml"
-  fixed_base: false
-
 # Robot config template for articulated object planning (fixed base)
 # Path will be populated with: assets/object/{asset_type}/{asset_id}/summit_franka_{asset_id}_0_grasp_{grasp_id:04d}.yml
 akr_robot_cfg:
   robot_type: "summit_franka"
   path: ""  # Template path, populated dynamically with asset_type, asset_id, grasp_id
+            # assets/object/{asset_type}/{asset_id}/{robot_type}_{asset_id}_0_grasp_{grasp_id:04d}.yml
   fixed_base: true

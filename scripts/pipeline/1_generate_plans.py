@@ -22,6 +22,13 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+# --- CRITICAL INITIALIZATION ---
+# Isaac Sim's SimulationApp MUST be initialized before any other imports that might touch pxr or omni.
+# Planning with CuRobo requires a SimulationApp instance (even in headless mode).
+# from automoma.simulation.sim_app_manager import get_simulation_app
+# sim_app = get_simulation_app(headless=True)
+# -------------------------------
+
 # Configure logging before imports
 logging.basicConfig(
     level=logging.INFO,

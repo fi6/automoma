@@ -5,6 +5,7 @@ IMPORTANT: SimulationApp must be initialized before using this module.
 Use automoma.simulation.sim_app_manager.get_simulation_app() first.
 """
 
+from __future__ import annotations
 from typing import Any, Dict, List, Optional
 import logging
 

@@ -77,8 +77,18 @@ def get_simulation_app(
         **kwargs
     }
     
-    _simulation_app = SimulationApp(app_config)
-    _is_initialized = True
+    # Isaac Sim's SimulationApp parses sys.argv by default, which can conflict
+    # with our script's arguments. We temporarily clear sys.argv to avoid this.
+    import sys
+    original_argv = sys.argv
+    sys.argv = [sys.argv[0]]
+    
+    try:
+        _simulation_app = SimulationApp(app_config)
+        _is_initialized = True
+    finally:
+        # Restore original arguments
+        sys.argv = original_argv
     
     logger.info("SimulationApp initialized successfully")
     return _simulation_app

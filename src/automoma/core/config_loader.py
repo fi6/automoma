@@ -3,8 +3,15 @@
 import os
 import yaml
 import copy
+import re
 from pathlib import Path
 from typing import Dict, Any, Optional, Union, List
+
+try:
+    from omegaconf import OmegaConf
+    HAS_OMEGACONF = True
+except ImportError:
+    HAS_OMEGACONF = False
 
 
 class Config:
@@ -198,7 +205,65 @@ class ConfigLoader:
         merged_config["_exp_name"] = exp_name
         merged_config["_project_root"] = str(self.project_root)
         
-        return Config(merged_config)
+        # Resolve variable interpolation (e.g., ${info_cfg.task})
+        resolved_config = self._resolve_interpolation(merged_config)
+        
+        return Config(resolved_config)
+
+    def _resolve_interpolation(self, config_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Resolve variable interpolation in the config dictionary.
+        Uses OmegaConf if available, otherwise a simple regex-based resolver.
+        """
+        if HAS_OMEGACONF:
+            try:
+                conf = OmegaConf.create(config_dict)
+                return OmegaConf.to_container(conf, resolve=True)
+            except Exception:
+                # Fallback to simple resolver if OmegaConf fails
+                pass
+        
+        return self._simple_resolve(config_dict)
+
+    def _simple_resolve(self, config_dict: Dict[str, Any]) -> Dict[str, Any]:
+        """Simple regex-based variable resolver as fallback."""
+        def get_value(path: str, cfg: Dict[str, Any]) -> Any:
+            parts = path.split('.')
+            curr = cfg
+            for part in parts:
+                if isinstance(curr, dict) and part in curr:
+                    curr = curr[part]
+                else:
+                    return None
+            return curr
+
+        def resolve_string(s: str, cfg: Dict[str, Any]) -> str:
+            pattern = re.compile(r'\${([^}]+)}')
+            
+            def replace(match):
+                path = match.group(1)
+                val = get_value(path, cfg)
+                if val is None:
+                    return match.group(0)
+                return str(val)
+            
+            return pattern.sub(replace, s)
+
+        def resolve_recursive(item: Any, cfg: Dict[str, Any]) -> Any:
+            if isinstance(item, dict):
+                return {k: resolve_recursive(v, cfg) for k, v in item.items()}
+            elif isinstance(item, list):
+                return [resolve_recursive(i, cfg) for i in item]
+            elif isinstance(item, str):
+                return resolve_string(item, cfg)
+            else:
+                return item
+
+        resolved = copy.deepcopy(config_dict)
+        # Multiple passes for nested interpolation
+        for _ in range(3):
+            resolved = resolve_recursive(resolved, resolved)
+        return resolved
     
     def load_plan_config(self, exp_name: str) -> Config:
         """Load only planning configuration."""
@@ -235,7 +300,10 @@ class ConfigLoader:
         merged_config["_exp_name"] = exp_name
         merged_config["_project_root"] = str(self.project_root)
         
-        return Config(merged_config)
+        # Resolve variable interpolation
+        resolved_config = self._resolve_interpolation(merged_config)
+        
+        return Config(resolved_config)
 
 
 # Convenience functions for module-level use

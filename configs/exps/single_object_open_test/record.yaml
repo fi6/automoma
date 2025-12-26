@@ -8,8 +8,8 @@ info_cfg:
 
 # Unified record configuration (for scripts)
 record_cfg:
-  repo_id: "automoma/single_object_open_test"
-  root: "./datasets/single_object_open_test"
+  repo_id: "lerobot/${info_cfg.task}"
+  root: "data/${info_cfg.task}"
   fps: 15
   use_videos: true
   push_to_hub: false
@@ -20,13 +20,13 @@ record_cfg:
 
 # Data source configuration
 data_cfg:
-  traj_dir: "data/single_object_open_test/traj"
+  traj_dir: "data/${info_cfg.task}/traj"
   input_format: "pt"  # PyTorch tensor files
   
 # Dataset output configuration
 dataset_cfg:
-  repo_id: "automoma/single_object_open_test"
-  root: "./datasets/single_object_open_test"
+  repo_id: "lerobot/${info_cfg.task}"
+  root: "data/${info_cfg.task}"
   fps: 15
   use_videos: true
   push_to_hub: false
@@ -90,6 +90,13 @@ env_cfg:
     height: 1080
     physics_dt: 1.0/60.0
     rendering_dt: 1.0/60.0
+    collision_free_prim_paths:
+      - "/World/summit_panda/panda_leftfinger/collisions"
+      - "/World/summit_panda/panda_rightfinger/collisions"
+      - "/World/summit_panda/grasp_frame/collisions"
+      - "/World/summit_panda/panda_hand/collisions"
+
   robot_cfg:
+    robot_type: "summit_franka"
     path: "assets/robot/summit_franka/summit_franka.yml"
     mobile_base_dof: 3

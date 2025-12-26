@@ -9,6 +9,7 @@ IMPORTANT: SimulationApp must be initialized before importing this module.
 Use automoma.simulation.sim_app_manager.get_simulation_app() first.
 """
 
+from __future__ import annotations
 import os
 import sys
 import logging

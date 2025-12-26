@@ -76,13 +76,12 @@ class BaseTask(ABC):
         self.planner = None
         self.env = None
         
-        # Single motion generator (can be replaced when needed)
+        # Single motion generator (default, can be replaced when needed)
         self.motion_gen = None
         
         # Robot configurations
         self.robot_cfg = None  # Main robot config
-        self.ik_robot_cfg = None  # Optional: for IK planning if different from robot_cfg
-        self.akr_robot_cfg = None  # Template for articulated robot config (with placeholders)
+        self.akr_robot_cfg = None  # Template for articulated robot config (optional)
         
         # Results storage
         self.stage_results: List[StageResult] = []
@@ -123,36 +122,23 @@ class BaseTask(ABC):
         self.planner = CuroboPlanner(planner_cfg)
         self.planner.setup_env(scene_cfg.to_dict(), object_cfg.to_dict())
         
-        # Load robot configurations
-        # Primary robot config (for general use)
+        # Load robot config
         if robot_cfg is None:
             robot_cfg = self.cfg.robot_cfg
         robot_cfg_path = str(self.project_root / robot_cfg.path)
         loaded_robot_cfg = load_robot_cfg(robot_cfg_path)
         self.robot_cfg = process_robot_cfg(loaded_robot_cfg)
         
-        # IK robot config (for IK planning, typically mobile base)
-        if self.cfg.ik_robot_cfg:
-            ik_robot_cfg_path = str(self.project_root / self.cfg.ik_robot_cfg.path)
-            loaded_ik_robot_cfg = load_robot_cfg(ik_robot_cfg_path)
-            self.ik_robot_cfg = process_robot_cfg(loaded_ik_robot_cfg)
+        # Store akr_robot_cfg template (loaded dynamically per grasp if needed)
+        if self.cfg.akr_robot_cfg:
+            self.akr_robot_cfg = self.cfg.akr_robot_cfg
         else:
-            self.ik_robot_cfg = self.robot_cfg
-        
-        # AKR robot config (template for articulated objects, loaded dynamically later)
-        # Only load if path is specified and not empty
-        if self.cfg.akr_robot_cfg and hasattr(self.cfg.akr_robot_cfg, 'path') and self.cfg.akr_robot_cfg.path:
-            akr_robot_cfg_path = str(self.project_root / self.cfg.akr_robot_cfg.path)
-            loaded_akr_robot_cfg = load_robot_cfg(akr_robot_cfg_path)
-            self.akr_robot_cfg = process_robot_cfg(loaded_akr_robot_cfg)
-        else:
-            # akr_robot_cfg is a template, will be populated dynamically with grasp_id
             self.akr_robot_cfg = None
         
-        # Initialize motion generator with ik_robot_cfg (or robot_cfg if not specified)
-        ik_fixed_base = getattr(self.cfg.ik_robot_cfg, 'fixed_base', False) if self.cfg.ik_robot_cfg else False
-        self.motion_gen = self.planner.init_motion_gen(self.ik_robot_cfg, fixed_base=ik_fixed_base)
-        logger.info(f"Planner setup complete (fixed_base={ik_fixed_base})")
+        # Initialize default motion generator with robot_cfg
+        fixed_base = getattr(robot_cfg, 'fixed_base', False)
+        self.motion_gen = self.planner.init_motion_gen(self.robot_cfg, fixed_base=fixed_base)
+        logger.info(f"Planner setup complete (fixed_base={fixed_base})")
     
     def setup_env(self, env_wrapper) -> None:
         """
@@ -164,48 +150,7 @@ class BaseTask(ABC):
         self.env = env_wrapper
         logger.info("Environment setup complete")
     
-    def get_akr_motion_gen(self, object_cfg: Config, grasp_id: int):
-        """
-        Create a temporary motion generator with akr_robot_cfg for articulated object planning.
-        
-        This is used when planning trajectories for articulated objects (e.g., opening doors).
-        The path is constructed as: assets/object/{asset_type}/{asset_id}/summit_franka_{asset_id}_0_grasp_{grasp_id:04d}.yml
-        
-        Args:
-            object_cfg: Object configuration
-            grasp_id: Grasp ID
-            
-        Returns:
-            tuple: (akr_robot_cfg, akr_motion_gen)
-        """
-        from automoma.utils.file_utils import load_robot_cfg, process_robot_cfg
-        
-        if not self.cfg.akr_robot_cfg:
-            logger.warning("No akr_robot_cfg in config, returning default motion_gen")
-            return self.robot_cfg, self.motion_gen
-        
-        # Build path: assets/object/{asset_type}/{asset_id}/summit_franka_{asset_id}_0_grasp_{grasp_id:04d}.yml
-        asset_type = object_cfg.asset_type
-        asset_id = object_cfg.asset_id
-        robot_type = self.cfg.akr_robot_cfg.robot_type
-        
-        akr_path = f"assets/object/{asset_type}/{asset_id}/{robot_type}_{asset_id}_0_grasp_{grasp_id:04d}.yml"
-        akr_robot_cfg_path = str(self.project_root / akr_path)
-        
-        if not os.path.exists(akr_robot_cfg_path):
-            logger.error(f"AKR robot config not found: {akr_robot_cfg_path}")
-            return self.robot_cfg, self.motion_gen
-        
-        # Load and process AKR robot config
-        loaded_akr_cfg = load_robot_cfg(akr_robot_cfg_path)
-        akr_robot_cfg = process_robot_cfg(loaded_akr_cfg)
-        
-        # Create motion generator with fixed_base from config
-        fixed_base = getattr(self.cfg.akr_robot_cfg, 'fixed_base', True)
-        akr_motion_gen = self.planner.init_motion_gen(akr_robot_cfg, fixed_base=fixed_base)
-        
-        logger.info(f"Created AKR motion_gen for grasp {grasp_id} (fixed_base={fixed_base})")
-        return akr_robot_cfg, akr_motion_gen
+
     
     # ==================== Planning Pipeline ====================
     
@@ -244,6 +189,7 @@ class BaseTask(ABC):
         """
         pass
     
+    @abstractmethod
     def plan_ik_for_stage(
         self,
         stage_index: int,
@@ -255,8 +201,6 @@ class BaseTask(ABC):
         """
         Plan IK solutions for a stage.
         
-        Uses self.motion_gen for IK planning.
-        
         Args:
             stage_index: Index of the stage
             grasp_pose: Grasp pose
@@ -267,60 +211,7 @@ class BaseTask(ABC):
         Returns:
             IKResult with IK solutions
         """
-        from automoma.utils.math_utils import stack_iks_angle
-        
-        plan_cfg = self.cfg.plan_cfg
-        ik_limit = plan_cfg.plan_ik.limit[0] if is_start else plan_cfg.plan_ik.limit[1]
-        
-        all_ik_results = []
-        
-        for _ in range(MAX_IK_ITERATIONS):
-            for angle in angles:
-                target_pose = self.get_target_pose_for_stage(
-                    stage_index, grasp_pose, angle, object_cfg
-                )
-                
-                # Use motion_gen for IK planning
-                ik_result = self.planner.plan_ik(
-                    target_pose=target_pose,
-                    robot_cfg=self.ik_robot_cfg,
-                    plan_cfg={"joint_cfg": {"joint_0": angle}, "enable_collision": True},
-                    motion_gen=self.motion_gen,
-                )
-                
-                # Stack angle with IK solutions
-                ik_result.iks = stack_iks_angle(ik_result.iks, -angle)
-                
-                # Apply clustering
-                ik_result = self.planner.ik_clustering(
-                    ik_result,
-                    ap_fallback_clusters=plan_cfg.cluster.ap_fallback_clusters,
-                    ap_clusters_upperbound=plan_cfg.cluster.ap_clusters_upperbound,
-                    ap_clusters_lowerbound=plan_cfg.cluster.ap_cluster_lowerbound,
-                )
-                
-                all_ik_results.append(ik_result)
-            
-            total_iks = sum(r.iks.shape[0] for r in all_ik_results)
-            if total_iks >= ik_limit:
-                break
-        
-        result = IKResult.cat(all_ik_results)
-        
-        # If no IK solutions found, return empty result with correct robot DOF
-        if result.iks.shape[0] == 0:
-            robot_dof = self.robot_cfg.get('kinematics', {}).get('cspace', {}).get('joint_names', None)
-            if robot_dof:
-                dof = len(robot_dof)
-            else:
-                dof = 10  # Default for summit_franka (4 base + 7 arm - 1 fixed)
-            logger.warning(f"No IK solutions found, returning empty result with DOF={dof}")
-            return IKResult(
-                target_poses=torch.empty((0, 7)),
-                iks=torch.empty((0, dof))
-            )
-        
-        return result
+        pass
     
     def run_planning_pipeline(
         self,
@@ -462,13 +353,12 @@ class BaseTask(ABC):
         
         return True
     
+    @abstractmethod
     def _get_stage_angles(self, stage_index: int, object_cfg: Config) -> Tuple[List[float], List[float]]:
         """Get start and goal angles for a stage."""
-        # Default: use object config angles
-        start_angles = object_cfg.start_angles if object_cfg.start_angles else [0.0]
-        goal_angles = object_cfg.goal_angles if object_cfg.goal_angles else [1.57]
-        return start_angles, goal_angles
+        pass
     
+    @abstractmethod
     def _plan_trajectories(
         self,
         start_iks: IKResult,
@@ -479,32 +369,15 @@ class BaseTask(ABC):
         """
         Plan trajectories between start and goal IKs.
         
-        For simple tasks: uses self.motion_gen
-        For articulated tasks: subclass should override and use get_akr_motion_gen()
-        
         Args:
             start_iks: Start IK solutions
             goal_iks: Goal IK solutions
             stage_type: Type of stage
             grasp_id: Grasp ID (used by articulated tasks for AKR robot config)
         """
-        plan_cfg = self.cfg.plan_cfg
-        
-        traj_cfg = {
-            "stage_type": stage_type,
-            "batch_size": plan_cfg.plan_traj.batch_size,
-            "expand_to_pairs": plan_cfg.plan_traj.expand_to_pairs,
-        }
-        
-        # Use current motion_gen for trajectory planning
-        return self.planner.plan_traj(
-            start_iks=start_iks.iks,
-            goal_iks=goal_iks.iks,
-            robot_cfg=self.robot_cfg,
-            plan_cfg=traj_cfg,
-            motion_gen=self.motion_gen,
-        )
+        pass
     
+    @abstractmethod
     def _filter_trajectories(
         self,
         traj_result: TrajResult,
@@ -513,31 +386,11 @@ class BaseTask(ABC):
         """
         Filter trajectories based on FK validation and other criteria.
         
-        Uses current motion_gen (same as used for planning).
+        Args:
+            traj_result: Trajectory results to filter
+            stage_type: Type of stage
         """
-        plan_cfg = self.cfg.plan_cfg
-        
-        # Get filter parameters with defaults
-        position_threshold = 0.01
-        orientation_threshold = 0.05
-        
-        if hasattr(plan_cfg, 'filter') and plan_cfg.filter:
-            position_threshold = getattr(plan_cfg.filter, 'position_threshold', 0.01)
-            orientation_threshold = getattr(plan_cfg.filter, 'orientation_threshold', 0.05)
-        
-        filter_cfg = {
-            "stage_type": stage_type,
-            "position_tolerance": position_threshold,
-            "rotation_tolerance": orientation_threshold,
-        }
-        
-        # Use current motion_gen for trajectory filtering (same as planning)
-        return self.planner.filter_traj(
-            traj_result=traj_result,
-            robot_cfg=self.robot_cfg,
-            motion_gen=self.motion_gen,
-            filter_cfg=filter_cfg,
-        )
+        pass
     
     # ==================== Recording Pipeline ====================
     
@@ -561,22 +414,30 @@ class BaseTask(ABC):
         traj_path = Path(traj_dir)
         traj_files = list(traj_path.glob("**/traj_data.pt"))
         
+        print(f"Found {len(traj_files)} trajectory files to process")
+        
         # Check if resume is enabled
         resume = getattr(self.cfg, 'resume', True)
         if hasattr(self.cfg, 'record_cfg') and hasattr(self.cfg.record_cfg, 'resume'):
             resume = self.cfg.record_cfg.resume
+        
+        print(f"Resume mode: {resume}")
         
         episodes_recorded = 0
         
         for traj_file in traj_files:
             # Check if this trajectory has already been recorded
             if resume and self._check_trajectory_recorded(traj_file, dataset_wrapper):
-                logger.info(f"Skipping {traj_file} (already recorded)")
+                print(f"Skipping {traj_file} (already recorded)")
                 continue
+            
+            print(f"Processing trajectory file: {traj_file}")
             try:
-                traj_data = torch.load(traj_file, weights_only=True)
+                traj_data = torch.load(traj_file, weights_only=False)
                 trajectories = traj_data["trajectories"]
                 success = traj_data["success"]
+                
+                print(f"Loaded {len(trajectories)} trajectories, {success.sum()} successful")
                 
                 successful_trajs = trajectories[success.bool()]
                 
@@ -589,7 +450,7 @@ class BaseTask(ABC):
                 marker_file.touch()
                         
             except Exception as e:
-                logger.warning(f"Error processing {traj_file}: {e}")
+                print(f"Error processing {traj_file}: {e}")
         
         return episodes_recorded
     
