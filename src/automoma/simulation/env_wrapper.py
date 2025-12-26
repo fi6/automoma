@@ -81,7 +81,7 @@ class SimEnvWrapper:
         from automoma.planning.planner import BasePlanner
         
         # Initialize components
-        self.sim = IsaacSimManager(self.cfg.env_cfg.sim)
+        self.sim = IsaacSimManager(self.cfg.env_cfg)
         self.scene = InfinigenBuilder(self.sim)
         self.sensors = SensorRig(self.sim)
         
@@ -117,7 +117,7 @@ class SimEnvWrapper:
             # Handle multi-object config: pick first one if 'pose' not present
             if 'pose' not in object_cfg and object_cfg:
                 first_key = list(object_cfg.keys())[0]
-                logger.info(f"Multi-object config detected, using first object: {first_key}")
+                print(f"Multi-object config detected, using first object: {first_key}")
                 object_cfg = object_cfg[first_key]
         else:
             object_cfg = self._to_dict(object_cfg)
@@ -141,6 +141,7 @@ class SimEnvWrapper:
         # Setup scene, object, and robot
         obj_pose = object_cfg.get('pose')
         scn_pose = scene_cfg.get('pose')
+        print(f"Object pose: {obj_pose}, Scene pose: {scn_pose}")
         
         if obj_pose is not None and scn_pose is not None:
             self.scene.init_root_pose(obj_pose, scn_pose, type="object_center")
@@ -150,8 +151,18 @@ class SimEnvWrapper:
         self.scene.load_scene(scene_cfg, prim_path="/World/Scene")
         self.scene.load_object(object_cfg, prim_path="/World/Object")
         self.scene.load_robot(robot_cfg["robot"], prim_path="/World/Robot")
-
-        self.sim.set_isaacsim_collision_free(prim_paths=self.cfg.env_cfg.sim.collision_free_prim_paths)
+        
+        # Set deactivate 
+        deactivate_prim_paths = [f"StaticCategoryFactory_{object_cfg['asset_type']}_{object_cfg['asset_id']}", "exterior", "ceiling", "Ceiling"]
+        self.sim.set_deactivate_prims(deactivate_prim_paths)
+        # Set collision free
+        collision_free_prim_paths = self.cfg.env_cfg.collision_free_prim_paths
+        self.sim.set_isaacsim_collision_free(prim_paths=collision_free_prim_paths)
+        
+        # Set lighting
+        self.sim.set_lighting(self.cfg.env_cfg.lighting_mode)
+        
+        # Setup physics
         self.sim.init_world_physics()
         
         

@@ -29,7 +29,7 @@ from curobo.geom.types import WorldConfig, VoxelGrid
 from curobo.wrap.reacher.motion_gen import MotionGen, MotionGenConfig
 
 from automoma.utils.math_utils import pose_multiply
-
+from automoma.utils.file_utils import get_abs_path
 
 # Lazy imports for omni modules
 _omni_imported = False
@@ -243,10 +243,14 @@ class InfinigenBuilder(SceneBuilder):
             prim_path (str): The path to the scene.
         '''
         path = scene_cfg.get("path", None)
-        pose = scene_cfg.get("pose", None)
         
-        if pose is not None:
-            pose = self.get_world_pose(pose)
+        path = get_abs_path(path)  # scene usd need abs path
+        
+        # suppose scene is the relative world pose
+        # pose = scene_cfg.get("pose", None)
+        # if pose is not None:
+        #     pose = self.get_world_pose(pose)
+        pose = self.root_pose
         
         if not os.path.exists(path):
             raise FileNotFoundError(f"USD file not found: {path}")
@@ -281,17 +285,8 @@ class InfinigenBuilder(SceneBuilder):
         print(f"Loading object from {path} to {prim_path}")
         
         root, sub_root = prim_path.rsplit('/', 1)
-        
-        # Ensure root_pose is a list for USD helper
-        root_pose = self.root_pose
-        if isinstance(root_pose, torch.Tensor):
-            root_pose = root_pose.cpu().numpy()
-        elif isinstance(root_pose, list):
-            root_pose = np.array(root_pose)
-        elif not isinstance(root_pose, np.ndarray):
-            root_pose = np.array(list(root_pose))
             
-        self.sim.usd_helper.add_subroot(root=root, sub_root=sub_root, pose=root_pose)
+        self.sim.usd_helper.add_subroot(root=root, sub_root=sub_root, pose=pose)
         self._import_urdf_to_scene(urdf_full_path=path, subroot=prim_path, unique_name="target_object")
         
     def load_robot(self, robot_cfg: Dict[str, Any], prim_path: str = "/World/Robot", pose: Optional[List[float]] = None) -> Tuple:

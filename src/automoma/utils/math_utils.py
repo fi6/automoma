@@ -198,6 +198,20 @@ def get_transform(transform):
 
     return translate + rot_quat, scale
 
+def euler_to_quat_omni(orient):
+    # Convert Euler angles to quaternion
+    # TODO: According to the experiment and the doc from https://docs.omniverse.nvidia.com/isaacsim/latest/features/sensors_simulation/isaac_sim_sensors_camera.html, add extrinsic=False
+    import omni.isaac.core.utils.torch.rotations as rot_utils
+
+    if len(orient) == 3:
+        rot_quat = rot_utils.euler_angles_to_quats(
+            torch.tensor([orient], dtype=torch.float32), degrees=True, extrinsic=False
+        )[0].tolist()
+    elif len(orient) == 4:
+        rot_quat = orient
+
+    return rot_quat
+
 
 def quat_multiply(q1: np.ndarray, q2: np.ndarray) -> np.ndarray:
     """

@@ -4,7 +4,49 @@
 info_cfg:
   task: "single_object_open_test"
   robot: "summit_franka"
+  scene: ["scene_0_seed_0", "scene_1_seed_1"]
+  object: ["7221"]
   description: "Record manipulation data for single object open test"
+
+# Environment configuration (for Isaac Sim)
+env_cfg:
+    headless: false
+    width: 1920
+    height: 1080
+    lighting_mode: 2
+    physics_dt: 1.0/60.0
+    rendering_dt: 1.0/60.0
+    collision_free_prim_paths:
+      - "/World/summit_panda/panda_leftfinger/collisions"
+      - "/World/summit_panda/panda_rightfinger/collisions"
+      - "/World/summit_panda/grasp_frame/collisions"
+      - "/World/summit_panda/panda_hand/collisions"
+
+robot_cfg:
+  robot_type: "summit_franka"
+  path: "assets/robot/summit_franka/summit_franka.yml"
+  mobile_base_dof: 3
+
+object_cfg:
+  "7221":
+    path: assets/object/Microwave/7221/7221_0_scaling.urdf
+    pose: [0, 0, 0, 1, 0, 0, 0]
+    asset_type: "Microwave"
+    asset_id: "7221"
+    scale: 0.3563
+    start_angles: [0]
+    goal_angles: [1.57, 0.9]
+
+scene_cfg:
+  scene_0_seed_0:
+    path: "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/export/export_scene.blend/export_scene.usdc"
+    pose: [0, 0, -0.13, 1, 0, 0, 0]
+    metadata_path: "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/info/metadata.json"
+  scene_1_seed_1:
+    path: "assets/scene/infinigen/kitchen_1130/scene_1_seed_1/export/export_scene.blend/export_scene.usdc"
+    pose: [0, 0, -0.13, 1, 0, 0, 0]
+    metadata_path: "assets/scene/infinigen/kitchen_1130/scene_1_seed_1/info/metadata.json"
+
 
 # Unified record configuration (for scripts)
 record_cfg:
@@ -14,9 +56,10 @@ record_cfg:
   use_videos: true
   push_to_hub: false
   max_episodes: 500
-  episodes_per_grasp: 10
-  steps_per_episode: 100
+  episodes_per_scene: 10
+  steps_per_episode: 32
   skip_existing: true
+  seed: 42
 
 # Data source configuration
 data_cfg:
@@ -57,7 +100,9 @@ camera_cfg:
   height: 240
   cameras:
     ego_topdown:
-      prim_path: "/World/summit_panda/panda_hand/ego_topdown"
+      prim_path: "/World/summit_panda/base_link_y/ego_topdown"
+      # prim_path: "/World/summit_panda/summit_base/ego_topdown"
+      # prim_path: "/World/summit_panda/panda_hand/ego_topdown"
       resolution: [320, 240]
       frequency: 30
       pose:
@@ -82,21 +127,4 @@ camera_cfg:
         orient: [-34.0, -26.0, -140.0]
       pose_type: local
       
-# Environment configuration (for Isaac Sim)
-env_cfg:
-  sim:
-    headless: false
-    width: 1920
-    height: 1080
-    physics_dt: 1.0/60.0
-    rendering_dt: 1.0/60.0
-    collision_free_prim_paths:
-      - "/World/summit_panda/panda_leftfinger/collisions"
-      - "/World/summit_panda/panda_rightfinger/collisions"
-      - "/World/summit_panda/grasp_frame/collisions"
-      - "/World/summit_panda/panda_hand/collisions"
 
-  robot_cfg:
-    robot_type: "summit_franka"
-    path: "assets/robot/summit_franka/summit_franka.yml"
-    mobile_base_dof: 3

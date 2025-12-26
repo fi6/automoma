@@ -106,6 +106,19 @@ class IsaacSimManager:
     def init_world_physics(self):
         self.world.initialize_physics()
         self.world.reset()
+        
+    def set_deactivate_prims(self, prim_paths: List[str] = []):
+        """Deactivate prims by name pattern."""
+        stage = self.world.stage
+        for prim_path in prim_paths:
+            for prim in stage.Traverse():
+                prim_path_str = str(prim.GetPath())
+                if prim_path in prim_path_str:
+                    if prim.IsActive():
+                        print(f"  ➤ Deactivating: {prim_path_str}")
+                        prim.SetActive(False)
+                    else:
+                        print(f"  ➤ Already inactive: {prim_path_str}")
 
     def set_isaacsim_collision_free(self, prim_paths: List[str] = []):
         def disable_collision(prim_path):
@@ -123,6 +136,11 @@ class IsaacSimManager:
         #     # "/World/object/partnet_5b2633d960419bb2e5bf1ab8e7d0b/link_1/collisions"
         # ]:
 
+    def set_lighting(self, mode: int = 2):
+        action_registry = omni.kit.actions.core.get_action_registry()
+        action = action_registry.get_action("omni.kit.viewport.menubar.lighting", "set_lighting_mode_rig")
+        action.execute(lighting_mode=mode)
+        
     def step(self, step=5, render=True):
         """Step the Isaac Sim world"""
         if step == -1:

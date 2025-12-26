@@ -141,36 +141,47 @@ class SensorRig:
         """Set camera pose based on configuration."""
         # Handle dictionary/Config format with translate and orient
         if hasattr(pose, "translate") and hasattr(pose, "orient"):
-            translation = pose.translate
-            orientation = pose.orient
+            translate = pose.translate
+            orient = pose.orient
         elif isinstance(pose, dict) and "translate" in pose and "orient" in pose:
-            translation = pose["translate"]
-            orientation = pose["orient"]
+            translate = pose["translate"]
+            orient = pose["orient"]
         elif isinstance(pose, (list, tuple)) and len(pose) >= 6:
-            translation = pose[:3]
-            orientation = pose[3:]
+            translate = pose[:3]
+            orient = pose[3:]
         else:
             logger.warning(f"Invalid pose format: {pose}. Using default [0,0,0], [0,0,0]")
-            translation = [0, 0, 0]
-            orientation = [0, 0, 0]
+            translate = [0, 0, 0]
+            orient = [0, 0, 0]
 
-        # Convert orientation to quaternion if it's Euler angles (3 elements)
-        if len(orientation) == 3:
-            from automoma.utils.math_utils import euler_to_quat
-            # Assume degrees and convert to radians
-            orientation = euler_to_quat(np.radians(np.array(orientation)))
+        # Convert Euler angles to quaternion following cuakr pattern
+        from automoma.utils.math_utils import euler_to_quat, euler_to_quat_omni
+        if len(orient) == 3:
+            try:
+                rot_quat = euler_to_quat_omni(orient)
+            except:
+                # Fallback to our own euler_to_quat if Isaac Sim not available
+                rot_quat = euler_to_quat(
+                    np.array(orient) * np.pi / 180, order='xyz'
+                )
+                if hasattr(rot_quat, 'tolist'):
+                    rot_quat = rot_quat.tolist()
+        elif len(orient) == 4:
+            rot_quat = orient
+        else:
+            rot_quat = [1, 0, 0, 0]  # Identity quaternion
 
         if pose_type == PoseType.LOCAL:
             # Local pose relative to parent prim (robot end effector or object)
             camera.set_local_pose(
-                translation,
-                orientation,
+                translate,
+                rot_quat,
                 camera_axes="usd"
             )
         elif pose_type == PoseType.WORLD:
             # World pose
             camera.set_world_pose(
-                translation,
-                orientation,
+                translate,
+                rot_quat,
                 camera_axes="usd"
             )
