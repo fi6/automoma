@@ -32,7 +32,7 @@ import logging
 # Safe imports (don't require Isaac Sim)
 from automoma.core.config_loader import Config
 from automoma.utils.math_utils import pose_multiply
-from automoma.utils.type_utils import to_list, to_numpy, to_float, ensure_positive
+from automoma.utils.type_utils import to_list, to_numpy, to_float, ensure_non_negative
 
 from curobo.geom.types import Pose
 from curobo.types.state import JointState
@@ -272,8 +272,9 @@ class SimEnvWrapper:
 
         # Set environment state (e.g., object joint angle)
         if env_state is not None:
-            # Convert to positive float (joint angles should be positive)
-            env_state_float = ensure_positive(to_float(env_state))
+            # Convert to non-negative float for articulated object joints
+            # Note: For door/drawer opening, angles are typically non-negative
+            env_state_float = ensure_non_negative(to_float(env_state))
             
             obj = self.sim.world.scene.get_object("target_object")
             if not obj._articulation_view.initialized:

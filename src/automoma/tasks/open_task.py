@@ -178,8 +178,8 @@ class OpenTask(BaseTask):
         all_ik_results = []
         ik_type = "start" if is_start else "goal"
         
-        print(f"[OpenTask] Planning {ik_type} IKs for stage {stage_index}")
-        print(f"[OpenTask] Angles to sample: {angles}, limit: {ik_limit}")
+        logger.info(f"Planning {ik_type} IKs for stage {stage_index}")
+        logger.info(f"Angles to sample: {angles}, limit: {ik_limit}")
         
         for iteration in range(MAX_IK_ITERATIONS):
             for angle in angles:

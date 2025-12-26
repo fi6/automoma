@@ -112,6 +112,9 @@ def to_float(data: Any) -> float:
     Returns:
         Python float
         
+    Raises:
+        ValueError: If data is empty
+        
     Examples:
         >>> to_float(torch.tensor(3.14))
         3.14
@@ -121,19 +124,21 @@ def to_float(data: Any) -> float:
     if isinstance(data, torch.Tensor):
         return data.item()
     if isinstance(data, np.ndarray):
+        if data.size == 0:
+            raise ValueError("Cannot convert empty array to float")
         return float(data.flat[0])
     return float(data)
 
 
-def ensure_positive(value: float) -> float:
+def ensure_non_negative(value: float) -> float:
     """
-    Ensure a value is positive (non-negative).
+    Ensure a value is non-negative (>= 0).
     
     Args:
         value: Input value
         
     Returns:
-        Absolute value of input
+        Absolute value of input (always >= 0)
     """
     return abs(float(value))
 

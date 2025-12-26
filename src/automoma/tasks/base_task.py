@@ -147,8 +147,8 @@ class BaseTask(ABC):
         # Results storage
         self.stage_results: List[StageResult] = []
         
-        print(f"[BaseTask] Initialized task: {self.name}")
-        print(f"[BaseTask] Stages: {[s.name for s in self.stages]}")
+        logger.info(f"Initialized task: {self.name}")
+        logger.info(f"Stages: {[s.name for s in self.stages]}")
         
     # =========================================================================
     # Properties
@@ -201,7 +201,7 @@ class BaseTask(ABC):
             "collision_checker_type": plan_cfg.collision_checker_type,
         }
         
-        print(f"[BaseTask] Setting up planner with collision type: {plan_cfg.collision_checker_type}")
+        logger.info(f"Setting up planner with collision type: {plan_cfg.collision_checker_type}")
         
         # Initialize planner and setup environment
         self.planner = CuroboPlanner(planner_cfg)
@@ -214,12 +214,12 @@ class BaseTask(ABC):
         loaded_robot_cfg = load_robot_cfg(robot_cfg_path)
         self.robot_cfg = process_robot_cfg(loaded_robot_cfg)
         
-        print(f"[BaseTask] Loaded robot config: {robot_cfg_path}")
+        logger.info(f"Loaded robot config: {robot_cfg_path}")
         
         # Store AKR robot config template (loaded dynamically per grasp if needed)
         if self.cfg.akr_robot_cfg:
             self.akr_robot_cfg = self.cfg.akr_robot_cfg
-            print(f"[BaseTask] AKR robot config template loaded (robot_type={self.akr_robot_cfg.robot_type})")
+            logger.info(f"AKR robot config template loaded (robot_type={self.akr_robot_cfg.robot_type})")
         else:
             self.akr_robot_cfg = None
         
@@ -227,7 +227,7 @@ class BaseTask(ABC):
         fixed_base = getattr(robot_cfg, 'fixed_base', False)
         self.motion_gen = self.planner.init_motion_gen(self.robot_cfg, fixed_base=fixed_base)
         
-        print(f"[BaseTask] Planner setup complete (fixed_base={fixed_base})")
+        logger.info(f"Planner setup complete (fixed_base={fixed_base})")
     
     def setup_env(self, env_wrapper) -> None:
         """
@@ -237,7 +237,7 @@ class BaseTask(ABC):
             env_wrapper: SimEnvWrapper instance
         """
         self.env = env_wrapper
-        print(f"[BaseTask] Environment setup complete")
+        logger.info("Environment setup complete")
     
     # =========================================================================
     # Abstract Methods - Must be implemented by subclasses
@@ -435,7 +435,7 @@ class BaseTask(ABC):
         # Load start IKs from trajectory data
         ik_files = list(test_path.glob("**/start_iks.pt"))
         
-        print(f"[BaseTask] Found {len(ik_files)} IK files in {test_data_dir}")
+        logger.info(f"Found {len(ik_files)} IK files in {test_data_dir}")
         
         for ik_file in ik_files:
             try:
@@ -449,7 +449,7 @@ class BaseTask(ABC):
             except Exception as e:
                 logger.warning(f"Error loading {ik_file}: {e}")
         
-        print(f"[BaseTask] Loaded {len(initial_states)} initial states")
+        logger.info(f"Loaded {len(initial_states)} initial states")
         return initial_states
     
     def _check_task_complete(self, obs: Dict[str, Any]) -> bool:
