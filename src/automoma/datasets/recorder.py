@@ -2,7 +2,7 @@ from automoma.core.types import DatasetFormat
 from automoma.simulation.env_wrapper import SimEnvWrapper
 from automoma.datasets.dataset import LeRobotDatasetWrapper, HDF5DatasetWrapper, ZarrDatasetWrapper
 from automoma.utils.math_utils import pose_multiply, unpack_ik
-from automoma.utils.config_utils import adjust_pose_for_robot
+from automoma.utils.robot_utils import adjust_pose_for_robot
 
 from tqdm import tqdm
 

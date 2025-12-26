@@ -103,17 +103,23 @@ class LeRobotDatasetWrapper(BaseDatasetWrapper):
         print(f"Created dataset at {dataset_path}")
     def add(self, data):
         frame = {
-            "observation.state": data["joint_data"],
-            "observation.eef": data["eef_pose_data"],
-            "action": data["action_data"],
+            "observation.state": np.array(data["joint_data"], dtype=np.float32),
+            "observation.eef": np.array(data["eef_pose_data"], dtype=np.float32),
+            "action": np.array(data["action_data"], dtype=np.float32),
         }
         # Add images
         for cam_name, img in data["obs_data"]["images"].items():
+            # Transpose from (H, W, C) to (C, H, W)
+            if img.ndim == 3 and img.shape[-1] == 3:
+                img = img.transpose(2, 0, 1)
             frame[f"observation.images.{cam_name}"] = img
         
         # Add depth
         for cam_name, depth in data["obs_data"]["depth"].items():
-            frame[f"observation.depth.{cam_name}"] = depth
+            # Ensure depth has channel dimension (1, H, W)
+            if depth.ndim == 2:
+                depth = depth[np.newaxis, ...]
+            frame[f"observation.depth.{cam_name}"] = np.array(depth, dtype=np.float32)
         
         frame["task"] = self.task 
         

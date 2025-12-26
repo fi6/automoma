@@ -10,6 +10,7 @@ from pathlib import Path
 from automoma.core.types import TaskType, StageType, IKResult, TrajResult
 from automoma.core.config_loader import Config
 from automoma.tasks.base_task import BaseTask, TaskResult, StageResult
+from automoma.utils.robot_utils import adjust_pose_for_robot
 
 
 logger = logging.getLogger(__name__)
@@ -553,9 +554,25 @@ class OpenTask(BaseTask):
                 trajectories = traj_data["trajectories"]
                 success = traj_data["success"]
                 
+                # Ensure they are torch tensors
+                if not isinstance(trajectories, torch.Tensor):
+                    trajectories = torch.tensor(trajectories)
+                if not isinstance(success, torch.Tensor):
+                    success = torch.tensor(success)
+                
                 print(f"Loaded {len(trajectories)} trajectories, {success.sum()} successful")
                 
-                successful_trajs = trajectories[success.bool()]
+                # Ensure trajectories is 3D (N, T, D)
+                if trajectories.ndim == 2:
+                    trajectories = trajectories.unsqueeze(0)
+                if success.ndim == 0:
+                    success = success.unsqueeze(0)
+                
+                # Filter successful trajectories
+                mask = success.to(torch.bool)
+                successful_trajs = trajectories[mask]
+                
+                print(f"Processing {len(successful_trajs)} successful trajectories")
                 
                 for traj in successful_trajs:
                     if self._record_trajectory(traj, dataset_wrapper):
@@ -594,6 +611,7 @@ class OpenTask(BaseTask):
         for step_idx in range(len(trajectory)):
             step_data = trajectory[step_idx]
             robot_state = step_data[:-1]  # All but last (handle angle)
+            robot_state = adjust_pose_for_robot(robot_state, self.cfg.robot_cfg.robot_type)
             env_state = step_data[-1:]     # Last (handle angle)
             
             self.env.set_state(robot_state, env_state)

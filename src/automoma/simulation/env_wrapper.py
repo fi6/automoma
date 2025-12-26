@@ -136,7 +136,7 @@ class SimEnvWrapper:
         self.cfg.robot_cfg.robot = process_robot_cfg(load_robot_cfg(self.cfg.robot_cfg["path"]))
         robot_cfg = self._to_dict(self.cfg.robot_cfg)
         # print(f"Robot config used for setup: {robot_cfg}")
-        sensors_cfg = self._to_dict(self.cfg.sensors_cfg) if self.cfg.sensors_cfg else {}
+        sensors_cfg = self._to_dict(self.cfg.sensors_cfg) if self.cfg.sensors_cfg else self._to_dict(self.cfg.camera_cfg)
         
         # Setup scene, object, and robot
         obj_pose = object_cfg.get('pose')
@@ -160,14 +160,18 @@ class SimEnvWrapper:
         self.robot_idx_list = [self.robot.get_dof_index(name) for name in self.robot_joint_names]
         
         # Setup sensors
-        if sensors_cfg:
-            self.sensors.setup_sensors(sensors_cfg)
+        self.sensors.setup_sensors(sensors_cfg)
         
         # Initialize planner for FK utilities
         self.planner.init_motion_gen(robot_cfg["robot"])
         
         self.is_setup = True
         logger.info("Environment setup complete")
+        
+        # Warmup sensors (Isaac Sim cameras need a few steps to start producing data)
+        logger.info("Warming up sensors...")
+        for _ in range(10):
+            self.sim.step()
     
     def _to_dict(self, cfg) -> Dict[str, Any]:
         """Convert Config to dict if needed."""

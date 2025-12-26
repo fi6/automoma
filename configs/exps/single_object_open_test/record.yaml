@@ -74,7 +74,7 @@ camera_cfg:
         orient: [180, -28, 90]
       pose_type: local
     fix_local:
-      prim_path: "/World/object/fix_local"
+      prim_path: "/World/Object/fix_local"
       resolution: [320, 240]
       frequency: 30
       pose:

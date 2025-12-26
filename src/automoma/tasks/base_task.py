@@ -11,7 +11,7 @@ import torch
 
 from automoma.core.types import TaskType, StageType, IKResult, TrajResult
 from automoma.core.config_loader import Config
-
+from automoma.utils.robot_utils import adjust_pose_for_robot
 
 logger = logging.getLogger(__name__)
 

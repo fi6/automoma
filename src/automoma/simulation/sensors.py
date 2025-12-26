@@ -8,6 +8,7 @@ Use automoma.simulation.sim_app_manager.get_simulation_app() first.
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
 import logging
+import numpy as np
 
 from automoma.core.types import PoseType
 
@@ -45,6 +46,7 @@ class SensorRig:
         self.sim = sim
         # Import omni modules when SensorRig is created
         _import_omni_modules()
+        self.cameras = {}
     def setup_sensors(self, sensor_cfgs):
         # Setup sensors based on the provided configurations
         """
@@ -55,9 +57,7 @@ class SensorRig:
         """
         
         self.sensor_cfgs = sensor_cfgs
-        
-        cameras = {}
-        
+                
         camera_configs = sensor_cfgs.get("cameras", {})
 
         for camera_name, config in camera_configs.items():
@@ -84,10 +84,8 @@ class SensorRig:
             # Set camera pose based on type
             self._set_camera_pose(camera, config.get("pose", []), PoseType[config.get("pose_type").upper()])
             
-            cameras[camera_name] = camera
-            
-        self.cameras = cameras
-    
+            self.cameras[camera_name] = camera
+                
     def update(self):
         # Update sensor states in the simulation
         pass
@@ -102,16 +100,28 @@ class SensorRig:
         for camera_name, camera in self.cameras.items():
             # Get RGB data (remove alpha channel) 
             rgba = camera.get_rgba()
-            image = rgba[:, :, :3]
             if rgba is not None:
+                image = rgba[:, :, :3]
                 observations["images"][camera_name] = image
+            else:
+                logger.warning(f"Camera {camera_name} RGB data is None")
+                # Fallback to zeros if data is not ready
+                res = camera.get_resolution()
+                observations["images"][camera_name] = np.zeros((res[1], res[0], 3), dtype=np.uint8)
+
             # Get depth data
             depth = camera.get_depth()
             if depth is not None:
                 observations["depth"][camera_name] = depth
+            else:
+                logger.warning(f"Camera {camera_name} depth data is None")
+                # Fallback to zeros if data is not ready
+                res = camera.get_resolution()
+                observations["depth"][camera_name] = np.zeros((res[1], res[0]), dtype=np.float32)
+
             # Get point cloud data
             pointcloud = camera.get_pointcloud()    
-            pointcloud = self._process_pointcloud(camera_name, pointcloud, image)
+            pointcloud = self._process_pointcloud(camera_name, pointcloud, observations["images"].get(camera_name))
             if pointcloud is not None:
                 observations["pointcloud"][camera_name] = pointcloud
             
@@ -127,19 +137,40 @@ class SensorRig:
             return None
         
     
-    def _set_camera_pose(self, camera: Camera, pose: List[float], pose_type: PoseType) -> None:
+    def _set_camera_pose(self, camera, pose, pose_type: PoseType) -> None:
         """Set camera pose based on configuration."""
+        # Handle dictionary/Config format with translate and orient
+        if hasattr(pose, "translate") and hasattr(pose, "orient"):
+            translation = pose.translate
+            orientation = pose.orient
+        elif isinstance(pose, dict) and "translate" in pose and "orient" in pose:
+            translation = pose["translate"]
+            orientation = pose["orient"]
+        elif isinstance(pose, (list, tuple)) and len(pose) >= 6:
+            translation = pose[:3]
+            orientation = pose[3:]
+        else:
+            logger.warning(f"Invalid pose format: {pose}. Using default [0,0,0], [0,0,0]")
+            translation = [0, 0, 0]
+            orientation = [0, 0, 0]
+
+        # Convert orientation to quaternion if it's Euler angles (3 elements)
+        if len(orientation) == 3:
+            from automoma.utils.math_utils import euler_to_quat
+            # Assume degrees and convert to radians
+            orientation = euler_to_quat(np.radians(np.array(orientation)))
+
         if pose_type == PoseType.LOCAL:
             # Local pose relative to parent prim (robot end effector or object)
             camera.set_local_pose(
-                pose[:3],
-                pose[3:],
+                translation,
+                orientation,
                 camera_axes="usd"
             )
         elif pose_type == PoseType.WORLD:
             # World pose
             camera.set_world_pose(
-                pose[:3],
-                pose[3:],
+                translation,
+                orientation,
                 camera_axes="usd"
             )
