@@ -475,6 +475,8 @@ class BaseTask(ABC):
         if self.env is None:
             return False
         
+        self.env.reset()
+        
         for step_idx in range(len(trajectory)):
             step_data = trajectory[step_idx]
             robot_state = step_data[:-1]  # All but last (handle angle)

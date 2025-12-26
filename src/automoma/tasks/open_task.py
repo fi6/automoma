@@ -587,6 +587,34 @@ class OpenTask(BaseTask):
         
         return episodes_recorded
     
+    def run_recording_pipeline_with_trajs(
+        self,
+        trajectories: torch.Tensor,
+        dataset_wrapper,
+    ) -> int:
+        """
+        Run the recording pipeline with pre-loaded trajectories.
+        
+        This method is used when trajectories have been loaded and sampled
+        externally (e.g., for random sampling across multiple grasp files).
+        
+        Args:
+            trajectories: Tensor of trajectories to record (N, T, D)
+            dataset_wrapper: Dataset wrapper for saving
+            
+        Returns:
+            Number of episodes recorded
+        """
+        print(f"Recording {len(trajectories)} trajectories")
+        
+        episodes_recorded = 0
+        
+        for traj in trajectories:
+            if self._record_trajectory(traj, dataset_wrapper):
+                episodes_recorded += 1
+        
+        return episodes_recorded
+    
     def _check_trajectory_recorded(self, traj_file: Path, dataset_wrapper) -> bool:
         """Check if trajectory has already been recorded in the dataset."""
         # Simple check: if the trajectory file was modified before the dataset was created
@@ -608,16 +636,26 @@ class OpenTask(BaseTask):
         if self.env is None:
             return False
         
-        for step_idx in range(len(trajectory)):
+        self.env.reset()
+        
+        # Record T-1 frames for T states (last frame has no next state for action)
+        for step_idx in range(len(trajectory) - 1):
+            # Current state
             step_data = trajectory[step_idx]
             robot_state = step_data[:-1]  # All but last (handle angle)
             robot_state = adjust_pose_for_robot(robot_state, self.cfg.robot_cfg.robot_type)
             env_state = step_data[-1:]     # Last (handle angle)
             
+            # Next state (for action computation)
+            next_step_data = trajectory[step_idx + 1]
+            next_robot_state = next_step_data[:-1]
+            next_robot_state = adjust_pose_for_robot(next_robot_state, self.cfg.robot_cfg.robot_type)
+            
             self.env.set_state(robot_state, env_state)
             self.env.step()
             
-            obs_data = self.env.get_data()
+            # Get data with next state for action computation
+            obs_data = self.env.get_data(next_robot_state=next_robot_state)
             obs_data["task"] = self.name
             dataset_wrapper.add(obs_data)
         

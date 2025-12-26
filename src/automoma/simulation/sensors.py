@@ -8,10 +8,12 @@ Use automoma.simulation.sim_app_manager.get_simulation_app() first.
 from __future__ import annotations
 from typing import Any, Dict, List, Optional
 import logging
+import os
 import numpy as np
 
 from automoma.core.types import PoseType
-
+from curobo.types.math import Pose
+from automoma.utils.math_utils import create_colored_pointcloud, process_point_cloud
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +31,7 @@ def _import_omni_modules():
         return
     
     # Check if SimulationApp is initialized
-    from automoma.simulation.sim_app_manager import require_simulation_app
+    from automoma.utils.sim_utils import require_simulation_app
     require_simulation_app()
     
     # Now safe to import omni modules
@@ -82,13 +84,33 @@ class SensorRig:
                 print(f"Camera {camera_name} focal length set to {config['focal_length']}")
             
             # Set camera pose based on type
-            self._set_camera_pose(camera, config.get("pose", []), PoseType[config.get("pose_type").upper()])
+            self._set_camera_pose(camera, camera_name, config.get("pose", []), PoseType[config.get("pose_type").upper()])
             
             self.cameras[camera_name] = camera
                 
     def update(self):
         # Update sensor states in the simulation
-        pass
+        if self.cameras.get("ego_topdown") is not None:
+            # Get robot end effector pose using proper prim pose detection
+            robot_link_prim_path = os.path.dirname(self.sensor_cfgs["cameras"]["ego_topdown"]["prim_path"])
+            robot_link_pose_matrix = self.sim.get_prim_pose(robot_link_prim_path)
+            
+            if robot_link_pose_matrix is not None:
+                # Convert matrix to Pose object and extract position
+                robot_link_pose = Pose.from_matrix(robot_link_pose_matrix)
+                robot_pos = robot_link_pose.position.cpu().numpy()
+                
+                # Update camera position (ego_topdown follows end effector)
+                ego_pose = self.sensor_cfgs["cameras"]["ego_topdown"]["pose"]
+                camera_pos = robot_pos + np.array(ego_pose["translate"])
+                
+                self.cameras["ego_topdown"].set_world_pose(
+                    camera_pos.tolist(),
+                    ego_pose["quat"],
+                    camera_axes="usd"
+                )
+            else:
+                print(f"Failed to get robot pose from {robot_link_prim_path}, skipping ego_topdown camera update")
     
     def get_obs(self):
         # Retrieve sensor data from the simulation
@@ -120,24 +142,43 @@ class SensorRig:
                 observations["depth"][camera_name] = np.zeros((res[1], res[0]), dtype=np.float32)
 
             # Get point cloud data
-            pointcloud = camera.get_pointcloud()    
-            pointcloud = self._process_pointcloud(camera_name, pointcloud, observations["images"].get(camera_name))
-            if pointcloud is not None:
-                observations["pointcloud"][camera_name] = pointcloud
-            
+            if self.sensor_cfgs["cameras"][camera_name].get("pointcloud") is not None:
+                pointcloud = camera.get_pointcloud()    
+                pointcloud = self._process_pointcloud(camera_name, pointcloud, observations["images"].get(camera_name))
+                if pointcloud is not None:
+                    observations["pointcloud"][camera_name] = pointcloud
+                
         return observations
     
     def _process_pointcloud(self, camera_name: str, pointcloud: Optional[Any], image: Optional[Any]) -> Optional[Any]:
         """Process point cloud data if needed."""
         if pointcloud is None:
             return None
-        # Not required
-        pc_cfg = self.sensor_cfgs.get("pointcloud", {}).get(camera_name)
+        
+        # Get pointcloud config for this camera
+        camera_cfg = self.sensor_cfgs.get("cameras", {}).get(camera_name, {})
+        pc_cfg = camera_cfg.get("pointcloud")
         if pc_cfg is None:
             return None
         
+        # Create colored pointcloud by combining xyz and rgb
+        if image is not None:
+            colored_pc = create_colored_pointcloud(pointcloud, image, ignore_nan=True)
+        else:
+            # If no image, just use pointcloud with dummy colors
+            colored_pc = np.hstack([pointcloud.reshape(-1, 3), np.zeros((pointcloud.reshape(-1, 3).shape[0], 3))])
+        
+        # Process the colored pointcloud
+        cfg = {
+            'random_drop_points': pc_cfg.get('random_drop_points', 5000),
+            'n_points': pc_cfg.get('num_points', 1024),
+            'USE_FPS': pc_cfg.get('use_fps', True)
+        }
+        
+        processed_pc = process_point_cloud(colored_pc, cfg)
+        return processed_pc
     
-    def _set_camera_pose(self, camera, pose, pose_type: PoseType) -> None:
+    def _set_camera_pose(self, camera, camera_name, pose, pose_type: PoseType) -> None:
         """Set camera pose based on configuration."""
         # Handle dictionary/Config format with translate and orient
         if hasattr(pose, "translate") and hasattr(pose, "orient"):
@@ -170,6 +211,9 @@ class SensorRig:
             rot_quat = orient
         else:
             rot_quat = [1, 0, 0, 0]  # Identity quaternion
+            
+        # Update sensor_cfgs with processed pose
+        self.sensor_cfgs["cameras"][camera_name]["pose"]["quat"] = rot_quat
 
         if pose_type == PoseType.LOCAL:
             # Local pose relative to parent prim (robot end effector or object)

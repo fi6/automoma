@@ -17,7 +17,7 @@ For planning-only code that doesn't need Isaac Sim, you can directly use:
     from automoma.planning import CuroboPlanner
 """
 
-from automoma.simulation.sim_app_manager import (
+from automoma.utils.sim_utils import (
     get_simulation_app,
     is_sim_app_initialized,
     close_simulation_app,

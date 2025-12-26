@@ -32,7 +32,7 @@ temp_parser = argparse.ArgumentParser(add_help=False)
 temp_parser.add_argument("--headless", action="store_true")
 temp_args, _ = temp_parser.parse_known_args()
 
-from automoma.simulation.sim_app_manager import get_simulation_app
+from automoma.utils.sim_utils import get_simulation_app
 sim_app = get_simulation_app(headless=temp_args.headless)
 # -------------------------------
 

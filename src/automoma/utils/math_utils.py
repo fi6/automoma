@@ -469,3 +469,62 @@ def create_colored_pointcloud(pc_xyz, rgb_image, ignore_nan=True):
         valid_colors = valid_colors / 255.0
     colored_pc = np.hstack((valid_points, valid_colors))
     return colored_pc
+
+
+def process_point_cloud(point_cloud, cfg=None):
+    """
+    Process point cloud: filter, downsample, etc.
+    
+    Args:
+        point_cloud: Point cloud with shape (N, 6) - positions (xyz) and colors (rgb)
+        cfg: Configuration dict with optional keys:
+            - random_drop_points: int, default 5000
+            - n_points: int, default 1024
+            - USE_FPS: bool, default True
+        
+    Returns:
+        Processed point cloud
+    """
+    if point_cloud is None or point_cloud.shape[0] == 0:
+        print("Empty point cloud provided. Returning None.")
+        return None
+    
+    # Default configuration
+    if cfg is None:
+        cfg = {}
+    random_drop_points = cfg.get('random_drop_points', 5000)
+    n_points = cfg.get('n_points', 1024)
+    USE_FPS = cfg.get('USE_FPS', True)
+    
+    # 1. Filter out invalid points
+    valid_mask = ~np.isnan(point_cloud[:, :3]).any(axis=1) & ~np.isinf(point_cloud[:, :3]).any(axis=1)
+    points = point_cloud[valid_mask]
+    
+    # 2. Randomly drop points if too many
+    if points.shape[0] > random_drop_points:
+        indices = np.random.choice(points.shape[0], random_drop_points, replace=False)
+        points = points[indices]
+    
+    # 3. Downsample to target number of points
+    if points.shape[0] > n_points:
+        if USE_FPS:
+            try:
+                import fpsample
+                # Use farthest point sampling
+                indices = fpsample.bucket_fps_kdline_sampling(points[:, :3], n_points, h=3)
+            except ImportError:
+                # Fallback to random sampling if fpsample not available
+                indices = np.random.choice(points.shape[0], n_points, replace=False)
+        else:
+            # Fallback to random sampling
+            indices = np.random.choice(points.shape[0], n_points, replace=False)
+        points = points[indices]
+    elif points.shape[0] < n_points:
+        # 4. Pad with duplicated points if not enough
+        n_pad = n_points - points.shape[0]
+        if n_pad > 0:
+            pad_indices = np.random.choice(points.shape[0], n_pad)
+            padding = points[pad_indices]
+            points = np.concatenate([points, padding], axis=0)
+    
+    return points

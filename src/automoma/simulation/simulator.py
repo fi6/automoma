@@ -31,7 +31,7 @@ def _import_omni_modules():
         return
     
     # Check if SimulationApp is initialized
-    from automoma.simulation.sim_app_manager import require_simulation_app
+    from automoma.utils.sim_utils import require_simulation_app
     require_simulation_app()
     
     # Now safe to import omni modules
@@ -49,6 +49,7 @@ def _import_omni_modules():
     from omni.isaac.core.robots import Robot as _Robot
     from omni.isaac.sensor import Camera as _Camera
     from omni.kit.commands import execute as _execute
+    
     from pxr import UsdPhysics as _UsdPhysics, Gf as _Gf, UsdGeom as _UsdGeom
     import omni as _omni
     
@@ -86,7 +87,7 @@ class IsaacSimManager:
         _import_omni_modules()
         
         # Now import the simulation_app reference
-        from automoma.simulation.sim_app_manager import get_simulation_app
+        from automoma.utils.sim_utils import get_simulation_app
         
         self.cfg = cfg
         self.world = None
@@ -149,3 +150,18 @@ class IsaacSimManager:
                 self.world.step(render=render)
         for _ in range(step):
             self.world.step(render=render)
+
+
+    def get_prim_pose(self, prim_path: str) -> Optional[np.ndarray]:
+        """Get the world pose of a prim (object) in the scene."""
+        from omni.usd import get_world_transform_matrix
+        prim = self.world.stage.GetPrimAtPath(prim_path)
+        if not prim.IsValid():
+            print(f"prim {prim_path} not found")
+            return None
+        return np.array(get_world_transform_matrix(prim)).T
+   
+    def close(self):
+        """Close the Isaac Sim world."""
+        self.simulation_app.close()
+        logger.info("Isaac Sim application closed.")

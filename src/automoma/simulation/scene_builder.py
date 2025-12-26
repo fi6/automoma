@@ -43,7 +43,7 @@ def _import_omni_modules():
         return
     
     # Check if SimulationApp is initialized
-    from automoma.simulation.sim_app_manager import require_simulation_app
+    from automoma.utils.sim_utils import require_simulation_app
     require_simulation_app()
     
     # Now safe to import omni modules

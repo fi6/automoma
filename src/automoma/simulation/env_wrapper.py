@@ -64,7 +64,7 @@ class SimEnvWrapper:
             RuntimeError: If SimulationApp is not initialized
         """
         # Check that SimulationApp is initialized
-        from automoma.simulation.sim_app_manager import require_simulation_app
+        from automoma.utils.sim_utils import require_simulation_app
         require_simulation_app()
         
         self.cfg = cfg
@@ -202,7 +202,7 @@ class SimEnvWrapper:
             initial_state: Optional initial robot state
             
         Returns:
-            Initial observation
+            Initial observation (action will be None as there's no next state)
         """
         self.history_robot_state = []
         self.history_env_state = []
@@ -212,9 +212,9 @@ class SimEnvWrapper:
             self.set_state(initial_state)
         
         self.step()
-        return self.get_data()
+        return self.get_data(next_robot_state=None)
     
-    def step(self, action: Optional[torch.Tensor] = None) -> Dict[str, Any]:
+    def step(self, action: Optional[torch.Tensor] = None):
         """
         Step the simulation.
         
@@ -228,10 +228,11 @@ class SimEnvWrapper:
             self.set_state(action)
         
         # Step simulation
-        self.sim.world.step(render=True)
-        self.current_step += 1
+        for _ in range(5):
+            self.sim.step(step=1,render=True)
+            self.sensors.update()
         
-        return self.get_data()
+        self.current_step += 1
     
     def set_state(self, robot_state: torch.Tensor = None, env_state = None):
         """
@@ -303,64 +304,69 @@ class SimEnvWrapper:
         return 0.0
     
     def _get_end_effector_pose(self) -> np.ndarray:
-        # Get end effector pose
-        if not self.history_robot_state:
-            joint_data = self.robot.get_joint_positions()
-        else:
-            joint_data = self.history_robot_state[-1]
+        """Get end effector pose using forward kinematics."""
+        # Get current joint positions
+        joint_data = self.robot.get_joint_positions()
         
         js = JointState.from_position(self.planner.tensor_args.to_device(joint_data))
         fk_result = self.planner.motion_gen.ik_solver.fk(js.position)
         eef_pose_7d = np.array(fk_result.ee_pose.to_list())
         return eef_pose_7d
 
-    def _get_action_data(self, type: Literal["absolute", "relative"] = "relative"):
+    def _compute_action(self, current_state, next_state):
         """
-        Encode action from the state.
+        Compute action as next_state - current_state.
+        For mobile base (first N DOFs), use delta.
+        For arm joints, use absolute next position.
+        
+        Args:
+            current_state: Current robot state
+            next_state: Next robot state
+            
+        Returns:
+            Action array
         """
-        if not self.history_robot_state:
-            return None
-            
-        joint_data = self.history_robot_state[-1]
-        if isinstance(joint_data, torch.Tensor):
-            joint_data = joint_data.detach().cpu().numpy()
-
-        if type == "absolute":
-            return joint_data
+        # Convert to numpy if needed
+        if isinstance(current_state, torch.Tensor):
+            current_state = current_state.detach().cpu().numpy()
+        if isinstance(next_state, torch.Tensor):
+            next_state = next_state.detach().cpu().numpy()
         
-        if len(self.history_robot_state) < 2:
-            # If only one state, relative action is zero for base
-            action = joint_data.copy()
-            base_dof = self.cfg.robot_cfg.get("mobile_base_dof", 3)
-            if len(action) >= base_dof:
-                action[:base_dof] = 0.0
-            return action
+        # Copy next state as base action
+        action = next_state.copy()
         
-        prev_joint_data = self.history_robot_state[-2]
-        if isinstance(prev_joint_data, torch.Tensor):
-            prev_joint_data = prev_joint_data.detach().cpu().numpy()
-            
-        action = joint_data.copy()        
-        # Assuming first 3 are mobile base if they exist
+        # For mobile base DOFs, compute delta
         base_dof = self.cfg.robot_cfg.get("mobile_base_dof", 3)
-        if len(joint_data) >= base_dof:
-            action[:base_dof] = joint_data[:base_dof] - prev_joint_data[:base_dof]
+        if len(current_state) >= base_dof and len(next_state) >= base_dof:
+            action[:base_dof] = next_state[:base_dof] - current_state[:base_dof]
         
         return action
 
-    def get_data(self):
+    def get_data(self, next_robot_state=None):
+        """
+        Get observation data.
+        
+        Args:
+            next_robot_state: Optional next robot state for computing action.
+                            If provided, action = next_state - current_state.
+                            If None, action is None (last frame has no valid action).
+        
+        Returns:
+            Dictionary with observation data
+        """
         # Collect observations
         obs_data = self.sensors.get_obs()
         
         # Get current robot state for joint observations
         joint_data = self.robot.get_joint_positions()
-        self.history_robot_state.append(joint_data)
         
         # Get end effector pose
         eef_pose_data = self._get_end_effector_pose()
         
-        # Get action data
-        action_data = self._get_action_data(type="relative")
+        # Compute action: state[t+1] - state[t]
+        action_data = None
+        if next_robot_state is not None:
+            action_data = self._compute_action(joint_data, next_robot_state)
         
         # Get environment state
         env_state = self.get_env_state()

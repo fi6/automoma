@@ -17,11 +17,11 @@ plan_cfg:
   output_dir: "data/single_object_open_test"
   num_grasps: 20
   cluster:
-    ap_fallback_clusters: 15
-    ap_clusters_upperbound: 20
+    ap_fallback_clusters: 30
+    ap_clusters_upperbound: 80
     ap_cluster_lowerbound: 10
   plan_ik:
-    limit: [10, 10]
+    limit: [100, 100]
   plan_traj:
     stage_type: MOVE_ARTICULATED
     batch_size: 10
@@ -49,7 +49,7 @@ object_cfg:
     asset_id: "7221"
     scale: 0.3563
     start_angles: [0]
-    goal_angles: [1.57, 0.9]
+    goal_angles: [1.333, 1.23, 1.074, 0.997]
 
 robot_cfg:
   robot_type: "summit_franka"

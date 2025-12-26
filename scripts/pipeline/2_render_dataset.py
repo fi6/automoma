@@ -7,13 +7,28 @@ This script runs the recording pipeline:
 2. Initialize SimulationApp (required for Isaac Sim)
 3. Iterate through each scene-object combination
 4. For each combination: load scene, object, robot
-5. Load planned trajectories and replay in simulation
-6. Record observations and save in LeRobot format
+5. Load ALL planned trajectories (across all grasps)
+6. Randomly sample max_episodes trajectories (if specified) using seed
+7. Replay sampled trajectories in simulation and record observations
+8. Save in LeRobot format
 
 Usage:
+    # Use max_episodes from config (record.yaml)
     python 2_render_dataset.py --exp single_object_open_test
+    
+    # Override max_episodes via command line
+    python 2_render_dataset.py --exp single_object_open_test --max-episodes 10
+    
+    # Run in headless mode
     python 2_render_dataset.py --exp single_object_open_test --headless
+    
+    # Process specific scene-object combination
     python 2_render_dataset.py --exp single_object_open_test --scene scene_0_seed_0 --object 7221
+
+Note:
+    - max_episodes applies per scene-object combination
+    - Random sampling uses seed from record_cfg.seed for reproducibility
+    - All trajectories across grasps are loaded before sampling
 """
 
 import os
@@ -34,7 +49,7 @@ temp_parser = argparse.ArgumentParser(add_help=False)
 temp_parser.add_argument("--headless", action="store_true")
 temp_args, _ = temp_parser.parse_known_args()
 
-from automoma.simulation.sim_app_manager import get_simulation_app
+from automoma.utils.sim_utils import get_simulation_app
 sim_app = get_simulation_app(headless=temp_args.headless)
 # -------------------------------
 
@@ -57,11 +72,29 @@ def run_recording(cfg: Config, headless: bool = False, max_episodes: int = None,
     Args:
         cfg: Configuration object
         headless: Whether to run in headless mode
-        max_episodes: Maximum episodes to record
+        max_episodes: Maximum episodes to record per scene-object combination
         dry_run: If True, skip environment setup
         scene_filter: Optional scene name to filter
         object_filter: Optional object ID to filter
     """
+    import torch
+    import random
+    import numpy as np
+    # Get max_episodes from config or argument
+    if max_episodes is None:
+        if hasattr(cfg, 'record_cfg') and hasattr(cfg.record_cfg, 'max_episodes'):
+            max_episodes = cfg.record_cfg.max_episodes
+        else:
+            max_episodes = None  # No limit
+    
+    # Get seed from config
+    seed = None
+    if hasattr(cfg, 'record_cfg') and hasattr(cfg.record_cfg, 'seed'):
+        seed = cfg.record_cfg.seed
+    
+    logger.info(f"Max episodes per scene-object: {max_episodes}")
+    logger.info(f"Random seed: {seed}")
+    
     # Get scenes and objects to process
     info_cfg = cfg.info_cfg
     scenes = info_cfg.scene if info_cfg.scene else []
@@ -170,14 +203,69 @@ def run_recording(cfg: Config, headless: bool = False, max_episodes: int = None,
                 dataset_wrapper.close()
                 continue
             
-            # Count available trajectory files
+            # Load all trajectory files for this scene-object combination (across all grasps)
             traj_files = list(traj_path.glob("**/traj_data.pt"))
-            logger.info(f"Found {len(traj_files)} trajectory files")
+            logger.info(f"Found {len(traj_files)} trajectory files (across all grasps)")
+            
+            # Load and collect all successful trajectories
+            all_successful_trajs = []
+            for traj_file in traj_files:
+                try:
+                    traj_data = torch.load(traj_file, weights_only=False)
+                    trajectories = traj_data["trajectories"]
+                    success = traj_data["success"]
+                    
+                    # Ensure they are torch tensors
+                    if not isinstance(trajectories, torch.Tensor):
+                        trajectories = torch.tensor(trajectories)
+                    if not isinstance(success, torch.Tensor):
+                        success = torch.tensor(success)
+                    
+                    # Ensure trajectories is 3D (N, T, D)
+                    if trajectories.ndim == 2:
+                        trajectories = trajectories.unsqueeze(0)
+                    if success.ndim == 0:
+                        success = success.unsqueeze(0)
+                    
+                    # Filter successful trajectories
+                    mask = success.to(torch.bool)
+                    successful_trajs = trajectories[mask]
+                    
+                    all_successful_trajs.append(successful_trajs)
+                    logger.info(f"  {traj_file.parent.name}: {len(successful_trajs)}/{len(trajectories)} successful")
+                    
+                except Exception as e:
+                    logger.error(f"Error loading {traj_file}: {e}")
+            
+            if not all_successful_trajs:
+                logger.warning(f"No successful trajectories found for {scene_name}/{object_id}")
+                dataset_wrapper.close()
+                continue
+            
+            # Concatenate all successful trajectories
+            all_successful_trajs = torch.cat(all_successful_trajs, dim=0)
+            logger.info(f"Total successful trajectories: {len(all_successful_trajs)}")
+            
+            # Randomly sample trajectories if max_episodes is set
+            if max_episodes is not None and len(all_successful_trajs) > max_episodes:
+                # Set seed for reproducibility
+                if seed is not None:
+                    torch.manual_seed(seed)
+                    random.seed(seed)
+                    np.random.seed(seed)
+                
+                # Random sample without replacement
+                indices = torch.randperm(len(all_successful_trajs))[:max_episodes]
+                sampled_trajs = all_successful_trajs[indices]
+                logger.info(f"Randomly sampled {max_episodes} trajectories (seed={seed})")
+            else:
+                sampled_trajs = all_successful_trajs
+                logger.info(f"Using all {len(sampled_trajs)} trajectories")
             
             # Run recording pipeline for this scene-object combination
             if not dry_run and task.env is not None:
                 logger.info("Starting recording pipeline...")
-                episodes = task.run_recording_pipeline(traj_dir, dataset_wrapper)
+                episodes = task.run_recording_pipeline_with_trajs(sampled_trajs, dataset_wrapper)
                 logger.info(f"Recorded {episodes} episodes for {scene_name}/{object_id}")
                 total_episodes_recorded += episodes
             else:

@@ -71,7 +71,21 @@ class LeRobotDatasetWrapper(BaseDatasetWrapper):
                 "dtype": "float32",
                 "shape": (1, self.cfg.camera.height, self.cfg.camera.width),
                 "names": ["channels", "height", "width"],
-            }   
+            }
+        
+        # Calculate total pointcloud size from all cameras that have pointcloud config
+        total_pc_points = 0
+        for cam in self.cfg.camera.names:
+            cam_cfg = self.cfg.camera.cameras.get(cam, {})
+            if "pointcloud" in cam_cfg:
+                total_pc_points += cam_cfg.pointcloud.get("num_points", 4096)
+        
+        if total_pc_points > 0:
+            features[f"observation.pointcloud"] = {
+                "dtype": "float32",
+                "shape": (total_pc_points, 6),
+                "names": ["points", "xyzrgb"],
+            }
         self.features = features
 
     def create(self):
@@ -120,6 +134,26 @@ class LeRobotDatasetWrapper(BaseDatasetWrapper):
             if depth.ndim == 2:
                 depth = depth[np.newaxis, ...]
             frame[f"observation.depth.{cam_name}"] = np.array(depth, dtype=np.float32)
+        
+        # Add pointcloud - combine all camera pointclouds
+        if "pointcloud" in data["obs_data"] and data["obs_data"]["pointcloud"]:
+            all_pointclouds = []
+            for cam_name, pc in data["obs_data"]["pointcloud"].items():
+                if pc is not None and len(pc) > 0:
+                    all_pointclouds.append(pc)
+            
+            if all_pointclouds:
+                combined_pc = np.concatenate(all_pointclouds, axis=0)
+                frame["observation.pointcloud"] = np.array(combined_pc, dtype=np.float32)
+            else:
+                # If no pointclouds available but feature is defined, create zeros
+                if "observation.pointcloud" in self.features:
+                    total_points = self.features["observation.pointcloud"]["shape"][0]
+                    frame["observation.pointcloud"] = np.zeros((total_points, 6), dtype=np.float32)
+        elif "observation.pointcloud" in self.features:
+            # If pointcloud feature exists but no data, create zeros
+            total_points = self.features["observation.pointcloud"]["shape"][0]
+            frame["observation.pointcloud"] = np.zeros((total_points, 6), dtype=np.float32)
         
         frame["task"] = self.task 
         
