@@ -163,6 +163,9 @@ env_cfg:
         pose:
           translate: [-4.3, 4.7, 6.2]
           orient: [-34.0, -26.0, -140.0]
+        mirror_pose:
+          translate: [-4.3, -4.7, 6.2]
+          orient: [34.0, -26.0, -20.0]
         pose_type: local
         depth: true
   

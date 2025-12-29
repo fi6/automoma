@@ -61,6 +61,12 @@ class SensorRig:
         self.sensor_cfgs = sensor_cfgs
                 
         camera_configs = sensor_cfgs.get("cameras", {})
+        
+        # Compute scene bounds if available (for bounds checking)
+        scene_bounds = self.compute_bounds("/World/scene")
+            
+        print("scene_bounds:", self.compute_bounds("/World/scene"))
+        print("world_bounds:", self.compute_bounds("/World"))
 
         for camera_name, config in camera_configs.items():
             # Create camera prim path based on cuakr structure
@@ -83,8 +89,15 @@ class SensorRig:
                 camera.set_focal_length(config["focal_length"])
                 print(f"Camera {camera_name} focal length set to {config['focal_length']}")
             
+            # Check if camera pose is within bounds, if not use mirror_pose
+            pose_to_use = config.get("pose", [])
+            if scene_bounds is not None and self._is_pose_out_of_bounds(pose_to_use, scene_bounds):
+                if "mirror_pose" in config:
+                    logger.info(f"Camera {camera_name} pose is out of bounds, using mirror_pose")
+                    pose_to_use = config.get("mirror_pose", pose_to_use)
+            
             # Set camera pose based on type
-            self._set_camera_pose(camera, camera_name, config.get("pose", []), PoseType[config.get("pose_type").upper()])
+            self._set_camera_pose(camera, camera_name, pose_to_use, PoseType[config.get("pose_type").upper()])
             
             self.cameras[camera_name] = camera
                 
@@ -157,6 +170,47 @@ class SensorRig:
                 
         return observations
     
+    def compute_bounds(self, prim_path: str) -> np.ndarray:
+        """
+        Compute scene bounding box for camera positioning.
+        Returns bounding box as [min_x, min_y, min_z, max_x, max_y, max_z]
+        """
+        from omni.usd import get_context
+        min_point_gf, max_point_gf = get_context().compute_path_world_bounding_box(prim_path)
+        min_arr = np.array(min_point_gf)
+        max_arr = np.array(max_point_gf)
+        
+        bounding_box = np.concatenate((min_arr, max_arr))
+        
+        return bounding_box
+    
+    def _is_pose_out_of_bounds(self, pose: Any, bounds: np.ndarray) -> bool:
+        """
+        Check if pose's x and y coordinates are both out of scene bounds.
+        Z coordinate is ignored.
+        bounds: [min_x, min_y, min_z, max_x, max_y, max_z]
+        """
+        # Extract translate from pose
+        if hasattr(pose, "translate"):
+            translate = pose.translate
+        elif isinstance(pose, dict) and "translate" in pose:
+            translate = pose["translate"]
+        elif isinstance(pose, (list, tuple)) and len(pose) >= 3:
+            translate = pose[:3]
+        else:
+            return False
+        
+        translate = np.array(translate)
+        
+        # Extract bounds
+        min_x, min_y, min_z, max_x, max_y, max_z = bounds
+        
+        # Check if both x and y are out of bounds
+        x_out = translate[0] < min_x or translate[0] > max_x
+        y_out = translate[1] < min_y or translate[1] > max_y
+        
+        return x_out and y_out
+
     def _process_pointcloud(self, camera_name: str, pointcloud: Optional[Any], image: Optional[Any]) -> Optional[Any]:
         """Process point cloud data if needed."""
         if pointcloud is None:

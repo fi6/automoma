@@ -768,6 +768,8 @@ class OpenTask(BaseTask):
             obs_data = self.env.get_data(next_robot_state=next_robot_state)
             obs_data["task"] = self.name
             dataset_wrapper.add(obs_data)
+            
+        self.env.sim.step(-1)
         
         dataset_wrapper.save()
         return True
