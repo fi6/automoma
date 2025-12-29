@@ -260,21 +260,43 @@ class LeRobotModelClient(AsyncModelClient):
         
         try:
             # Import LeRobot components
-            from lerobot.common.policies.factory import make_policy
+            try:
+                from lerobot.policies.factory import make_policy
+            except ImportError:
+                from lerobot.common.policies.factory import make_policy
+            
             from omegaconf import OmegaConf
             
-            # Load checkpoint
-            checkpoint = torch.load(self.checkpoint_path, map_location=self.device)
-            
-            # Create policy from config
-            if "config" in checkpoint:
-                config = OmegaConf.create(checkpoint["config"])
-                self.policy = make_policy(config)
-                self.policy.load_state_dict(checkpoint["state_dict"])
+            # Check if checkpoint is a directory (pretrained model format)
+            if os.path.isdir(self.checkpoint_path):
+                print(f"Loading pretrained model from directory: {self.checkpoint_path}")
+                if self.policy_type == "act":
+                    try:
+                        from lerobot.policies.act.modeling_act import ACTPolicy
+                    except ImportError:
+                        from lerobot.common.policies.act.modeling_act import ACTPolicy
+                    self.policy = ACTPolicy.from_pretrained(self.checkpoint_path)
+                elif self.policy_type == "diffusion":
+                    try:
+                        from lerobot.policies.diffusion.modeling_diffusion import DiffusionPolicy
+                    except ImportError:
+                        from lerobot.common.policies.diffusion.modeling_diffusion import DiffusionPolicy
+                    self.policy = DiffusionPolicy.from_pretrained(self.checkpoint_path)
+                else:
+                    raise ValueError(f"Unsupported policy type for pretrained loading: {self.policy_type}")
             else:
-                # Try to load as raw state dict
-                print("Loading checkpoint as raw state dict")
-                self.policy = checkpoint
+                # Load checkpoint file (.pt)
+                checkpoint = torch.load(self.checkpoint_path, map_location=self.device)
+                
+                # Create policy from config
+                if "config" in checkpoint:
+                    config = OmegaConf.create(checkpoint["config"])
+                    self.policy = make_policy(config)
+                    self.policy.load_state_dict(checkpoint["state_dict"])
+                else:
+                    # Try to load as raw state dict
+                    print("Loading checkpoint as raw state dict")
+                    self.policy = checkpoint
             
             if hasattr(self.policy, "eval"):
                 self.policy.eval()
@@ -285,8 +307,45 @@ class LeRobotModelClient(AsyncModelClient):
             
         except Exception as e:
             print(f"Failed to load model: {e}")
+            import traceback
+            traceback.print_exc()
             self.policy = None
     
+    def _flatten_observation(self, observation: Dict[str, Any]) -> Dict[str, Any]:
+        """Flatten observation dict to match LeRobot expected format."""
+        flat_obs = {}
+        
+        # Map joint_data to observation.state
+        if "joint_data" in observation:
+            flat_obs["observation.state"] = observation["joint_data"]
+            
+        # Map eef_pose_data to observation.eef
+        if "eef_pose_data" in observation:
+            flat_obs["observation.eef"] = observation["eef_pose_data"]
+            
+        # Map images
+        if "obs_data" in observation and "images" in observation["obs_data"]:
+            for name, img in observation["obs_data"]["images"].items():
+                # Transpose HWC -> CHW
+                if isinstance(img, np.ndarray) and img.ndim == 3 and img.shape[-1] == 3:
+                    img = img.transpose(2, 0, 1)
+                    # Normalize to [0, 1] if in [0, 255]
+                    if img.dtype == np.uint8:
+                        img = img.astype(np.float32) / 255.0
+                    elif img.max() > 1.0:
+                        img = img.astype(np.float32) / 255.0
+                flat_obs[f"observation.images.{name}"] = img
+                
+        # Map depth
+        if "obs_data" in observation and "depth" in observation["obs_data"]:
+            for name, depth in observation["obs_data"]["depth"].items():
+                # Add channel dim if needed
+                if isinstance(depth, np.ndarray) and depth.ndim == 2:
+                    depth = depth[np.newaxis, ...]
+                flat_obs[f"observation.depth.{name}"] = depth
+                
+        return flat_obs
+
     def _process_request(self, request: InferenceRequest) -> InferenceResponse:
         """Process inference request using LeRobot policy."""
         start_time = time.time()
@@ -302,6 +361,10 @@ class LeRobotModelClient(AsyncModelClient):
         
         try:
             observation = request.observation
+            
+            # Flatten observation if it comes from SimEnvWrapper (has obs_data)
+            if "obs_data" in observation:
+                observation = self._flatten_observation(observation)
             
             # Convert observation to tensor format expected by LeRobot
             obs_tensor = self._prepare_observation(observation)
@@ -320,6 +383,10 @@ class LeRobotModelClient(AsyncModelClient):
                 action = action.cpu().numpy()
             if action.ndim > 1:
                 action = action.squeeze()
+            
+            # Log action stats occasionally
+            if np.random.random() < 0.05:
+                print(f"Action stats: mean={action.mean():.4f}, std={action.std():.4f}, min={action.min():.4f}, max={action.max():.4f}")
             
             inference_time = time.time() - start_time
             
@@ -360,9 +427,9 @@ class LeRobotModelClient(AsyncModelClient):
             else:
                 continue
             
-            # Add batch dimension if needed
-            if tensor.dim() == 1:
-                tensor = tensor.unsqueeze(0)
+            # Add batch dimension
+            # We assume input is a single observation, so we always add batch dim 0
+            tensor = tensor.unsqueeze(0)
             
             obs_tensor[key] = tensor
         

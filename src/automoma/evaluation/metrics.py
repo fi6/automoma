@@ -190,6 +190,8 @@ def compute_joint_error(
     Returns:
         Tuple of (mean, std) joint errors
     """
+    pred_joints = np.array(pred_joints)
+    gt_joints = np.array(gt_joints)
     errors = np.abs(pred_joints - gt_joints)
     mean_error = float(np.mean(errors))
     std_error = float(np.std(errors))

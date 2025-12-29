@@ -4,7 +4,7 @@ data/
 tests/
 z-reference/
 .vscode/
-
+outputs/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

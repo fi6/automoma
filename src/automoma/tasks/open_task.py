@@ -537,6 +537,55 @@ class OpenTask(BaseTask):
         For open task, the robot should start already grasping the handle
         at the start angle position.
         """
+        # Check if specific initial state path is provided in config
+        eval_cfg = self.cfg.eval_cfg if self.cfg.eval_cfg else self.cfg.evaluation
+        
+        initial_state_path = None
+        if eval_cfg:
+            if hasattr(eval_cfg, 'initial_state_path'):
+                initial_state_path = eval_cfg.initial_state_path
+            elif isinstance(eval_cfg, dict) and 'initial_state_path' in eval_cfg:
+                initial_state_path = eval_cfg['initial_state_path']
+        
+        if initial_state_path:
+            ik_path = Path(self.project_root) / initial_state_path
+            logger.info(f"Loading initial state from specific path: {ik_path}")
+            
+            if not ik_path.exists():
+                logger.warning(f"Initial state file not found: {ik_path}")
+            else:
+                try:
+                    ik_data = torch.load(ik_path, weights_only=True)
+                    # Handle both dict (IKResult) and direct tensor
+                    if isinstance(ik_data, dict) and "iks" in ik_data:
+                        iks = ik_data["iks"]
+                    elif hasattr(ik_data, "iks"):
+                        iks = ik_data.iks
+                    else:
+                        iks = ik_data
+                        
+                    # Return all IKs found in the file as potential initial states
+                    if len(iks) > 0:
+                        logger.info(f"Loaded {len(iks)} initial states from {ik_path}")
+                        
+                        processed_states = []
+                        for ik in iks:
+                            # Split into robot state and env state
+                            # Assuming last element is env state (angle)
+                            robot_state = ik[:-1]
+                            env_state = ik[-1:]
+                            
+                            # Adjust robot state
+                            robot_state = adjust_pose_for_robot(robot_state, self.cfg.robot_cfg.robot_type)
+                            
+                            processed_states.append((robot_state, env_state))
+                            
+                        return processed_states
+                    else:
+                        logger.warning("No IKs found in file")
+                except Exception as e:
+                    logger.error(f"Error loading initial state file: {e}")
+
         initial_states = super().get_test_initial_states(test_data_dir)
         
         if not initial_states:
@@ -699,38 +748,7 @@ class OpenTask(BaseTask):
     
     # ==================== Evaluation Pipeline ====================
     
-    def get_test_initial_states(self, test_data_dir: str) -> List[torch.Tensor]:
-        """
-        Load test initial states from trajectory data.
-        
-        For evaluation, we need to initialize the robot to specific states
-        (e.g., already grasping handle for open task).
-        
-        Args:
-            test_data_dir: Directory containing test trajectory data
-            
-        Returns:
-            List of initial state tensors
-        """
-        initial_states = []
-        test_path = Path(test_data_dir)
-        
-        # Load start IKs from trajectory data
-        ik_files = list(test_path.glob("**/start_iks.pt"))
-        
-        for ik_file in ik_files:
-            try:
-                ik_data = torch.load(ik_file, weights_only=True)
-                iks = ik_data["iks"] if isinstance(ik_data, dict) else ik_data.iks
-                
-                # Take first IK as initial state
-                if len(iks) > 0:
-                    initial_states.append(iks[0])
-                    
-            except Exception as e:
-                logger.warning(f"Error loading {ik_file}: {e}")
-        
-        return initial_states
+
     
     def run_evaluation_pipeline(
         self,

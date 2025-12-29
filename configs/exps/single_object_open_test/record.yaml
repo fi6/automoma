@@ -74,13 +74,19 @@ camera_cfg:
     use_fps: true
   cameras:
     ego_topdown:
-      prim_path: "/World/summit_panda/panda_hand/ego_topdown"
+      prim_path: "/World/summit_panda/base_y/ego_topdown"
+      # prim_path: "/World/summit_panda/panda_hand/ego_topdown"
       resolution: [320, 240]
       frequency: 30
       pose:
         translate: [0, 0, 10]
         orient: [0, 0, -90]
       pose_type: local
+      depth: true
+      pointcloud:
+        num_points: 4096
+        random_drop_points: 8192
+        use_fps: true
     ego_wrist:
       prim_path: "/World/summit_panda/panda_hand/ego_wrist"
       resolution: [320, 240]
@@ -90,6 +96,11 @@ camera_cfg:
         translate: [-0.6, 0, -0.9]
         orient: [180, -28, 90]
       pose_type: local
+      depth: true
+      # pointcloud:
+      #   num_points: 4096
+      #   random_drop_points: 8192
+      #   use_fps: true
     fix_local:
       prim_path: "/World/Object/fix_local"
       resolution: [320, 240]
@@ -98,6 +109,11 @@ camera_cfg:
         translate: [-4.3, 4.7, 6.2]
         orient: [-34.0, -26.0, -140.0]
       pose_type: local
+      depth: true
+      # pointcloud:
+      #   num_points: 4096
+      #   random_drop_points: 8192
+      #   use_fps: true
 
 # =============================================================================
 # Environment Configuration (for Isaac Sim)

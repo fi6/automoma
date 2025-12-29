@@ -59,26 +59,31 @@ class LeRobotDatasetWrapper(BaseDatasetWrapper):
                 "names": [self.cfg.state_names],
             },
         }
+        
+        # Add image features for all cameras
         for cam in self.cfg.camera.names:
             features[f"observation.images.{cam}"] = {
                 "dtype": "video" if self.cfg.use_videos else "image",
                 "shape": (3, self.cfg.camera.height, self.cfg.camera.width),
                 "names": ["channels", "height", "width"],
             }
-            
-        for cam in self.cfg.camera.names:
-            features[f"observation.depth.{cam}"] = {
-                "dtype": "float32",
-                "shape": (1, self.cfg.camera.height, self.cfg.camera.width),
-                "names": ["channels", "height", "width"],
-            }
         
-        # Calculate total pointcloud size from all cameras that have pointcloud config
+        # Add depth features only for cameras that have depth enabled
+        for cam in self.cfg.camera.names:
+            cam_cfg = self.cfg.camera.cameras.get(cam, {})
+            if cam_cfg.get("depth", False):
+                features[f"observation.depth.{cam}"] = {
+                    "dtype": "float32",
+                    "shape": (1, self.cfg.camera.height, self.cfg.camera.width),
+                    "names": ["channels", "height", "width"],
+                }
+        
+        # Add pointcloud features only for cameras that have pointcloud enabled
         total_pc_points = 0
         for cam in self.cfg.camera.names:
             cam_cfg = self.cfg.camera.cameras.get(cam, {})
-            if "pointcloud" in cam_cfg:
-                total_pc_points += cam_cfg.pointcloud.get("num_points", 4096)
+            if cam_cfg.get("pointcloud", False) and "pointcloud" in cam_cfg:
+                total_pc_points += cam_cfg.get("pointcloud", {}).get("num_points", 4096)
         
         if total_pc_points > 0:
             features[f"observation.pointcloud"] = {
@@ -86,6 +91,7 @@ class LeRobotDatasetWrapper(BaseDatasetWrapper):
                 "shape": (total_pc_points, 6),
                 "names": ["points", "xyzrgb"],
             }
+        
         self.features = features
 
     def create(self):
@@ -121,6 +127,7 @@ class LeRobotDatasetWrapper(BaseDatasetWrapper):
             "observation.eef": np.array(data["eef_pose_data"], dtype=np.float32),
             "action": np.array(data["action_data"], dtype=np.float32),
         }
+        
         # Add images
         for cam_name, img in data["obs_data"]["images"].items():
             # Transpose from (H, W, C) to (C, H, W)
@@ -128,28 +135,32 @@ class LeRobotDatasetWrapper(BaseDatasetWrapper):
                 img = img.transpose(2, 0, 1)
             frame[f"observation.images.{cam_name}"] = img
         
-        # Add depth
+        # Add depth only for cameras that have depth enabled
         for cam_name, depth in data["obs_data"]["depth"].items():
-            # Ensure depth has channel dimension (1, H, W)
-            if depth.ndim == 2:
-                depth = depth[np.newaxis, ...]
-            frame[f"observation.depth.{cam_name}"] = np.array(depth, dtype=np.float32)
+            # Check if this camera has depth enabled
+            cam_cfg = self.cfg.camera.cameras.get(cam_name, {})
+            if cam_cfg.get("depth", False):
+                # Ensure depth has channel dimension (1, H, W)
+                if depth.ndim == 2:
+                    depth = depth[np.newaxis, ...]
+                frame[f"observation.depth.{cam_name}"] = np.array(depth, dtype=np.float32)
         
-        # Add pointcloud - combine all camera pointclouds
+        # Add pointcloud - combine all camera pointclouds that have it enabled
         if "pointcloud" in data["obs_data"] and data["obs_data"]["pointcloud"]:
             all_pointclouds = []
             for cam_name, pc in data["obs_data"]["pointcloud"].items():
-                if pc is not None and len(pc) > 0:
+                # Check if this camera has pointcloud enabled
+                cam_cfg = self.cfg.camera.cameras.get(cam_name, {})
+                if cam_cfg.get("pointcloud", False) and pc is not None and len(pc) > 0:
                     all_pointclouds.append(pc)
             
             if all_pointclouds:
                 combined_pc = np.concatenate(all_pointclouds, axis=0)
                 frame["observation.pointcloud"] = np.array(combined_pc, dtype=np.float32)
-            else:
+            elif "observation.pointcloud" in self.features:
                 # If no pointclouds available but feature is defined, create zeros
-                if "observation.pointcloud" in self.features:
-                    total_points = self.features["observation.pointcloud"]["shape"][0]
-                    frame["observation.pointcloud"] = np.zeros((total_points, 6), dtype=np.float32)
+                total_points = self.features["observation.pointcloud"]["shape"][0]
+                frame["observation.pointcloud"] = np.zeros((total_points, 6), dtype=np.float32)
         elif "observation.pointcloud" in self.features:
             # If pointcloud feature exists but no data, create zeros
             total_points = self.features["observation.pointcloud"]["shape"][0]

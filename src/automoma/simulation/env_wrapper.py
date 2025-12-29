@@ -26,7 +26,7 @@ Usage:
     data = env.get_data()
 """
 
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union, Tuple
 import logging
 
 # Safe imports (don't require Isaac Sim)
@@ -212,12 +212,13 @@ class SimEnvWrapper:
             return cfg
         return {}
         
-    def reset(self, initial_state: Optional[torch.Tensor] = None) -> Dict[str, Any]:
+    def reset(self, initial_state: Optional[Union[torch.Tensor, Tuple]] = None, env_state=None) -> Dict[str, Any]:
         """
         Reset the environment.
         
         Args:
-            initial_state: Optional initial robot state
+            initial_state: Optional initial robot state (or tuple of robot_state, env_state)
+            env_state: Optional environment state (if not provided in initial_state tuple)
             
         Returns:
             Initial observation (action will be None as there's no next state)
@@ -227,7 +228,10 @@ class SimEnvWrapper:
         self.current_step = 0
         
         if initial_state is not None:
-            self.set_state(initial_state)
+            if isinstance(initial_state, tuple):
+                self.set_state(*initial_state)
+            else:
+                self.set_state(initial_state, env_state)
         
         self.step()
         return self.get_data(next_robot_state=None)
@@ -237,13 +241,30 @@ class SimEnvWrapper:
         Step the simulation.
         
         Args:
-            action: Optional action to apply before stepping
+            action: Optional action to apply before stepping.
+                   Assumed to be [delta_base, absolute_arm] format if base_dof > 0.
             
         Returns:
             Observation after step
         """
         if action is not None:
-            self.set_state(action)
+            # Handle action application (delta base + absolute arm)
+            current_state = self.get_robot_state()
+            action_np = to_numpy(action)
+            
+            base_dof = self.cfg.robot_cfg.get("mobile_base_dof", 3)
+            
+            if len(action_np) == len(current_state) and base_dof > 0:
+                # Construct new state
+                new_state = action_np.copy()
+                # Integrate base: new_base = current_base + delta_base
+                new_state[:base_dof] = current_state[:base_dof] + action_np[:base_dof]
+                # Arm is already absolute in action
+                
+                self.set_state(new_state)
+            else:
+                # Fallback: assume action is full state or no base dof
+                self.set_state(action)
         
         # Step simulation
         for _ in range(5):

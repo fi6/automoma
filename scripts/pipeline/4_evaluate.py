@@ -16,6 +16,7 @@ Usage:
 
 import os
 import sys
+print(f"PYTHON EXECUTABLE: {sys.executable}")
 import argparse
 import logging
 from pathlib import Path
@@ -176,7 +177,7 @@ def run_evaluation(cfg: Config, headless: bool = False, checkpoint_path: str = N
             response = model.infer_sync(obs)
             
             if not response.success:
-                logger.warning(f"  Inference failed at step {step}")
+                logger.warning(f"  Inference failed at step {step}: {response.error_message}")
                 break
             
             action = response.action
@@ -187,6 +188,12 @@ def run_evaluation(cfg: Config, headless: bool = False, checkpoint_path: str = N
             
             # Check task completion
             obs_after = task.env.get_data()
+            
+            # Debug: print object angle
+            env_state = obs_after.get("env_state", 0.0)
+            if step % 10 == 0:
+                logger.info(f"  Step {step}: Object Angle = {env_state:.4f}")
+            
             if task._check_task_complete(obs_after):
                 episode_success = True
                 logger.info(f"  Task completed at step {step + 1}")
@@ -252,10 +259,43 @@ def main():
         action="store_true",
         help="Run without simulation",
     )
+    parser.add_argument(
+        "--policy-type",
+        type=str,
+        default=None,
+        help="Policy type override (act or diffusion)",
+    )
+    parser.add_argument(
+        "--initial-state-path",
+        type=str,
+        default=None,
+        help="Path to initial state file (start_iks.pt)",
+    )
     args = parser.parse_args()
     
     # Load configuration
     cfg = load_config(args.exp, PROJECT_ROOT)
+    
+    # Override config with args
+    eval_cfg = cfg.eval_cfg if cfg.eval_cfg else cfg.evaluation
+    if args.policy_type:
+        if hasattr(eval_cfg, 'policy_type'):
+            eval_cfg.policy_type = args.policy_type
+        else:
+            # If using DictConfig or similar that allows adding keys
+            try:
+                eval_cfg['policy_type'] = args.policy_type
+            except:
+                setattr(eval_cfg, 'policy_type', args.policy_type)
+                
+    if args.initial_state_path:
+        if hasattr(eval_cfg, 'initial_state_path'):
+            eval_cfg.initial_state_path = args.initial_state_path
+        else:
+            try:
+                eval_cfg['initial_state_path'] = args.initial_state_path
+            except:
+                setattr(eval_cfg, 'initial_state_path', args.initial_state_path)
     
     # Run evaluation
     run_evaluation(cfg, args.headless, args.checkpoint, args.dry_run)

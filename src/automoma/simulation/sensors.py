@@ -89,6 +89,7 @@ class SensorRig:
             self.cameras[camera_name] = camera
                 
     def update(self):
+        return
         # Update sensor states in the simulation
         if self.cameras.get("ego_topdown") is not None:
             # Get robot end effector pose using proper prim pose detection
@@ -113,6 +114,9 @@ class SensorRig:
                 print(f"Failed to get robot pose from {robot_link_prim_path}, skipping ego_topdown camera update")
     
     def get_obs(self):
+        # Update sensor states
+        self.update()
+        
         # Retrieve sensor data from the simulation
         observations = {
             "images": {},
@@ -120,6 +124,8 @@ class SensorRig:
             "pointcloud": {}
         }
         for camera_name, camera in self.cameras.items():
+            camera_cfg = self.sensor_cfgs["cameras"][camera_name]
+            
             # Get RGB data (remove alpha channel) 
             rgba = camera.get_rgba()
             if rgba is not None:
@@ -131,18 +137,19 @@ class SensorRig:
                 res = camera.get_resolution()
                 observations["images"][camera_name] = np.zeros((res[1], res[0], 3), dtype=np.uint8)
 
-            # Get depth data
-            depth = camera.get_depth()
-            if depth is not None:
-                observations["depth"][camera_name] = depth
-            else:
-                logger.warning(f"Camera {camera_name} depth data is None")
-                # Fallback to zeros if data is not ready
-                res = camera.get_resolution()
-                observations["depth"][camera_name] = np.zeros((res[1], res[0]), dtype=np.float32)
+            # Get depth data only if depth is enabled
+            if camera_cfg.get("depth", False):
+                depth = camera.get_depth()
+                if depth is not None:
+                    observations["depth"][camera_name] = depth
+                else:
+                    logger.warning(f"Camera {camera_name} depth data is None")
+                    # Fallback to zeros if data is not ready
+                    res = camera.get_resolution()
+                    observations["depth"][camera_name] = np.zeros((res[1], res[0]), dtype=np.float32)
 
-            # Get point cloud data
-            if self.sensor_cfgs["cameras"][camera_name].get("pointcloud") is not None:
+            # Get point cloud data only if pointcloud is enabled
+            if camera_cfg.get("pointcloud", False):
                 pointcloud = camera.get_pointcloud()    
                 pointcloud = self._process_pointcloud(camera_name, pointcloud, observations["images"].get(camera_name))
                 if pointcloud is not None:
