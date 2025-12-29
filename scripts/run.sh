@@ -1,99 +1,104 @@
-# #!/bin/bash
-
-# # Define the list of object IDs from your OBJECT_CONFIG_MAP
-# OBJECT_IDS=("7221" "11622" "103634" "46197" "101773")
-# # OBJECT_IDS=("46197")
-
-
-# # Set the timeout duration (6 minutes)
-# TIMEOUT_DURATION="5m"
-
-# echo "Starting pipeline for ${#OBJECT_IDS[@]} objects..."
-
-# for obj_id in "${OBJECT_IDS[@]}"; do
-#     echo "----------------------------------------------------"
-#     echo "Running object_id: $obj_id"
-    
-#     # Run the python script with the timeout command
-#     # --scene scene_3_seed_3 and --exp multi_object_open as requested
-#     timeout $TIMEOUT_DURATION python scripts/pipeline/1_generate_plans.py \
-#         --exp multi_object_open \
-#         --scene scene_3_seed_3 \
-#         --object "$obj_id"
-    
-#     # Capture the exit status of the timeout/python command
-#     exit_status=$?
-    
-#     if [ $exit_status -eq 124 ]; then
-#         echo "Status: TIMEOUT (Exceeded $TIMEOUT_DURATION)"
-#     elif [ $exit_status -eq 0 ]; then
-#         echo "Status: SUCCESS"
-#     else
-#         echo "Status: FAILED (Exit Code: $exit_status)"
-#     fi
-# done
-
-# echo "----------------------------------------------------"
-# echo "All tasks completed."
-
-
 #!/bin/bash
 
-# Define the list of object IDs from the OBJECT_CONFIG_MAP
-OBJECT_IDS=("7221" "11622" "103634" "46197" "10944" "101773")
+# --- CONFIGURATION ---
+# Set what to run: ("PLAN" "RECORD") or just ("PLAN") or just ("RECORD")
+RUNNING=("PLAN" "RECORD")
 
-# Set the timeout duration for the generation script
-TIMEOUT_DURATION="6m"
+OBJECTS=("7221" "11622" "103634" "46197" "101773")
 
-echo "Starting sequential pipeline for ${#OBJECT_IDS[@]} objects..."
+SCENES=(
+    "scene_0_seed_0" "scene_1_seed_1" "scene_3_seed_3" "scene_7_seed_7" "scene_8_seed_8" 
+    "scene_9_seed_9" "scene_10_seed_10" "scene_12_seed_12" "scene_13_seed_13" "scene_16_seed_16" 
+    "scene_17_seed_17" "scene_18_seed_18" "scene_20_seed_20" "scene_21_seed_21" "scene_23_seed_23" 
+    "scene_24_seed_24" "scene_25_seed_25" "scene_27_seed_27" "scene_28_seed_28" "scene_29_seed_29" 
+    "scene_30_seed_30" "scene_31_seed_31" "scene_32_seed_32" "scene_33_seed_33" "scene_34_seed_34" 
+    "scene_35_seed_35" "scene_36_seed_36" "scene_38_seed_38" "scene_39_seed_39" "scene_40_seed_40" 
+    "scene_41_seed_41" "scene_42_seed_42" "scene_43_seed_43" "scene_44_seed_44" "scene_45_seed_45" 
+    "scene_46_seed_46" "scene_47_seed_47" "scene_48_seed_48" "scene_52_seed_52" "scene_53_seed_53"
+)
 
-for obj_id in "${OBJECT_IDS[@]}"; do
-    echo "===================================================="
-    echo "PROCESSING OBJECT: $obj_id"
-    echo "===================================================="
+TIMEOUT_DURATION="100m"
+EXP_NAME="multi_object_open"
+
+# --- FUNCTIONS ---
+
+run_plan() {
+    local scene=$1
+    local obj=$2
+    echo "[PLAN] Processing Scene: $scene, Object: $obj"
+    timeout $TIMEOUT_DURATION python scripts/pipeline/1_generate_plans.py \
+        --exp "$EXP_NAME" \
+        --scene "$scene" \
+        --object "$obj"
     
-    # Task 1: Generate Plans (with 6-minute timeout)
-    # echo "[1/2] Generating plans for $obj_id..."
-    # timeout $TIMEOUT_DURATION python scripts/pipeline/1_generate_plans.py \
-    #     --exp multi_object_open \
-    #     --scene scene_3_seed_3 \
-    #     --object "$obj_id"
-    
-    # gen_status=$?
-    
-    # if [ $gen_status -eq 124 ]; then
-    #     echo ">>> Status: Generation TIMED OUT after $TIMEOUT_DURATION. Skipping render."
-    #     continue 
-    # elif [ $gen_status -ne 0 ]; then
-    #     echo ">>> Status: Generation FAILED (Exit Code: $gen_status). Skipping render."
-    #     continue
-    # fi
+    local status=$?
+    if [ $status -eq 124 ]; then echo ">>> [PLAN] TIMEOUT"; elif [ $status -ne 0 ]; then echo ">>> [PLAN] FAILED"; fi
+    return $status
+}
 
-    # Task 2: Render Dataset (Runs only if generation succeeded)
-    echo "[2/2] Rendering dataset for $obj_id..."
+run_record() {
+    local scene=$1
+    local obj=$2
+    echo "[RECORD] Rendering Scene: $scene, Object: $obj"
     python scripts/pipeline/2_render_dataset.py \
-        --exp multi_object_open \
-        --scene scene_3_seed_3 \
-        --object "$obj_id" \
+        --exp "$EXP_NAME" \
+        --scene "$scene" \
+        --object "$obj" \
         --headless \
         --max-episodes 10
     
-    render_status=$?
+    local status=$?
+    if [ $status -ne 0 ]; then echo ">>> [RECORD] FAILED"; fi
+    return $status
+}
+
+vis_lerobot_dataset() {
+    local scene=$1
+    local obj=$2
+    local root_path="data/${EXP_NAME}/lerobot/${EXP_NAME}_${obj}_${scene}"
     
-    if [ $render_status -eq 0 ]; then
-        echo ">>> Status: Object $obj_id completed successfully."
-    else
-        echo ">>> Status: Rendering FAILED for $obj_id (Exit Code: $render_status)."
-    fi
+    echo "[VISUALIZE] Opening: $root_path"
+    lerobot-dataset-viz \
+        --repo-id "$EXP_NAME" \
+        --root "$root_path" \
+        --episode-index 0 \
+        --video-backend pyav
+}
+
+# --- MAIN EXECUTION ---
+
+# Check if a specific mode is requested
+contains_element() {
+  local e match="$1"
+  shift
+  for e; do [[ "$e" == "$match" ]] && return 0; done
+  return 1
+}
+
+# Loop through all scenes and objects
+for scene in "${SCENES[@]}"; do
+    for obj in "${OBJECTS[@]}"; do
+        echo "===================================================="
+        echo "TARGET: $scene | OBJECT: $obj"
+        
+        # Run Planning if in RUNNING array
+        if contains_element "PLAN" "${RUNNING[@]}"; then
+            run_plan "$scene" "$obj"
+            plan_success=$?
+        else
+            plan_success=0 # Skip check if not running plan
+        fi
+
+        # Run Recording if in RUNNING array AND (Plan succeeded OR we didn't run Plan)
+        if contains_element "RECORD" "${RUNNING[@]}"; then
+            if [ $plan_success -eq 0 ]; then
+                run_record "$scene" "$obj"
+            else
+                echo ">>> Skipping RECORD because PLAN failed/timed out."
+            fi
+        fi
+    done
 done
 
 echo "===================================================="
-echo "Pipeline execution finished."
-
-
-
-lerobot-dataset-viz \
-    --repo-id multi_object_open \
-    --root data/multi_object_open/lerobot/multi_object_open_11622_scene_3_seed_3 \
-    --episode-index 0 \
-    --video-backend pyav
+echo "Pipeline finished."
