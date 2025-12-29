@@ -19,6 +19,7 @@ SCENES=(
 
 TIMEOUT_DURATION="100m"
 EXP_NAME="multi_object_open"
+MAX_EPISODES=1000
 
 # --- FUNCTIONS ---
 
@@ -45,7 +46,7 @@ run_record() {
         --scene "$scene" \
         --object "$obj" \
         --headless \
-        --max-episodes 10
+        --max-episodes "$MAX_EPISODES"
     
     local status=$?
     if [ $status -ne 0 ]; then echo ">>> [RECORD] FAILED"; fi
