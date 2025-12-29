@@ -599,7 +599,7 @@ class CuroboPlanner(MotionPlannerInterface):
                                        goal_states=js_goal.position.detach().clone().cpu(),
                                        trajectories=result.solution.position.detach().clone().cpu(),
                                        success=result.success.detach().clone().cpu())
-                print("b_results shape: ", b_results.trajectories.shape, b_results.success.shape)
+                # print("b_results shape: ", b_results.trajectories.shape, b_results.success.shape)
                 all_results.append(b_results)
                 
                 torch.cuda.synchronize()

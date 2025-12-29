@@ -1,55 +1,95 @@
-# Evaluation Configuration for Multi-Object Open Experiment
+# Evaluation Configuration for Single Object Open Test Experiment
 # Configuration for evaluating trained DP and ACT policies
 
 # =============================================================================
 # Experiment Info
 # =============================================================================
 info_cfg:
-  task: "multi_object_open"
+  task: "single_object_open_test"
   robot: "summit_franka"
-  description: "Evaluate DP and ACT policies on multi-object open task"
+  description: "Evaluate DP and ACT policies on single object open test"
 
 # =============================================================================
-# Unified Eval Configuration
+# Evaluation Configuration
 # =============================================================================
 eval_cfg:
-  checkpoint_path: "outputs/train/multi_object_open/model_final.pt"
-  policy_type: "diffusion"  # Options: "diffusion" (DP) or "act" (ACT)
-  num_episodes: 60
-  max_steps_per_episode: 500
+  num_episodes: 30
+  max_steps_per_episode: 40
   success_threshold: 0.05
   use_async_inference: true
   device: "cuda"
-  output_dir: "outputs/eval/multi_object_open"
-  test_data_dir: "data/multi_object_open/traj"
+  output_dir: "outputs/eval/single_object_open_test"
+  
+  # Initial state configuration
+  data_cfg:
+    initial_state: "FILE"
+    test_data_dir: "data/single_object_open_test/traj"
+    
+  # Dataset configuration (for evaluation metrics)
+  dataset_cfg:
+    repo_id: "single_object_open_test"
+    root: "data/single_object_open_test/lerobot/single_object_open_test"
+    
+  # Metrics configuration
+  metrics_cfg:
+    position_error: true
+    orientation_error: true
+    joint_error: true
+    trajectory_smoothness: true
+    inference_time: true
+    success_rate: true
+    per_scene_success_rate: true
+    generalization_gap: true
+    
+    # Success criteria
+    criteria:
+      position_threshold: 0.05   # meters
+      orientation_threshold: 0.1  # radians
+      angle_threshold: 0.1        # radians for articulation
+      completion_required: true
+    
+  # Per-scene episode distribution
+  episodes_per_scene:
+    scene_0_seed_0: 10
+    scene_1_seed_1: 10
+    scene_40_seed_40: 10
+  
+  # Output settings
+  output:
+    save_videos: true
+    save_trajectories: true
+    save_observations: false
+    video:
+      fps: 15
+      codec: "mp4v"
+      resolution: [640, 480]
 
 # =============================================================================
-# Model Configuration
+# Policy Configuration
 # =============================================================================
-model:
-  checkpoint_path: "outputs/train/multi_object_open/model_final.pt"
-  policy_type: "diffusion"
-  
-  # Model checkpoints for each policy type
-  checkpoints:
-    diffusion: "outputs/train/multi_object_open/dp/model_final.pt"
-    act: "outputs/train/multi_object_open/act/model_final.pt"
-  
-# =============================================================================
-# Evaluation Parameters
-# =============================================================================
-evaluation:
-  num_episodes: 60  # 20 episodes per object (3 objects)
-  max_steps_per_episode: 500
-  success_threshold: 0.05  # Position error threshold in meters
-  
-  # Success criteria
-  criteria:
-    position_threshold: 0.05   # meters
-    orientation_threshold: 0.1  # radians
-    angle_threshold: 0.1        # radians for articulation
-    completion_required: true
+policy_cfg:
+  # ACT Policy
+  act:
+    checkpoint_path: "outputs/train/act_single_object_open_test/checkpoint_10000.pt"
+    policy_type: "act"
+    device: "cuda"
     
+    # ACT inference parameters
+    chunk_size: 16
+    n_action_steps: 16
+    temporal_ensemble: true
+    
+  # Diffusion Policy
+  diffusion:
+    checkpoint_path: "outputs/train/dp_single_object_open_test/checkpoint_10000.pt"
+    policy_type: "diffusion"
+    device: "cuda"
+    
+    # Diffusion inference parameters
+    num_inference_steps: 10
+    n_action_steps: 8
+    n_obs_steps: 2
+
 # =============================================================================
 # Async Inference Configuration (for LeRobot)
 # =============================================================================
@@ -60,110 +100,90 @@ async_inference:
   timeout: 30.0
   max_queue_size: 100
   worker_threads: 1
-  
+
 # =============================================================================
-# Output Configuration
-# =============================================================================
-output:
-  output_dir: "outputs/eval/multi_object_open"
-  save_videos: true
-  save_trajectories: true
-  save_observations: false
-  
-  # Separate output for each model type
-  dp_output_dir: "outputs/eval/multi_object_open/dp"
-  act_output_dir: "outputs/eval/multi_object_open/act"
-  
-  # Video settings
-  video:
-    fps: 15
-    codec: "mp4v"
-    resolution: [640, 480]
-    
-# =============================================================================
-# Hardware Configuration
-# =============================================================================
-hardware:
-  device: "cuda"
-  
-# =============================================================================
-# Environment Configuration (for simulation evaluation)
+# Environment Configuration (same as record)
 # =============================================================================
 env_cfg:
-  sim:
+  # Simulation Configuration
+  sim_cfg:
     headless: true
     width: 640
     height: 480
+    lighting_mode: 2
+    physics_dt: 0.01666666666
+    rendering_dt: 0.01666666666
+    collision_free_prim_paths:
+      - "/World/summit_panda/panda_leftfinger/collisions"
+      - "/World/summit_panda/panda_rightfinger/collisions"
+      - "/World/summit_panda/grasp_frame/collisions"
+      - "/World/summit_panda/panda_hand/collisions"
+  
+  # Robot Configuration
   robot_cfg:
+    robot_type: "summit_franka"
     path: "assets/robot/summit_franka/summit_franka.yml"
     mobile_base_dof: 3
-
-# =============================================================================
-# Scene Configuration
-# =============================================================================
-scene_cfg:
-  scene_0_seed_0:
-    path: "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/export/export_scene.blend/export_scene.usdc"
-    pose: [0, 0, -0.13, 1, 0, 0, 0]
-    metadata_path: "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/info/metadata.json"
-  scene_1_seed_1:
-    path: "assets/scene/infinigen/kitchen_1130/scene_1_seed_1/export/export_scene.blend/export_scene.usdc"
-    pose: [0, 0, -0.13, 1, 0, 0, 0]
-    metadata_path: "assets/scene/infinigen/kitchen_1130/scene_1_seed_1/info/metadata.json"
-  scene_3_seed_3:
-    path: "assets/scene/infinigen/kitchen_1130/scene_3_seed_3/export/export_scene.blend/export_scene.usdc"
-    pose: [0, 0, -0.13, 1, 0, 0, 0]
-    metadata_path: "assets/scene/infinigen/kitchen_1130/scene_3_seed_3/info/metadata.json"
-    
-# =============================================================================
-# Object Configuration
-# =============================================================================
-object_cfg:
-  "7221":
-    path: "assets/object/Microwave/7221/7221_0_scaling.urdf"
-    asset_type: "Microwave"
-    asset_id: "7221"
-    scale: 0.3563
-    goal_angle: 1.57
-  "11622":
-    path: "assets/object/Dishwasher/11622/11622_0_scaling.urdf"
-    asset_type: "Dishwasher"
-    asset_id: "11622"
-    scale: 0.6446
-    goal_angle: 1.57
-  "101773":
-    path: "assets/object/Oven/101773/101773_0_scaling.urdf"
-    asset_type: "Oven"
-    asset_id: "101773"
-    scale: 0.4218
-    goal_angle: 1.57
-
-# =============================================================================
-# Metrics to compute
-# =============================================================================
-metrics:
-  position_error: true
-  orientation_error: true
-  joint_error: true
-  trajectory_smoothness: true
-  inference_time: true
-  success_rate: true
-  per_scene_success_rate: true
-  per_object_success_rate: true
-    scale: 0.7232
-    goal_angle: 1.57
-    
-# Metrics to compute
-metrics:
-  position_error: true
-  orientation_error: true
-  joint_error: true
-  trajectory_smoothness: true
-  inference_time: true
-  success_rate: true
   
-# Visualization settings
-visualization:
-  show_trajectory: true
-  show_goal: true
-  show_collision: false
+  # Object Configuration
+  object_cfg:
+    "7221":
+      path: "assets/object/Microwave/7221/7221_0_scaling.urdf"
+      asset_type: "Microwave"
+      asset_id: "7221"
+      scale: 0.3563
+      start_angles: [0]
+      goal_angles: [1.57, 0.9]
+      
+  # Scene Configuration
+  scene_cfg:
+    scene_0_seed_0:
+      path: "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/info/metadata.json"
+    scene_1_seed_1:
+      path: "assets/scene/infinigen/kitchen_1130/scene_1_seed_1/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_1_seed_1/info/metadata.json"
+    scene_40_seed_40:
+      path: "assets/scene/infinigen/kitchen_1130/scene_40_seed_40/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_40_seed_40/info/metadata.json"
+  
+  # Camera Configuration
+  camera_cfg:
+    names:
+      - ego_topdown
+      - ego_wrist
+      - fix_local
+    width: 320
+    height: 240
+    cameras:
+      ego_topdown:
+        prim_path: "/World/summit_panda/base_link_y/ego_topdown"
+        resolution: [320, 240]
+        frequency: 30
+        pose:
+          translate: [0, 0, 10]
+          orient: [0, 0, -90]
+        pose_type: local
+        depth: true
+      ego_wrist:
+        prim_path: "/World/summit_panda/panda_hand/ego_wrist"
+        resolution: [320, 240]
+        frequency: 30
+        focal_length: 1.5
+        pose:
+          translate: [-0.6, 0, -0.9]
+          orient: [180, -28, 90]
+        pose_type: local
+        depth: true
+      fix_local:
+        prim_path: "/World/Object/fix_local"
+        resolution: [320, 240]
+        frequency: 30
+        pose:
+          translate: [-4.3, 4.7, 6.2]
+          orient: [-34.0, -26.0, -140.0]
+        pose_type: local
+        depth: true

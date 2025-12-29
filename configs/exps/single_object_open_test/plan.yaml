@@ -9,7 +9,7 @@
 info_cfg:
   task: "single_object_open_test"
   robot: "summit_franka"
-  scene: ["scene_0_seed_0", "scene_1_seed_1"]
+  scene: [scene_0_seed_0, scene_1_seed_1, scene_3_seed_3, scene_7_seed_7, scene_8_seed_8, scene_9_seed_9, scene_10_seed_10, scene_12_seed_12, scene_13_seed_13, scene_16_seed_16, scene_17_seed_17, scene_18_seed_18, scene_20_seed_20, scene_21_seed_21, scene_23_seed_23, scene_24_seed_24, scene_25_seed_25, scene_27_seed_27, scene_28_seed_28, scene_29_seed_29, scene_30_seed_30, scene_31_seed_31, scene_32_seed_32, scene_33_seed_33, scene_34_seed_34, scene_35_seed_35, scene_36_seed_36, scene_38_seed_38, scene_39_seed_39, scene_40_seed_40, scene_41_seed_41, scene_42_seed_42, scene_43_seed_43, scene_44_seed_44, scene_45_seed_45, scene_46_seed_46, scene_47_seed_47, scene_48_seed_48, scene_52_seed_52, scene_53_seed_53]
   object: ["7221"]
   description: "Single object open test for pipeline validation"
 
@@ -23,13 +23,24 @@ plan_cfg:
   # Number of grasp poses to use
   num_grasps: 20
   
+  # Collision world parameters
+  voxel_dims: [5.0, 5.0, 5.0]
+  voxel_size: 0.02
+  expand_dims: [1.0, 0.2, 0.2]
+  collision_checker_type: "VOXEL"
+  
+  # Motion planning seeds
+  num_trajopt_seeds: 12
+  num_graph_seeds: 12
+  interpolation_dt: 0.05
+  
   # IK clustering parameters
   cluster:
     ap_fallback_clusters: 30
     ap_clusters_upperbound: 80
     ap_cluster_lowerbound: 10
   
-  # IK planning limits
+  # IK planning limits [start_limit, goal_limit]
   plan_ik:
     limit: [100, 100]
   
@@ -42,42 +53,206 @@ plan_cfg:
   filter:
     position_threshold: 0.01
     orientation_threshold: 0.05
+  
+  # Resume support - skip already completed planning tasks
+  resume: true
 
 # =============================================================================
-# Scene Configuration
+# Environment Configuration (No sim_cfg needed for planning)
 # =============================================================================
-scene_cfg:
-  scene_0_seed_0:
-    path: "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/export/export_scene.blend/export_scene.usdc"
-    pose: [0, 0, -0.13, 1, 0, 0, 0]
-    metadata_path: "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/info/metadata.json"
-  scene_1_seed_1:
-    path: "assets/scene/infinigen/kitchen_1130/scene_1_seed_1/export/export_scene.blend/export_scene.usdc"
-    pose: [0, 0, -0.13, 1, 0, 0, 0]
-    metadata_path: "assets/scene/infinigen/kitchen_1130/scene_1_seed_1/info/metadata.json"
+env_cfg:
+  # Robot Configuration
+  robot_cfg:
+    robot_type: "summit_franka"
+    path: "assets/robot/summit_franka/summit_franka.yml"
+    mobile_base_dof: 3
+    arm_dof: 7
+    gripper_dof: 2
+    total_dof: 12
+  
+  # AKR robot config template for articulated object planning (fixed base)
+  akr_robot_cfg:
+    robot_type: "summit_franka"
+    path: ""  # Populated dynamically per grasp
+    fixed_base: true
+  
+  # Object Configuration
+  object_cfg:
+    "7221":
+      path: assets/object/Microwave/7221/7221_0_scaling.urdf
+      pose: [0, 0, 0, 1, 0, 0, 0]
+      asset_type: "Microwave"
+      asset_id: "7221"
+      scale: 0.3563
+      start_angles: [0]
+      goal_angles: [1.333, 1.23, 1.074, 0.997]
+      
+      # Optional: Per-object plan_cfg override
+      # Uncomment and customize to override default plan_cfg for this object
+      plan_cfg:
+          plan_ik:
+            limit: [50, 50]
+  
+  # Scene Configuration
+  scene_cfg:
+    scene_0_seed_0:
+      path: "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_0_seed_0/info/metadata.json"
+    scene_1_seed_1:
+      path: "assets/scene/infinigen/kitchen_1130/scene_1_seed_1/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_1_seed_1/info/metadata.json"
+    scene_3_seed_3:
+      path: "assets/scene/infinigen/kitchen_1130/scene_3_seed_3/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_3_seed_3/info/metadata.json"
+    scene_7_seed_7:
+      path: "assets/scene/infinigen/kitchen_1130/scene_7_seed_7/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_7_seed_7/info/metadata.json"
+    scene_8_seed_8:
+      path: "assets/scene/infinigen/kitchen_1130/scene_8_seed_8/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_8_seed_8/info/metadata.json"
+    scene_9_seed_9:
+      path: "assets/scene/infinigen/kitchen_1130/scene_9_seed_9/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_9_seed_9/info/metadata.json"
+    scene_10_seed_10:
+      path: "assets/scene/infinigen/kitchen_1130/scene_10_seed_10/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_10_seed_10/info/metadata.json"
+    scene_12_seed_12:
+      path: "assets/scene/infinigen/kitchen_1130/scene_12_seed_12/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_12_seed_12/info/metadata.json"
+    scene_13_seed_13:
+      path: "assets/scene/infinigen/kitchen_1130/scene_13_seed_13/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_13_seed_13/info/metadata.json"
+    scene_16_seed_16:
+      path: "assets/scene/infinigen/kitchen_1130/scene_16_seed_16/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_16_seed_16/info/metadata.json"
+    scene_17_seed_17:
+      path: "assets/scene/infinigen/kitchen_1130/scene_17_seed_17/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_17_seed_17/info/metadata.json"
+    scene_18_seed_18:
+      path: "assets/scene/infinigen/kitchen_1130/scene_18_seed_18/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_18_seed_18/info/metadata.json"
+    scene_20_seed_20:
+      path: "assets/scene/infinigen/kitchen_1130/scene_20_seed_20/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_20_seed_20/info/metadata.json"
+    scene_21_seed_21:
+      path: "assets/scene/infinigen/kitchen_1130/scene_21_seed_21/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_21_seed_21/info/metadata.json"
+    scene_23_seed_23:
+      path: "assets/scene/infinigen/kitchen_1130/scene_23_seed_23/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_23_seed_23/info/metadata.json"
+    scene_24_seed_24:
+      path: "assets/scene/infinigen/kitchen_1130/scene_24_seed_24/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_24_seed_24/info/metadata.json"
+    scene_25_seed_25:
+      path: "assets/scene/infinigen/kitchen_1130/scene_25_seed_25/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_25_seed_25/info/metadata.json"
+    scene_27_seed_27:
+      path: "assets/scene/infinigen/kitchen_1130/scene_27_seed_27/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_27_seed_27/info/metadata.json"
+    scene_28_seed_28:
+      path: "assets/scene/infinigen/kitchen_1130/scene_28_seed_28/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_28_seed_28/info/metadata.json"
+    scene_29_seed_29:
+      path: "assets/scene/infinigen/kitchen_1130/scene_29_seed_29/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_29_seed_29/info/metadata.json"
+    scene_30_seed_30:
+      path: "assets/scene/infinigen/kitchen_1130/scene_30_seed_30/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_30_seed_30/info/metadata.json"
+    scene_31_seed_31:
+      path: "assets/scene/infinigen/kitchen_1130/scene_31_seed_31/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_31_seed_31/info/metadata.json"
+    scene_32_seed_32:
+      path: "assets/scene/infinigen/kitchen_1130/scene_32_seed_32/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_32_seed_32/info/metadata.json"
+    scene_33_seed_33:
+      path: "assets/scene/infinigen/kitchen_1130/scene_33_seed_33/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_33_seed_33/info/metadata.json"
+    scene_34_seed_34:
+      path: "assets/scene/infinigen/kitchen_1130/scene_34_seed_34/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_34_seed_34/info/metadata.json"
+    scene_35_seed_35:
+      path: "assets/scene/infinigen/kitchen_1130/scene_35_seed_35/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_35_seed_35/info/metadata.json"
+    scene_36_seed_36:
+      path: "assets/scene/infinigen/kitchen_1130/scene_36_seed_36/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_36_seed_36/info/metadata.json"
+    scene_38_seed_38:
+      path: "assets/scene/infinigen/kitchen_1130/scene_38_seed_38/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_38_seed_38/info/metadata.json"
+    scene_39_seed_39:
+      path: "assets/scene/infinigen/kitchen_1130/scene_39_seed_39/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_39_seed_39/info/metadata.json"
+    scene_40_seed_40:
+      path: "assets/scene/infinigen/kitchen_1130/scene_40_seed_40/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_40_seed_40/info/metadata.json"
+    scene_41_seed_41:
+      path: "assets/scene/infinigen/kitchen_1130/scene_41_seed_41/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_41_seed_41/info/metadata.json"
+    scene_42_seed_42:
+      path: "assets/scene/infinigen/kitchen_1130/scene_42_seed_42/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_42_seed_42/info/metadata.json"
+    scene_43_seed_43:
+      path: "assets/scene/infinigen/kitchen_1130/scene_43_seed_43/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_43_seed_43/info/metadata.json"
+    scene_44_seed_44:
+      path: "assets/scene/infinigen/kitchen_1130/scene_44_seed_44/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_44_seed_44/info/metadata.json"
+    scene_45_seed_45:
+      path: "assets/scene/infinigen/kitchen_1130/scene_45_seed_45/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_45_seed_45/info/metadata.json"
+    scene_46_seed_46:
+      path: "assets/scene/infinigen/kitchen_1130/scene_46_seed_46/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_46_seed_46/info/metadata.json"
+    scene_47_seed_47:
+      path: "assets/scene/infinigen/kitchen_1130/scene_47_seed_47/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_47_seed_47/info/metadata.json"
+    scene_48_seed_48:
+      path: "assets/scene/infinigen/kitchen_1130/scene_48_seed_48/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_48_seed_48/info/metadata.json"
+    scene_52_seed_52:
+      path: "assets/scene/infinigen/kitchen_1130/scene_52_seed_52/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_52_seed_52/info/metadata.json"
+    scene_53_seed_53:
+      path: "assets/scene/infinigen/kitchen_1130/scene_53_seed_53/export/export_scene.blend/export_scene.usdc"
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: "assets/scene/infinigen/kitchen_1130/scene_53_seed_53/info/metadata.json"
 
-# =============================================================================
-# Object Configuration
-# =============================================================================
-object_cfg:
-  "7221":
-    path: assets/object/Microwave/7221/7221_0_scaling.urdf
-    pose: [0, 0, 0, 1, 0, 0, 0]
-    asset_type: "Microwave"
-    asset_id: "7221"
-    scale: 0.3563
-    start_angles: [0]
-    goal_angles: [1.333, 1.23, 1.074, 0.997]
-
-# =============================================================================
-# Robot Configuration
-# =============================================================================
-robot_cfg:
-  robot_type: "summit_franka"
-  path: "assets/robot/summit_franka/summit_franka.yml"
-
-# AKR robot config template for articulated object planning (fixed base)
-akr_robot_cfg:
-  robot_type: "summit_franka"
-  path: ""  # Populated dynamically per grasp
-  fixed_base: true

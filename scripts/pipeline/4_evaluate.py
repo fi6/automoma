@@ -74,9 +74,13 @@ def run_evaluation(cfg: Config, headless: bool = False, checkpoint_path: str = N
     # Get eval config
     eval_cfg = cfg.eval_cfg if cfg.eval_cfg else cfg.evaluation
     
-    # Checkpoint path
+    # Checkpoint path from policy_cfg or override
     if checkpoint_path is None:
-        checkpoint_path = eval_cfg.checkpoint_path if eval_cfg else None
+        # Try to get from policy_cfg based on policy type
+        policy_type = eval_cfg.policy_type if hasattr(eval_cfg, 'policy_type') else "diffusion"
+        if cfg.policy_cfg and hasattr(cfg.policy_cfg, policy_type):
+            policy_config = getattr(cfg.policy_cfg, policy_type)
+            checkpoint_path = policy_config.checkpoint_path if hasattr(policy_config, 'checkpoint_path') else None
     
     if checkpoint_path is None:
         # Default path
@@ -95,6 +99,17 @@ def run_evaluation(cfg: Config, headless: bool = False, checkpoint_path: str = N
     max_steps = eval_cfg.max_steps_per_episode if eval_cfg else 500
     success_threshold = eval_cfg.success_threshold if eval_cfg else 0.05
     use_async = eval_cfg.use_async_inference if eval_cfg else True
+    
+    # Get policy type from eval_cfg or policy_cfg
+    policy_type = "diffusion"  # default
+    if hasattr(eval_cfg, 'policy_type'):
+        policy_type = eval_cfg.policy_type
+    elif cfg.policy_cfg:
+        # Infer from available policies in policy_cfg
+        if hasattr(cfg.policy_cfg, 'act'):
+            policy_type = "act"
+        elif hasattr(cfg.policy_cfg, 'diffusion'):
+            policy_type = "diffusion"
     
     logger.info(f"Evaluation configuration:")
     logger.info(f"  Checkpoint: {checkpoint_path}")
@@ -119,9 +134,12 @@ def run_evaluation(cfg: Config, headless: bool = False, checkpoint_path: str = N
             logger.warning(f"Could not setup environment: {e}")
             dry_run = True
     
-    # Get test data directory
-    test_data_dir = cfg.plan_cfg.output_dir if cfg.plan_cfg else "data/output"
-    test_data_dir = str(PROJECT_ROOT / test_data_dir / "traj")
+    # Get test data directory from eval_cfg.data_cfg
+    if eval_cfg and eval_cfg.data_cfg and eval_cfg.data_cfg.test_data_dir:
+        test_data_dir = eval_cfg.data_cfg.test_data_dir
+    else:
+        test_data_dir = "data/output/traj"
+    test_data_dir = str(PROJECT_ROOT / test_data_dir)
     
     logger.info(f"Loading test data from: {test_data_dir}")
     
@@ -152,8 +170,15 @@ def run_evaluation(cfg: Config, headless: bool = False, checkpoint_path: str = N
     )
     model.start()
     
-    # Metrics calculator
-    metrics_calc = MetricsCalculator(success_threshold=success_threshold)
+    # Metrics calculator with config from eval_cfg.metrics_cfg
+    metrics_config = {}
+    if eval_cfg and eval_cfg.metrics_cfg:
+        metrics_config = eval_cfg.metrics_cfg.to_dict() if hasattr(eval_cfg.metrics_cfg, 'to_dict') else eval_cfg.metrics_cfg
+    
+    metrics_calc = MetricsCalculator(
+        success_threshold=success_threshold,
+        **metrics_config
+    )
     
     # Run evaluation
     logger.info("Starting evaluation...")
@@ -273,8 +298,9 @@ def main():
     )
     args = parser.parse_args()
     
-    # Load configuration
-    cfg = load_config(args.exp, PROJECT_ROOT)
+    # Load evaluation configuration
+    from automoma.core.config_loader import load_eval_config
+    cfg = load_eval_config(args.exp, PROJECT_ROOT)
     
     # Override config with args
     eval_cfg = cfg.eval_cfg if cfg.eval_cfg else cfg.evaluation

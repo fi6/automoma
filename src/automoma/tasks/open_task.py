@@ -83,7 +83,10 @@ class OpenTask(BaseTask):
         
         grasp_dir = str(self.project_root / grasp_dir)
         
-        num_grasps = self.cfg.plan_cfg.num_grasps
+        # Get plan_cfg for this object (uses object-specific config if available)
+        object_id = object_cfg.asset_id
+        plan_cfg = self.get_plan_cfg(object_id)
+        num_grasps = plan_cfg.num_grasps
         scale = object_cfg.scale if object_cfg.scale else 1.0
         
         return get_grasp_poses(
@@ -172,7 +175,9 @@ class OpenTask(BaseTask):
         """
         from automoma.utils.math_utils import stack_iks_angle
         
-        plan_cfg = self.cfg.plan_cfg
+        # Get plan_cfg for this object (uses object-specific config if available)
+        object_id = object_cfg.asset_id
+        plan_cfg = self.get_plan_cfg(object_id)
         ik_limit = plan_cfg.plan_ik.limit[0] if is_start else plan_cfg.plan_ik.limit[1]
         
         all_ik_results = []
@@ -213,6 +218,8 @@ class OpenTask(BaseTask):
                 break
         
         result = IKResult.cat(all_ik_results)
+        # Downsample to exact limit if we have more solutions than needed
+        result = result.downsample(ik_limit)
         
         # If no IK solutions found, return empty result with correct robot DOF
         if result.iks.shape[0] == 0:
@@ -235,6 +242,7 @@ class OpenTask(BaseTask):
         goal_iks: IKResult,
         stage_type: StageType,
         grasp_id: Optional[int] = None,
+        object_id: Optional[str] = None,
     ) -> TrajResult:
         """
         Plan trajectories using AKR robot config for articulated motion.
@@ -247,6 +255,7 @@ class OpenTask(BaseTask):
             goal_iks: Goal IK solutions
             stage_type: Type of stage
             grasp_id: Grasp ID (required for AKR robot config)
+            object_id: Object ID (for getting object-specific plan_cfg)
             
         Returns:
             TrajResult with planned trajectories
@@ -256,13 +265,17 @@ class OpenTask(BaseTask):
             raise ValueError("grasp_id is required for OpenTask")
         
         # Get object config (assume single object for now)
-        object_id = list(self.cfg.object_cfg.keys())[0]
-        object_cfg = self.cfg.object_cfg[object_id]
+        if not self.cfg.env_cfg or not self.cfg.env_cfg.object_cfg:
+            raise ValueError("env_cfg.object_cfg is required in config")
+        if object_id is None:
+            object_id = list(self.cfg.env_cfg.object_cfg.keys())[0]
+        object_cfg = self.cfg.env_cfg.object_cfg[object_id]
         
         # Get cached AKR robot config and motion gen
         akr_robot_cfg, akr_motion_gen = self._get_akr_motion_gen_cached(object_cfg, grasp_id)
         
-        plan_cfg = self.cfg.plan_cfg
+        # Get plan_cfg for this object (uses object-specific config if available)
+        plan_cfg = self.get_plan_cfg(object_id)
         traj_cfg = {
             "stage_type": stage_type,
             "batch_size": plan_cfg.plan_traj.batch_size,
@@ -335,6 +348,7 @@ class OpenTask(BaseTask):
         self,
         traj_result: TrajResult,
         stage_type: StageType,
+        object_id: Optional[str] = None,
     ) -> TrajResult:
         """
         Filter trajectories using AKR robot config (same as used for planning).
@@ -345,6 +359,7 @@ class OpenTask(BaseTask):
         Args:
             traj_result: Trajectory results to filter
             stage_type: Type of stage
+            object_id: Object ID (for getting object-specific plan_cfg)
             
         Returns:
             Filtered TrajResult
@@ -358,7 +373,12 @@ class OpenTask(BaseTask):
         grasp_id = list(self._motion_gen_akr_cache.keys())[-1]
         akr_robot_cfg, akr_motion_gen = self._motion_gen_akr_cache[grasp_id]
         
-        plan_cfg = self.cfg.plan_cfg
+        # Determine object_id if not provided
+        if object_id is None and self.cfg.env_cfg and self.cfg.env_cfg.object_cfg:
+            object_id = list(self.cfg.env_cfg.object_cfg.keys())[0]
+        
+        # Get plan_cfg for this object (uses object-specific config if available)
+        plan_cfg = self.get_plan_cfg(object_id)
         
         # Get filter parameters with defaults
         position_threshold = 0.01
@@ -454,6 +474,7 @@ class OpenTask(BaseTask):
                         stage_result.goal_iks,
                         stage_type,
                         grasp_id=grasp_idx,
+                        object_id=object_id,
                     )
                     print(f"Trajectory Planning completed:")
                     print(f"  Trajectories: {stage_result.traj_result.trajectories.shape}")
@@ -464,6 +485,7 @@ class OpenTask(BaseTask):
                         stage_result.traj_result = self._filter_trajectories(
                             stage_result.traj_result,
                             stage_type,
+                            object_id=object_id,
                         )
                         print(f"Trajectory Filtering completed:")
                         print(f"  Trajectories: {stage_result.traj_result.trajectories.shape}")
@@ -479,7 +501,7 @@ class OpenTask(BaseTask):
                 # Save stage results
                 stage_output_dir = os.path.join(
                     self.output_dir, "traj",
-                    self.cfg.robot_cfg.robot_type,
+                    self.cfg.env_cfg.robot_cfg.robot_type,
                     scene_name, object_id,
                     f"grasp_{grasp_idx:04d}",
                     f"stage_{stage_idx}",
@@ -525,7 +547,11 @@ class OpenTask(BaseTask):
             return False
         
         current_angle = obs.get("env_state", 0.0)
-        goal_angles = self.cfg.object_cfg.goal_angles if self.cfg.object_cfg else None
+        goal_angles = None
+        if self.cfg.env_cfg and self.cfg.env_cfg.object_cfg:
+            # Get first object's goal angles
+            first_obj_id = list(self.cfg.env_cfg.object_cfg.keys())[0]
+            goal_angles = self.cfg.env_cfg.object_cfg[first_obj_id].goal_angles if hasattr(self.cfg.env_cfg.object_cfg[first_obj_id], 'goal_angles') else None
         goal_angle = goal_angles[-1] if goal_angles and len(goal_angles) > 0 else 1.57
         
         return abs(current_angle - goal_angle) < 0.1  # 0.1 radian tolerance
@@ -576,7 +602,7 @@ class OpenTask(BaseTask):
                             env_state = ik[-1:]
                             
                             # Adjust robot state
-                            robot_state = adjust_pose_for_robot(robot_state, self.cfg.robot_cfg.robot_type)
+                            robot_state = adjust_pose_for_robot(robot_state, self.cfg.env_cfg.robot_cfg.robot_type)
                             
                             processed_states.append((robot_state, env_state))
                             
@@ -727,13 +753,13 @@ class OpenTask(BaseTask):
             # Current state
             step_data = trajectory[step_idx]
             robot_state = step_data[:-1]  # All but last (handle angle)
-            robot_state = adjust_pose_for_robot(robot_state, self.cfg.robot_cfg.robot_type)
+            robot_state = adjust_pose_for_robot(robot_state, self.cfg.env_cfg.robot_cfg.robot_type)
             env_state = step_data[-1:]     # Last (handle angle)
             
             # Next state (for action computation)
             next_step_data = trajectory[step_idx + 1]
             next_robot_state = next_step_data[:-1]
-            next_robot_state = adjust_pose_for_robot(next_robot_state, self.cfg.robot_cfg.robot_type)
+            next_robot_state = adjust_pose_for_robot(next_robot_state, self.cfg.env_cfg.robot_cfg.robot_type)
             
             self.env.set_state(robot_state, env_state)
             self.env.step()
@@ -966,6 +992,8 @@ class ReachOpenTask(BaseTask):
                 break
         
         result = IKResult.cat(all_ik_results)
+        # Downsample to exact limit if we have more solutions than needed
+        result = result.downsample(ik_limit)
         
         # If no IK solutions found, return empty result with correct robot DOF
         if result.iks.shape[0] == 0:
@@ -1085,8 +1113,10 @@ class ReachOpenTask(BaseTask):
                 raise ValueError("grasp_id is required for MOVE_ARTICULATED stage")
             
             # Get object config (assume single object for now)
-            object_id = list(self.cfg.object_cfg.keys())[0]
-            object_cfg = self.cfg.object_cfg[object_id]
+            if not self.cfg.env_cfg or not self.cfg.env_cfg.object_cfg:
+                raise ValueError("env_cfg.object_cfg is required in config")
+            object_id = list(self.cfg.env_cfg.object_cfg.keys())[0]
+            object_cfg = self.cfg.env_cfg.object_cfg[object_id]
             
             # Get cached AKR robot config and motion gen
             akr_robot_cfg, akr_motion_gen = self._get_akr_motion_gen_cached(object_cfg, grasp_id)
@@ -1172,7 +1202,11 @@ class ReachOpenTask(BaseTask):
             return False
         
         current_angle = obs.get("env_state", 0.0)
-        goal_angles = self.cfg.object_cfg.goal_angles if self.cfg.object_cfg else None
+        goal_angles = None
+        if self.cfg.env_cfg and self.cfg.env_cfg.object_cfg:
+            # Get first object's goal angles
+            first_obj_id = list(self.cfg.env_cfg.object_cfg.keys())[0]
+            goal_angles = self.cfg.env_cfg.object_cfg[first_obj_id].goal_angles if hasattr(self.cfg.env_cfg.object_cfg[first_obj_id], 'goal_angles') else None
         goal_angle = goal_angles[-1] if goal_angles and len(goal_angles) > 0 else 1.57
         
         return abs(current_angle - goal_angle) < 0.1

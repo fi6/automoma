@@ -10,125 +10,72 @@ info_cfg:
   description: "Train diffusion policy and ACT for single object open test"
 
 # =============================================================================
-# Unified Train Configuration
+# Train Configuration
 # =============================================================================
 train_cfg:
-  dataset_repo_id: "automoma/single_object_open_test"
-  dataset_root: "./datasets/single_object_open_test"
-  policy_type: "diffusion"  # Options: "diffusion" (DP) or "act" (ACT)
-  batch_size: 64
-  learning_rate: 1.0e-4
-  num_epochs: 100
-  warmup_steps: 500
-  output_dir: "outputs/train/single_object_open_test"
-  save_freq: 10000
-  device: "cuda"
-
-# =============================================================================
-# Dataset Configuration
-# =============================================================================
-dataset:
-  repo_id: "automoma/single_object_open_test"
-  root: "./datasets/single_object_open_test"
-  split: "train"
+  # Dataset info
+  dataset_repo_id: "single_object_open_test"
+  dataset_root: "data/single_object_open_test/lerobot/single_object_open_test"
   
+  # Training parameters
+  batch_size: 128
+  steps: 10000
+  log_freq: 50
+  eval_freq: 500
+  save_freq: 1000
+  
+  # Job naming
+  job_name: "act_single_object_open_test"
+  
+  # Output
+  output_dir: "outputs/train/act_single_object_open_test"
+  
+  # Wandb
+  wandb_enable: true
+  wandb_project: "automoma"
+  wandb_entity: null
+
 # =============================================================================
 # Policy Configuration
 # =============================================================================
-policy:
-  type: "diffusion"  # Options: diffusion (DP), act
-  pretrained_path: null
-  
-  # Diffusion Policy (DP) specific
-  diffusion:
-    n_obs_steps: 2
-    n_action_steps: 8
-    horizon: 16
-    obs_as_cond: true
-    
-  # ACT (Action Chunking Transformer) specific
+policy_cfg:
+  # ACT Policy
   act:
-    n_obs_steps: 1
-    n_action_steps: 100
-    chunk_size: 100
-    kl_weight: 10.0
+    type: "act"
+    chunk_size: 16
+    n_action_steps: 16
+    optimizer_lr: 1.0e-4
+    push_to_hub: false
+    device: "cuda"
+    
+    # Additional ACT-specific parameters
     hidden_dim: 512
     dim_feedforward: 3200
     num_encoder_layers: 4
     num_decoder_layers: 7
     nheads: 8
     dropout: 0.1
+    kl_weight: 10.0
     
-  # Network architecture
-  network:
-    type: "unet"
+  # Diffusion Policy
+  diffusion:
+    type: "diffusion"
+    n_obs_steps: 2
+    n_action_steps: 8
+    horizon: 16
+    optimizer_lr: 1.0e-4
+    push_to_hub: false
+    device: "cuda"
+    
+    # Additional Diffusion-specific parameters
+    num_inference_steps: 10
     down_dims: [256, 512, 1024]
     kernel_size: 5
     n_groups: 8
-    cond_predict_scale: true
     
-# =============================================================================
-# Training Parameters
-# =============================================================================
-training:
-  batch_size: 64
-  learning_rate: 1.0e-4
-  weight_decay: 1.0e-6
-  num_epochs: 100
-  warmup_steps: 500
-  grad_clip: 10.0
-  
-  # Learning rate schedule
-  lr_scheduler:
-    type: "cosine"
-    warmup_steps: 500
-    
-  # Optimizer
-  optimizer:
-    type: "adamw"
-    betas: [0.95, 0.999]
-    eps: 1.0e-8
-    
-# =============================================================================
-# Checkpointing
-# =============================================================================
-checkpoint:
-  output_dir: "outputs/train/single_object_open_test"
-  save_freq: 10000
-  eval_freq: 5000
-  log_freq: 100
-  keep_last_n: 5
-  
-# =============================================================================
-# Hardware Configuration
-# =============================================================================
-hardware:
-  device: "cuda"
-  num_workers: 8
-  pin_memory: true
-  mixed_precision: true  # Use fp16 training
-  
-# =============================================================================
-# Wandb Logging
-# =============================================================================
-wandb:
-  use_wandb: true
-  project: "automoma"
-  entity: null
-  name: "single_object_open_test"
-  tags:
-    - "single_object"
-    - "manipulation"
-    - "articulated"
-    - "test"
-    
-# =============================================================================
-# Data Augmentation
-# =============================================================================
-augmentation:
-  enabled: true
-  joint_noise_std: 0.01
-  image_augmentation:
-    random_crop: true
-    color_jitter: true
-    gaussian_blur: false
+  # Pi0 Policy (placeholder for future)
+  pi0:
+    type: "pi0"
+    optimizer_lr: 1.0e-4
+    push_to_hub: false
+    device: "cuda"

@@ -4,18 +4,26 @@ Script 3: Train policy model.
 
 This script trains a policy using LeRobot:
 1. Load training configuration
-2. Load dataset
-3. Train policy
-4. Save checkpoints
+2. Build lerobot-train command based on policy type
+3. Execute training via subprocess
 
 Usage:
-    python 3_train.py --exp multi_object_open
+    # Train with ACT policy (default from config)
+    python 3_train.py --exp single_object_open_test
+    
+    # Train with specific policy type
+    python 3_train.py --exp single_object_open_test --policy act
+    python 3_train.py --exp single_object_open_test --policy diffusion
+    
+    # Override output directory
+    python 3_train.py --exp single_object_open_test --policy act --output-dir outputs/train/my_experiment
 """
 
 import os
 import sys
 import argparse
 import logging
+import subprocess
 from pathlib import Path
 
 # Add project root to path
@@ -32,158 +40,181 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def train_policy(cfg: Config):
+def build_lerobot_command(cfg: Config, policy_type: str = None, output_dir: str = None) -> list:
     """
-    Train a policy model.
+    Build lerobot-train command from configuration.
     
     Args:
         cfg: Configuration object
+        policy_type: Policy type override (act, diffusion, pi0, etc.)
+        output_dir: Output directory override
+        
+    Returns:
+        List of command arguments for subprocess
     """
-    import torch
+    train_cfg = cfg.train_cfg
     
-    # Get training config
-    train_cfg = cfg.train_cfg if cfg.train_cfg else cfg.training
-    if train_cfg is None:
-        logger.error("No training configuration found")
-        return
+    # Determine policy type
+    if policy_type is None:
+        # Try to infer from config
+        policy_type = "act"  # default
+        if hasattr(train_cfg, 'policy_type'):
+            policy_type = train_cfg.policy_type
     
-    # Dataset config
-    dataset_repo = train_cfg.dataset_repo_id if train_cfg.dataset_repo_id else f"automoma/{cfg.info_cfg.task}"
-    dataset_root = train_cfg.dataset_root if train_cfg.dataset_root else "./datasets"
+    # Get policy config
+    policy_cfg = cfg.policy_cfg
+    if not hasattr(policy_cfg, policy_type):
+        logger.error(f"Policy type '{policy_type}' not found in policy_cfg")
+        raise ValueError(f"Unknown policy type: {policy_type}")
     
-    # Policy config
-    policy_type = train_cfg.policy_type if train_cfg.policy_type else "diffusion"
+    policy_config = getattr(policy_cfg, policy_type)
     
-    # Training params
-    batch_size = train_cfg.batch_size if train_cfg.batch_size else 64
-    learning_rate = train_cfg.learning_rate if train_cfg.learning_rate else 1e-4
-    num_epochs = train_cfg.num_epochs if train_cfg.num_epochs else 100
+    # Build base command
+    cmd = ["lerobot-train"]
     
-    # Output
-    output_dir = train_cfg.output_dir if train_cfg.output_dir else "outputs/train"
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    # Policy type
+    cmd.extend(["--policy.type", policy_config.type])
     
-    device = train_cfg.device if train_cfg.device else "cuda"
+    # Dataset configuration
+    dataset_repo_id = train_cfg.dataset_repo_id
+    dataset_root = train_cfg.dataset_root
+    cmd.extend(["--dataset.repo_id", dataset_repo_id])
+    cmd.extend(["--dataset.root", str(PROJECT_ROOT / dataset_root)])
     
-    logger.info(f"Training configuration:")
-    logger.info(f"  Dataset: {dataset_repo}")
-    logger.info(f"  Policy: {policy_type}")
-    logger.info(f"  Batch size: {batch_size}")
-    logger.info(f"  Learning rate: {learning_rate}")
-    logger.info(f"  Epochs: {num_epochs}")
-    logger.info(f"  Device: {device}")
+    # Training parameters
+    cmd.extend(["--batch_size", str(train_cfg.batch_size)])
+    cmd.extend(["--steps", str(train_cfg.steps)])
+    cmd.extend(["--log_freq", str(train_cfg.log_freq)])
+    cmd.extend(["--eval_freq", str(train_cfg.eval_freq)])
+    cmd.extend(["--save_freq", str(train_cfg.save_freq)])
     
+    # Job naming
+    job_name = f"{policy_type}_{cfg.info_cfg.task}"
+    if hasattr(train_cfg, 'job_name'):
+        job_name = train_cfg.job_name
+    cmd.extend(["--job_name", job_name])
+    
+    # Output directory
+    if output_dir is None:
+        output_dir = train_cfg.output_dir
+    cmd.extend(["--output_dir", str(PROJECT_ROOT / output_dir)])
+    
+    # Policy-specific parameters
+    if policy_type == "act":
+        if hasattr(policy_config, 'chunk_size'):
+            cmd.extend(["--policy.chunk_size", str(policy_config.chunk_size)])
+        if hasattr(policy_config, 'n_action_steps'):
+            cmd.extend(["--policy.n_action_steps", str(policy_config.n_action_steps)])
+        if hasattr(policy_config, 'optimizer_lr'):
+            cmd.extend(["--policy.optimizer_lr", str(policy_config.optimizer_lr)])
+        if hasattr(policy_config, 'kl_weight'):
+            cmd.extend(["--policy.kl_weight", str(policy_config.kl_weight)])
+        if hasattr(policy_config, 'hidden_dim'):
+            cmd.extend(["--policy.hidden_dim", str(policy_config.hidden_dim)])
+        if hasattr(policy_config, 'dim_feedforward'):
+            cmd.extend(["--policy.dim_feedforward", str(policy_config.dim_feedforward)])
+            
+    elif policy_type == "diffusion":
+        if hasattr(policy_config, 'n_obs_steps'):
+            cmd.extend(["--policy.n_obs_steps", str(policy_config.n_obs_steps)])
+        if hasattr(policy_config, 'n_action_steps'):
+            cmd.extend(["--policy.n_action_steps", str(policy_config.n_action_steps)])
+        if hasattr(policy_config, 'horizon'):
+            cmd.extend(["--policy.horizon", str(policy_config.horizon)])
+        if hasattr(policy_config, 'optimizer_lr'):
+            cmd.extend(["--policy.optimizer_lr", str(policy_config.optimizer_lr)])
+        if hasattr(policy_config, 'num_inference_steps'):
+            cmd.extend(["--policy.num_inference_steps", str(policy_config.num_inference_steps)])
+    
+    # Device
+    if hasattr(policy_config, 'device'):
+        cmd.extend(["--policy.device", policy_config.device])
+    
+    # Push to hub
+    if hasattr(policy_config, 'push_to_hub'):
+        cmd.extend(["--policy.push_to_hub", str(policy_config.push_to_hub).lower()])
+    
+    # Wandb configuration
+    if hasattr(train_cfg, 'wandb_enable'):
+        cmd.extend(["--wandb.enable", str(train_cfg.wandb_enable).lower()])
+    if hasattr(train_cfg, 'wandb_project'):
+        cmd.extend(["--wandb.project", train_cfg.wandb_project])
+    if hasattr(train_cfg, 'wandb_entity') and train_cfg.wandb_entity:
+        cmd.extend(["--wandb.entity", train_cfg.wandb_entity])
+    
+    return cmd
+
+
+def train_policy(cfg: Config, policy_type: str = None, output_dir: str = None):
+    """
+    Train a policy model using LeRobot.
+    
+    Args:
+        cfg: Configuration object
+        policy_type: Policy type override (act, diffusion, etc.)
+        output_dir: Output directory override
+    """
+    # Build command
+    cmd = build_lerobot_command(cfg, policy_type, output_dir)
+    
+    # Log command
+    logger.info("="*60)
+    logger.info("Training Command:")
+    logger.info("="*60)
+    logger.info(" ".join(cmd))
+    logger.info("="*60)
+    
+    # Execute training
     try:
-        from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
-        from lerobot.common.policies.factory import make_policy
-        from torch.utils.data import DataLoader
-        from tqdm import tqdm
-        
-        # Load dataset
-        logger.info("Loading dataset...")
-        dataset = LeRobotDataset(repo_id=dataset_repo, root=dataset_root)
-        logger.info(f"Dataset loaded: {len(dataset)} frames")
-        
-        # Create dataloader
-        dataloader = DataLoader(
-            dataset,
-            batch_size=batch_size,
-            shuffle=True,
-            num_workers=4,
-            pin_memory=True,
-        )
-        
-        # Create policy
-        logger.info(f"Creating {policy_type} policy...")
-        policy_config = {
-            "name": policy_type,
-            "input_shapes": {},
-            "output_shapes": {},
-        }
-        
-        if hasattr(dataset, "features"):
-            for key, feature in dataset.features.items():
-                if key.startswith("observation"):
-                    policy_config["input_shapes"][key] = feature.get("shape", [])
-                elif key == "action":
-                    policy_config["output_shapes"][key] = feature.get("shape", [])
-        
-        policy = make_policy(policy_config)
-        policy.to(device)
-        
-        # Optimizer
-        optimizer = torch.optim.AdamW(policy.parameters(), lr=learning_rate)
-        
-        # Training loop
         logger.info("Starting training...")
-        global_step = 0
-        save_freq = train_cfg.save_freq if train_cfg.save_freq else 10000
+        result = subprocess.run(cmd, check=True, cwd=str(PROJECT_ROOT))
         
-        for epoch in range(num_epochs):
-            epoch_loss = 0.0
-            num_batches = 0
+        if result.returncode == 0:
+            logger.info("="*60)
+            logger.info("Training completed successfully!")
+            logger.info("="*60)
+        else:
+            logger.error(f"Training failed with return code: {result.returncode}")
             
-            pbar = tqdm(dataloader, desc=f"Epoch {epoch+1}/{num_epochs}")
-            for batch in pbar:
-                batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v 
-                        for k, v in batch.items()}
-                
-                optimizer.zero_grad()
-                loss_dict = policy.forward(batch)
-                loss = loss_dict.get("loss", sum(loss_dict.values()))
-                
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(policy.parameters(), 10.0)
-                optimizer.step()
-                
-                epoch_loss += loss.item()
-                num_batches += 1
-                global_step += 1
-                
-                pbar.set_postfix({"loss": f"{loss.item():.4f}"})
-                
-                if global_step % save_freq == 0:
-                    ckpt_path = output_dir / f"checkpoint_{global_step:08d}.pt"
-                    torch.save({
-                        "step": global_step,
-                        "state_dict": policy.state_dict(),
-                        "config": cfg.to_dict(),
-                    }, ckpt_path)
-                    logger.info(f"Saved checkpoint: {ckpt_path}")
-            
-            avg_loss = epoch_loss / max(num_batches, 1)
-            logger.info(f"Epoch {epoch+1}: avg_loss={avg_loss:.4f}")
-        
-        # Save final model
-        final_path = output_dir / "model_final.pt"
-        torch.save({
-            "step": global_step,
-            "state_dict": policy.state_dict(),
-            "config": cfg.to_dict(),
-        }, final_path)
-        logger.info(f"Training complete! Model saved to {final_path}")
-        
-    except ImportError as e:
-        logger.error(f"LeRobot not available: {e}")
-        logger.info("Install LeRobot to train policies")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Training failed: {e}")
+        raise
+    except FileNotFoundError:
+        logger.error("lerobot-train command not found. Make sure LeRobot is installed.")
+        logger.info("Install LeRobot: pip install lerobot")
+        raise
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Train policy")
+    parser = argparse.ArgumentParser(description="Train policy using LeRobot")
     parser.add_argument(
         "--exp",
         type=str,
         required=True,
-        help="Experiment name",
+        help="Experiment name (e.g., single_object_open_test)",
+    )
+    parser.add_argument(
+        "--policy",
+        type=str,
+        default=None,
+        choices=["act", "diffusion", "pi0"],
+        help="Policy type to train (default: from config)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Override output directory",
     )
     args = parser.parse_args()
     
-    # Load configuration
-    cfg = load_config(args.exp, PROJECT_ROOT)
+    # Load training configuration only
+    logger.info(f"Loading training configuration: {args.exp}")
+    from automoma.core.config_loader import load_train_config
+    cfg = load_train_config(args.exp, PROJECT_ROOT)
     
-    # Train
-    train_policy(cfg)
+    # Train policy
+    train_policy(cfg, args.policy, args.output_dir)
     
     return 0
 

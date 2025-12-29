@@ -257,7 +257,14 @@ class ConfigLoader:
         # Resolve variable interpolation (e.g., ${info_cfg.task})
         resolved_config = self._resolve_interpolation(merged_config)
         
-        return Config(resolved_config)
+        # Create Config object
+        cfg = Config(resolved_config)
+        
+        # Preprocess per-object plan configs
+        from automoma.utils.config_utils import preprocess_object_plan_configs
+        preprocess_object_plan_configs(cfg)
+        
+        return cfg
 
     def _resolve_interpolation(self, config_dict: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -352,7 +359,15 @@ class ConfigLoader:
         # Resolve variable interpolation
         resolved_config = self._resolve_interpolation(merged_config)
         
-        return Config(resolved_config)
+        # Create Config object
+        cfg = Config(resolved_config)
+        
+        # Preprocess per-object plan configs (only for plan configs)
+        if config_file == "plan.yaml":
+            from automoma.utils.config_utils import preprocess_object_plan_configs
+            preprocess_object_plan_configs(cfg)
+        
+        return cfg
 
 
 # Convenience functions for module-level use

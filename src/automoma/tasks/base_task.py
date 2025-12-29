@@ -164,6 +164,24 @@ class BaseTask(ABC):
         """Get project root from config."""
         return Path(self.cfg._project_root) if self.cfg._project_root else Path.cwd()
     
+    def get_plan_cfg(self, object_id: Optional[str] = None):
+        """
+        Get the appropriate plan_cfg for an object.
+        
+        Args:
+            object_id: Object ID. If None, returns the default plan_cfg.
+            
+        Returns:
+            Config object with plan_cfg for the specified object.
+            If object has a custom plan_cfg, returns the merged config.
+            Otherwise, returns the default plan_cfg.
+        """
+        if object_id is None:
+            return self.cfg.plan_cfg
+        
+        from automoma.utils.config_utils import get_object_plan_cfg
+        return get_object_plan_cfg(self.cfg, object_id)
+    
     # =========================================================================
     # Setup Methods
     # =========================================================================
@@ -186,7 +204,7 @@ class BaseTask(ABC):
         Args:
             scene_cfg: Scene configuration (path, pose, metadata)
             object_cfg: Object configuration (path, pose, articulation params)
-            robot_cfg: Robot configuration (optional, uses cfg.robot_cfg if None)
+            robot_cfg: Robot configuration (optional, uses cfg.env_cfg.robot_cfg if None)
         """
         from automoma.planning.planner import CuroboPlanner
         from automoma.utils.file_utils import load_robot_cfg, process_robot_cfg
@@ -209,7 +227,10 @@ class BaseTask(ABC):
         
         # Load robot config
         if robot_cfg is None:
-            robot_cfg = self.cfg.robot_cfg
+            # Use robot_cfg from env_cfg
+            if not self.cfg.env_cfg or not self.cfg.env_cfg.robot_cfg:
+                raise ValueError("env_cfg.robot_cfg is required in config")
+            robot_cfg = self.cfg.env_cfg.robot_cfg
         robot_cfg_path = str(self.project_root / robot_cfg.path)
         loaded_robot_cfg = load_robot_cfg(robot_cfg_path)
         self.robot_cfg = process_robot_cfg(loaded_robot_cfg)
@@ -217,8 +238,8 @@ class BaseTask(ABC):
         logger.info(f"Loaded robot config: {robot_cfg_path}")
         
         # Store AKR robot config template (loaded dynamically per grasp if needed)
-        if self.cfg.akr_robot_cfg:
-            self.akr_robot_cfg = self.cfg.akr_robot_cfg
+        if self.cfg.env_cfg and self.cfg.env_cfg.akr_robot_cfg:
+            self.akr_robot_cfg = self.cfg.env_cfg.akr_robot_cfg
             logger.info(f"AKR robot config template loaded (robot_type={self.akr_robot_cfg.robot_type})")
         else:
             self.akr_robot_cfg = None
@@ -486,9 +507,13 @@ class BaseTask(ABC):
             True if all stage files exist for this grasp
         """
         for stage_idx in range(len(self.stages)):
+            # Get robot_type from env_cfg
+            if not self.cfg.env_cfg or not self.cfg.env_cfg.robot_cfg or not self.cfg.env_cfg.robot_cfg.robot_type:
+                raise ValueError("env_cfg.robot_cfg.robot_type is required in config")
+            
             stage_output_dir = os.path.join(
                 self.output_dir, "traj",
-                self.cfg.robot_cfg.robot_type,
+                self.cfg.env_cfg.robot_cfg.robot_type,
                 scene_name, object_id,
                 f"grasp_{grasp_idx:04d}",
                 f"stage_{stage_idx}",

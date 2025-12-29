@@ -101,6 +101,7 @@ class PlanningPipeline:
         result = PlanningResult(task_type=TaskType.REACH_OPEN, grasp_id=grasp_id)
         
         try:
+            # Plan start IKs with exact limit enforcement
             start_ik_results = []
             for _ in range(10):
                 for angle in start_angles:
@@ -109,7 +110,10 @@ class PlanningPipeline:
                 if sum([r.iks.shape[0] for r in start_ik_results]) >= self.ik_limits[0]:
                     break
             result.start_ik_result = IKResult.cat(start_ik_results)
+            # Downsample to exact limit if we have more
+            result.start_ik_result = result.start_ik_result.downsample(self.ik_limits[0])
             
+            # Plan goal IKs with exact limit enforcement
             goal_ik_results = []
             for _ in range(10):
                 for angle in goal_angles:
@@ -118,6 +122,8 @@ class PlanningPipeline:
                 if sum([r.iks.shape[0] for r in goal_ik_results]) >= self.ik_limits[1]:
                     break
             result.goal_ik_result = IKResult.cat(goal_ik_results)
+            # Downsample to exact limit if we have more
+            result.goal_ik_result = result.goal_ik_result.downsample(self.ik_limits[1])
             
             if result.start_ik_result.iks.shape[0] == 0:
                 result.error_message = "No valid start IK solutions found"

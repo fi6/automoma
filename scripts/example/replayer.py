@@ -83,10 +83,10 @@ OBJECT_CONFIG_MAP = {
         "handle_link": "link_0",
     },
     "46197": {
-        "asset_type": "StorageFurniture",
+        "asset_type": "Cabinet",
         "asset_id": "46197",
         "scale": 0.5113198146209817,
-        "urdf_path": "assets/object/StorageFurniture/46197/46197_0_scaling.urdf",
+        "urdf_path": "assets/object/Cabinet/46197/46197_0_scaling.urdf",
         "handle_link": "link_0",
     },
     "10944": {

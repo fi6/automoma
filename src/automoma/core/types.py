@@ -101,6 +101,22 @@ class IKResult:
             target_poses=self.target_poses[indices],
             iks=self.iks[indices]
         )
+    
+    def downsample(self, max_samples: int) -> "IKResult":
+        """Randomly downsample IK solutions to a maximum number of samples.
+        
+        Args:
+            max_samples: Maximum number of samples to keep
+            
+        Returns:
+            IKResult with at most max_samples solutions
+        """
+        if self.iks.shape[0] <= max_samples:
+            return self
+        
+        # Randomly sample indices
+        indices = torch.randperm(self.iks.shape[0])[:max_samples]
+        return self[indices]
 
 @dataclass
 class TrajResult:
