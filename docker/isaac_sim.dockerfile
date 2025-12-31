@@ -22,7 +22,10 @@ FROM nvcr.io/nvidia/isaac-sim:${ISAAC_SIM_VERSION} AS isaac-sim
 # this does not work for 2022.2.1
 FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-cudnn-devel-${BASE_DIST}
 
-LABEL maintainer "User Name"
+# Re-declare build args for this stage (BuildKit requires this for interpolation warnings)
+ARG ISAAC_SIM_VERSION
+
+LABEL maintainer="User Name"
 
 
 # Deal with getting tons of debconf messages
@@ -32,44 +35,44 @@ RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selectio
 
 # add GL if using a cuda docker instead of cudagl:
 RUN apt-get update && apt-get install -y --no-install-recommends \
-       pkg-config \
-       libglvnd-dev \
-       libgl1-mesa-dev \
-       libegl1-mesa-dev \
-       libgles2-mesa-dev && \
-   rm -rf /var/lib/apt/lists/*
+    pkg-config \
+    libglvnd-dev \
+    libgl1-mesa-dev \
+    libegl1-mesa-dev \
+    libgles2-mesa-dev && \
+    rm -rf /var/lib/apt/lists/*
 
 # Set timezone info
 RUN apt-get update && apt-get install -y \
-  tzdata \
-  software-properties-common \
-  && rm -rf /var/lib/apt/lists/* \
-  && ln -fs /usr/share/zoneinfo/America/Los_Angeles /etc/localtime \
-  && echo "America/Los_Angeles" > /etc/timezone \
-  && dpkg-reconfigure -f noninteractive tzdata \
-  && add-apt-repository -y ppa:git-core/ppa \
-  && apt-get update && apt-get install -y \
-  curl \
-  lsb-core \
-  wget \
-  build-essential \
-  cmake \
-  git \
-  git-lfs \
-  iputils-ping \
-  make \
-  openssh-server \
-  openssh-client \
-  libeigen3-dev \
-  libssl-dev \
-  python3-pip \
-  python3-ipdb \
-  python3-tk \
-  python3-wstool \
-  sudo git bash unattended-upgrades \
-  apt-utils \
-  terminator \
-  && rm -rf /var/lib/apt/lists/*
+    tzdata \
+    software-properties-common \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -fs /usr/share/zoneinfo/America/Los_Angeles /etc/localtime \
+    && echo "America/Los_Angeles" > /etc/timezone \
+    && dpkg-reconfigure -f noninteractive tzdata \
+    && add-apt-repository -y ppa:git-core/ppa \
+    && apt-get update && apt-get install -y \
+    curl \
+    lsb-core \
+    wget \
+    build-essential \
+    cmake \
+    git \
+    git-lfs \
+    iputils-ping \
+    make \
+    openssh-server \
+    openssh-client \
+    libeigen3-dev \
+    libssl-dev \
+    python3-pip \
+    python3-ipdb \
+    python3-tk \
+    python3-wstool \
+    sudo git bash unattended-upgrades \
+    apt-utils \
+    terminator \
+    && rm -rf /var/lib/apt/lists/*
 
 
 # https://catalog.ngc.nvidia.com/orgs/nvidia/containers/cudagl
@@ -100,9 +103,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     vulkan-utils \
     ffmpeg \ 
-&& apt-get -y autoremove \
-&& apt-get clean autoclean \
-&& rm -rf /var/lib/apt/lists/*
+    && apt-get -y autoremove \
+    && apt-get clean autoclean \
+    && rm -rf /var/lib/apt/lists/*
 
 
 # Download the Vulkan SDK and extract the headers, loaders, layers and binary utilities
@@ -133,15 +136,15 @@ ENV NVIDIA_VISIBLE_DEVICES=all NVIDIA_DRIVER_CAPABILITIES=all
 
 # Open ports for live streaming
 EXPOSE 47995-48012/udp \
-       47995-48012/tcp \
-       49000-49007/udp \
-       49000-49007/tcp \
-       49100/tcp \
-       8011/tcp \
-       8012/tcp \
-       8211/tcp \
-       8899/tcp \
-       8891/tcp
+    47995-48012/tcp \
+    49000-49007/udp \
+    49000-49007/tcp \
+    49100/tcp \
+    8011/tcp \
+    8012/tcp \
+    8211/tcp \
+    8899/tcp \
+    8891/tcp
 
 ENV OMNI_SERVER=http://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/${ISAAC_SIM_VERSION}
 # ENV OMNI_SERVER omniverse://localhost/NVIDIA/Assets/Isaac/2022.1
@@ -184,7 +187,7 @@ COPY third_party/curobo /pkgs/automoma-docker/third_party/curobo
 RUN find /pkgs/automoma-docker/third_party/curobo/src/curobo/curobolib/ -type f -name "*.so" -delete || true
 # confirm that the .so files are deleted, else exit 1
 RUN if find /pkgs/automoma-docker/third_party/curobo/src/curobo/curobolib/ -type f -name "*.so" | grep -q .; then \
-      exit 1; \
+    exit 1; \
     fi
 # RUN cd /pkgs/automoma-docker && git clone https://github.com/NVlabs/curobo.git
 # RUN mkdir /pkgs && cd /pkgs && git clone https://github.com/NVlabs/curobo.git
