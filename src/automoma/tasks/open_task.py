@@ -769,9 +769,8 @@ class OpenTask(BaseTask):
             obs_data["task"] = self.name
             dataset_wrapper.add(obs_data)
             
-        self.env.sim.step(-1)
-        
         dataset_wrapper.save()
+        print(f"Recorded trajectory with {len(trajectory)} steps")
         return True
     
     # ==================== Evaluation Pipeline ====================
