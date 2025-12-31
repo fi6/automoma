@@ -10,7 +10,7 @@
 ##
 ARG DEBIAN_FRONTEND=noninteractive
 ARG BASE_DIST=ubuntu22.04
-ARG CUDA_VERSION=11.8.0
+ARG CUDA_VERSION=12.6.3
 ARG ISAAC_SIM_VERSION=4.2.0
 
 
@@ -20,7 +20,7 @@ FROM nvcr.io/nvidia/isaac-sim:${ISAAC_SIM_VERSION} AS isaac-sim
 
 
 # this does not work for 2022.2.1
-FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-cudnn8-devel-${BASE_DIST}
+FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-cudnn-devel-${BASE_DIST}
 
 LABEL maintainer "User Name"
 
@@ -99,6 +99,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl1.1 \
     wget \
     vulkan-utils \
+    ffmpeg \ 
 && apt-get -y autoremove \
 && apt-get clean autoclean \
 && rm -rf /var/lib/apt/lists/*
@@ -192,6 +193,10 @@ RUN $omni_python -m pip install ninja wheel tomli
 RUN $omni_python -m pip install -U pip setuptools setuptools-scm==9.2.0
 
 
+COPY third_party/lerobot /pkgs/automoma-docker/third_party/lerobot
+RUN cd /pkgs/automoma-docker/third_party/lerobot && $omni_python -m pip install .
+
+
 RUN cd /pkgs/automoma-docker/third_party/curobo && SETUPTOOLS_SCM_PRETEND_VERSION=0.0.1 $omni_python -m pip install .[dev] --no-build-isolation
 WORKDIR /pkgs/automoma-docker
 
@@ -272,8 +277,6 @@ RUN apt-get update && \
 # install cuakr
 # RUN $omni_python -m pip install colorlog==6.9.0 pyglet==1.5.31 scikit-learn==1.6.1 matplotlib==3.10.0 zstandard fpsample==0.3.3 pandas==2.3.3
 
-COPY third_party/lerobot /pkgs/automoma-docker/third_party/lerobot
-RUN cd /pkgs/automoma-docker/third_party/lerobot && $omni_python -m pip install .
 
 # install automoma
 COPY src /pkgs/automoma-docker/src
@@ -281,6 +284,8 @@ COPY pyproject.toml /pkgs/automoma-docker/pyproject.toml
 COPY README.md /pkgs/automoma-docker/README.md
 COPY LICENSE /pkgs/automoma-docker/LICENSE
 RUN cd /pkgs/automoma-docker && $omni_python -m pip install .
+
+RUN $omni_python -m pip install numpy==1.26.4
 
 RUN ln -s /pkgs/automoma-docker/assets /isaac-sim/kit/python/lib/python3.10/assets
 

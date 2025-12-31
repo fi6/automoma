@@ -9,7 +9,7 @@
 ## without an express license agreement from NVIDIA CORPORATION or
 ## its affiliates is strictly prohibited.
 ##
-mkdir -p $(pwd)/output/automoma-docker-$1
+mkdir -p $(pwd)/data/automoma-docker-$1
 mkdir -p $(pwd)/logs/automoma-docker-$1
 
 
@@ -17,7 +17,8 @@ docker run --name automoma_$1 --entrypoint bash -it --rm \
     --gpus all \
     --mount type=bind,source=$(pwd)/scripts,target=/pkgs/automoma-docker/scripts,readonly=true \
     --mount type=bind,source=$(pwd)/assets,target=/pkgs/automoma-docker/assets,readonly=true \
-    --volume $(pwd)/output/automoma-docker-$1:/pkgs/automoma-docker/output:rw \
+    --mount type=bind,source=$(pwd)/configs,target=/pkgs/automoma-docker/configs,readonly=true \
+    --volume $(pwd)/data/automoma-docker-$1:/pkgs/automoma-docker/data:rw \
     --volume $(pwd)/logs/automoma-docker-$1:/pkgs/automoma-docker/logs:rw \
     -e "ACCEPT_EULA=Y" \
     -e "PRIVACY_CONSENT=Y"  \

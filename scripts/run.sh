@@ -13,8 +13,8 @@ SCENES=(
     "scene_24_seed_24" "scene_25_seed_25" "scene_27_seed_27" "scene_28_seed_28" "scene_29_seed_29" 
     "scene_30_seed_30" "scene_31_seed_31" "scene_32_seed_32" "scene_33_seed_33" "scene_34_seed_34" 
     "scene_35_seed_35" "scene_36_seed_36" "scene_38_seed_38" "scene_39_seed_39" "scene_40_seed_40" 
-    "scene_41_seed_41" "scene_42_seed_42" "scene_43_seed_43" "scene_44_seed_44" "scene_45_seed_45" 
-    "scene_46_seed_46" "scene_47_seed_47" "scene_48_seed_48" "scene_52_seed_52" "scene_53_seed_53"
+    # "scene_41_seed_41" "scene_42_seed_42" "scene_43_seed_43" "scene_44_seed_44" "scene_45_seed_45" 
+    # "scene_46_seed_46" "scene_47_seed_47" "scene_48_seed_48" "scene_52_seed_52" "scene_53_seed_53"
 )
 
 TIMEOUT_DURATION="100m"

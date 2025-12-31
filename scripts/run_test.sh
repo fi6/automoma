@@ -14,7 +14,7 @@ SCENES=(
     "scene_20_seed_20"
 )
 
-TIMEOUT_DURATION="5m"
+TIMEOUT_DURATION="2m"
 EXP_NAME="multi_object_open"
 MAX_EPISODES=5
 
@@ -24,7 +24,7 @@ run_plan() {
     local scene=$1
     local obj=$2
     echo "[PLAN] Processing Scene: $scene, Object: $obj"
-    timeout $TIMEOUT_DURATION python scripts/pipeline/1_generate_plans.py \
+    timeout $TIMEOUT_DURATION /isaac-sim/python.sh scripts/pipeline/1_generate_plans.py \
         --exp "$EXP_NAME" \
         --scene "$scene" \
         --object "$obj"
@@ -38,7 +38,7 @@ run_record() {
     local scene=$1
     local obj=$2
     echo "[RECORD] Rendering Scene: $scene, Object: $obj"
-    python scripts/pipeline/2_render_dataset.py \
+    /isaac-sim/python.sh scripts/pipeline/2_render_dataset.py \
         --exp "$EXP_NAME" \
         --scene "$scene" \
         --object "$obj" \
