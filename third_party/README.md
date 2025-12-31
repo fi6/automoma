@@ -1,2 +1,2 @@
 # third party folder
-install third party repos here(cuakr, curobo, ...)
+install third party repos here(curobo, lerobot ...)

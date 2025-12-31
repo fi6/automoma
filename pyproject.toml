@@ -5,40 +5,48 @@ build-backend = "flit_core.buildapi"
 [project]
 name = "automoma"
 authors = [
-    {name = "Your name", email = "your.email@example.com"},
+    {name = "Xinhai Chang"},
 ]
 description = "A Python package for robot trajectory generation and simulation"
 readme = "README.md"
 requires-python = ">=3.8"
 dynamic = ["version"]
 dependencies = [
+    # Core numerical stack
     "numpy",
-    "torch",
     "scipy",
+    "torch",
+    # Config / I/O
     "PyYAML",
-    "h5py",
-    "ipywidgets",
     "tqdm",
-    "matplotlib",
-    "opencv-python",
-    "gymnasium",
-    "pandas",
-    "tensordict",
+    # Optional dataset converters import these lazily, but they are common enough
+    # to keep in the base install.
+    "h5py",
+    "zarr",
+    "scikit-learn",
 ]
 
 [project.optional-dependencies]
 plan = [
-    "nvidia-curobo",
+    # Motion planning backend
     "yourdfpy",
     "omegaconf",
     "hydra-core",
 ]
+
 record = [
-    "isaacsim",
-    "scene-synthesizer[recommend]",
-    "warp-lang",
+    # Isaac Sim stack (usually provided by the Isaac Sim container environment)
     "trimesh",
+    "warp-lang",
+    "usd-core"
 ]
+
+eval = [
+    # Policy evaluation + dataset wrappers
+    "lerobot",
+    "omegaconf",
+]
+
 dev = [
     "pytest>=6.0",
     "black>=22.0",

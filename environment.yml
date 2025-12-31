@@ -1,0 +1,23 @@
+name: automoma
+channels:
+  - conda-forge
+dependencies:
+  # Keep this environment lightweight and reproducible.
+  - python=3.10
+  - pip
+  - numpy
+  - scipy
+  - pyyaml
+  - tqdm
+  - h5py
+  - zarr
+  - pip:
+      # CPU torch by default; if you need CUDA, install the appropriate torch build.
+      - torch
+      - -e .
+
+      # Optional extras (uncomment as needed):
+      # - -e .[dev]
+      # - -e .[plan]
+      # - -e .[eval]
+      # - -e .[record]
