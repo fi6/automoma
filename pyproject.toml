@@ -5,199 +5,64 @@ build-backend = "flit_core.buildapi"
 [project]
 name = "automoma"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"},
+    {name = "Your name", email = "your.email@example.com"},
 ]
-description = "A Python package for robot trajectory generation using curobo as planner"
+description = "A Python package for robot trajectory generation and simulation"
 readme = "README.md"
-license = {file = "LICENSE"}
 requires-python = ">=3.8"
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
-    "Topic :: Scientific/Engineering :: Physics",
-    "Topic :: Software Development :: Libraries :: Python Modules",
-]
+dynamic = ["version"]
 dependencies = [
     "numpy",
     "torch",
     "scipy",
     "PyYAML",
-    "scene-synthesizer[recommend]",
     "h5py",
-    "ipywidgets"
+    "ipywidgets",
+    "tqdm",
+    "matplotlib",
+    "opencv-python",
+    "gymnasium",
+    "pandas",
+    "tensordict",
 ]
-dynamic = ["version"]
 
 [project.optional-dependencies]
+plan = [
+    "nvidia-curobo",
+    "yourdfpy",
+    "omegaconf",
+    "hydra-core",
+]
+record = [
+    "isaacsim",
+    "scene-synthesizer[recommend]",
+    "warp-lang",
+    "trimesh",
+]
 dev = [
     "pytest>=6.0",
-    "pytest-cov>=2.0",
     "black>=22.0",
     "isort>=5.0",
     "flake8>=4.0",
     "pylint>=2.12",
     "mypy>=0.910",
-    "sphinx>=4.0",
-    "sphinx-rtd-theme>=1.0",
-    "pre-commit>=2.15",
-]
-docs = [
-    "sphinx>=4.0",
-    "sphinx-rtd-theme>=1.0",
-    "sphinx-autodoc-typehints>=1.12",
-]
-testing = [
-    "pytest>=6.0",
-    "pytest-cov>=2.0",
-    "pytest-mock>=3.6",
-    "pytest-xdist>=2.4",
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/automoma"
-Documentation = "https://automoma.readthedocs.io/"
-Repository = "https://github.com/yourusername/automoma.git"
-"Bug Tracker" = "https://github.com/yourusername/automoma/issues"
+Repository = "https://github.com/chang-xinhai/AutoMoMa.git"
+
+[tool.flit.module]
+name = "automoma"
 
 [tool.black]
 line-length = 120
 target-version = ['py38']
 include = '\.pyi?$'
-extend-exclude = '''
-/(
-  # directories
-  \.eggs
-  | \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | _build
-  | buck-out
-  | build
-  | dist
-)/
-'''
 
 [tool.isort]
 profile = "black"
 line_length = 120
-multi_line_output = 3
-include_trailing_comma = true
-force_grid_wrap = 0
-use_parentheses = true
-ensure_newline_before_comments = true
 
 [tool.pytest.ini_options]
-minversion = "6.0"
-addopts = [
-    "-ra",
-    "--strict-markers",
-    "--strict-config",
-    "--cov=automoma",
-    "--cov-report=term-missing",
-    "--cov-report=html",
-    "--cov-report=xml",
-    "--junit-xml=tests/junit.xml",
-]
 testpaths = ["tests"]
-python_files = ["test_*.py", "*_test.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests",
-    "unit: marks tests as unit tests",
-    "gpu: marks tests as requiring GPU",
-    "robot: marks tests as requiring robot hardware",
-]
-
-[tool.coverage.run]
-source = ["src"]
-branch = true
-omit = [
-    "*/tests/*",
-    "*/test_*",
-    "*/__pycache__/*",
-    "*/.*",
-]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "if self.debug:",
-    "if settings.DEBUG",
-    "raise AssertionError",
-    "raise NotImplementedError",
-    "if 0:",
-    "if __name__ == .__main__.:",
-    "class .*\\bProtocol\\):",
-    "@(abc\\.)?abstractmethod",
-]
-
-[tool.mypy]
-python_version = "3.8"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
-disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
-strict_equality = true
-show_error_codes = true
-
-[[tool.mypy.overrides]]
-module = [
-    "curobo.*",
-    "torch.*",
-    "scipy.*",
-]
-ignore_missing_imports = true
-
-[tool.pylint.messages_control]
-disable = [
-    "too-few-public-methods",
-    "too-many-arguments",
-    "too-many-instance-attributes",
-    "import-error",
-    "no-name-in-module",
-]
-
-[tool.pylint.format]
-max-line-length = 120
-
-[tool.pylint.design]
-max-args = 8
-max-attributes = 12
-max-public-methods = 25
-
-[tool.flake8]
-max-line-length = 120
-extend-ignore = [
-    "E203",  # whitespace before ':'
-    "W503",  # line break before binary operator
-]
-exclude = [
-    ".git",
-    "__pycache__",
-    "docs/source/conf.py",
-    "old",
-    "build",
-    "dist",
-    ".eggs",
-    "*.egg",
-]
+python_files = ["test_*.py"]

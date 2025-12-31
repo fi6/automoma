@@ -1,0 +1,81 @@
+# Training Configuration for Single Object Open Test Experiment
+# Configuration for training DP (Diffusion Policy) and ACT models
+
+# =============================================================================
+# Experiment Info
+# =============================================================================
+info_cfg:
+  task: "single_object_open_test"
+  robot: "summit_franka"
+  description: "Train diffusion policy and ACT for single object open test"
+
+# =============================================================================
+# Train Configuration
+# =============================================================================
+train_cfg:
+  # Dataset info
+  dataset_repo_id: "single_object_open_test"
+  dataset_root: "data/single_object_open_test/lerobot/single_object_open_test"
+  
+  # Training parameters
+  batch_size: 128
+  steps: 10000
+  log_freq: 50
+  eval_freq: 500
+  save_freq: 1000
+  
+  # Job naming
+  job_name: "act_single_object_open_test"
+  
+  # Output
+  output_dir: "outputs/train/act_single_object_open_test"
+  
+  # Wandb
+  wandb_enable: true
+  wandb_project: "automoma"
+  wandb_entity: null
+
+# =============================================================================
+# Policy Configuration
+# =============================================================================
+policy_cfg:
+  # ACT Policy
+  act:
+    type: "act"
+    chunk_size: 16
+    n_action_steps: 16
+    optimizer_lr: 1.0e-4
+    push_to_hub: false
+    device: "cuda"
+    
+    # Additional ACT-specific parameters
+    hidden_dim: 512
+    dim_feedforward: 3200
+    num_encoder_layers: 4
+    num_decoder_layers: 7
+    nheads: 8
+    dropout: 0.1
+    kl_weight: 10.0
+    
+  # Diffusion Policy
+  diffusion:
+    type: "diffusion"
+    n_obs_steps: 2
+    n_action_steps: 8
+    horizon: 16
+    optimizer_lr: 1.0e-4
+    push_to_hub: false
+    device: "cuda"
+    
+    # Additional Diffusion-specific parameters
+    num_inference_steps: 10
+    down_dims: [256, 512, 1024]
+    kernel_size: 5
+    n_groups: 8
+    
+  # Pi0 Policy (placeholder for future)
+  pi0:
+    type: "pi0"
+    optimizer_lr: 1.0e-4
+    push_to_hub: false
+    device: "cuda"

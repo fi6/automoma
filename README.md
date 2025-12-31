@@ -1,252 +1,360 @@
-# Automoma
+# AutoMoMa
 
-A Python package for robot trajectory generation using curobo as a motion planner. Automoma takes object, task, scene, and robot descriptions as input and generates optimized robot trajectories.
+A comprehensive Python framework for automated robot motion planning, trajectory generation, and manipulation task execution. AutoMoMa provides a complete pipeline for data planning, data recording, model training, and policy evaluation.
 
 ## Features
 
-- **Multi-input Planning**: Accepts object, task, scene, and robot configurations
-- **Curobo Integration**: Leverages NVIDIA's curobo for efficient motion planning
-- **Trajectory Optimization**: Generates collision-free, optimized robot trajectories
-- **Modular Design**: Clean separation of concerns with dedicated modules for each input type
-- **Type Safety**: Full type annotations for better development experience
-- **Extensible**: Easy to extend with custom objects, tasks, and robots
+- **Motion Planning**: Collision-aware trajectory planning using cuRobo (no Isaac Sim required)
+- **Data Generation**: Automated IK solving and trajectory optimization
+- **Data Recording**: Record manipulation demonstrations in LeRobot format
+- **Policy Training**: Train diffusion policies (DP) and ACT models for manipulation tasks
+- **Policy Evaluation**: Evaluate policies with async LeRobot communication
+- **Simulation**: Isaac Sim integration for realistic robot simulation (lazy-loaded)
+
+## Project Structure
+
+```
+AutoMoMa/
+├── configs/                    # Configuration files
+│   ├── config.yaml            # Base configuration
+│   └── exps/                  # Experiment configurations
+│       ├── multi_object_open/
+│       │   ├── plan.yaml      # Planning config
+│       │   ├── record.yaml    # Recording config
+│       │   ├── train.yaml     # Training config
+│       │   └── eval.yaml      # Evaluation config
+│       └── single_object_open_test/  # Test experiment
+│           ├── plan.yaml
+│           ├── record.yaml
+│           ├── train.yaml     # Supports DP and ACT
+│           └── eval.yaml
+├── scripts/
+│   ├── pipeline/              # Main pipeline scripts
+│   │   ├── 1_generate_plans.py
+│   │   ├── 2_render_dataset.py
+│   │   ├── 3_train.py
+│   │   └── 4_evaluate.py
+│   └── example/               # Example scripts
+├── src/automoma/              # Source code
+│   ├── core/                  # Core types and interfaces
+│   ├── planning/              # Motion planning modules
+│   ├── datasets/              # Dataset handling
+│   ├── evaluation/            # Policy evaluation
+│   ├── simulation/            # Isaac Sim integration (lazy-loaded)
+│   ├── tasks/                 # Task definitions
+│   └── utils/                 # Utility functions
+├── third_party/               # Third-party dependencies
+│   ├── lerobot/              # LeRobot library
+│   └── curobo/               # cuRobo motion planning
+└── assets/                    # Robot and scene assets
+```
 
 ## Installation
 
-### From PyPI (when available)
+### Prerequisites
 
+- Python 3.10+
+- CUDA 12.1+
+- Isaac Sim 2023.1+ (for simulation, not required for planning)
+
+### Setup
+
+1. Clone the repository:
 ```bash
-pip install automoma
+git clone https://github.com/chang-xinhai/AutoMoMa.git
+cd AutoMoMa
+git submodule update --init --recursive
 ```
 
-### From Source
-
+2. Create conda environment:
 ```bash
-git clone https://github.com/yourusername/automoma.git
-cd automoma
+conda env create -f environment.yaml
+conda activate automoma
+```
+
+3. Install the package:
+```bash
 pip install -e .
 ```
 
-### Development Installation
-
+4. Install optional dependencies:
 ```bash
-git clone https://github.com/yourusername/automoma.git
-cd automoma
+# For planning
+pip install -e ".[plan]"
+
+# For recording (requires Isaac Sim)
+pip install -e ".[record]"
+
+# For development
 pip install -e ".[dev]"
 ```
 
-### Curobo
-
-```
-pip install isaacsim==4.2.0.2 isaacsim-extscache-physics==4.2.0.2 isaacsim-extscache-kit==4.2.0.2 isaacsim-extscache-kit-sdk==4.2.0.2 --extra-index-url https://pypi.nvidia.com
-
-cd third_party
-git clone https://github.com/fi6/curobo.git
-
-pip install tomli wheel ninja
-pip install -U setuptools pip
-pip install -e "./third_party/curobo[isaacsim]" --no-build-isolation
-```
-
-### Cuakr
-```
-cd third_party
-git clone https://github.com/fi6/cuakr.git
-
-pip install -e "./third_party/cuakr"
-```
-
-
 ## Quick Start
 
+### Using Experiment Configs
+
+All scripts support the `--exp` argument to load experiment-specific configurations:
+
+```bash
+# Run the full pipeline with experiment name
+python scripts/pipeline/1_generate_plans.py --exp multi_object_open
+python scripts/pipeline/2_render_dataset.py --exp multi_object_open
+python scripts/pipeline/3_train.py --exp multi_object_open
+python scripts/pipeline/4_evaluate.py --exp multi_object_open
+```
+
+### 1. Generate Motion Plans (No Isaac Sim Required)
+
+```bash
+python scripts/pipeline/1_generate_plans.py --exp multi_object_open
+# Or filter by scene/object:
+python scripts/pipeline/1_generate_plans.py --exp multi_object_open --scene scene_0_seed_0 --object 7221
+```
+
+This script:
+- Loads scene and object configurations
+- Computes IK solutions for grasp poses
+- Plans trajectories for articulated manipulation
+- Filters and saves valid trajectories
+
+**Note**: This script uses only cuRobo and does NOT require Isaac Sim!
+
+### 2. Render Dataset (Requires Isaac Sim)
+
+```bash
+python scripts/pipeline/2_render_dataset.py --exp multi_object_open
+# Run headless:
+python scripts/pipeline/2_render_dataset.py --exp multi_object_open --headless
+```
+
+This script:
+- Initializes SimulationApp (only once)
+- Loads planned trajectories
+- Replays them in Isaac Sim
+- Records camera observations
+- Saves data in LeRobot format
+
+### 3. Train Policy
+
+```bash
+python scripts/pipeline/3_train.py --exp multi_object_open
+# Or use single_object_open_test for quick testing:
+python scripts/pipeline/3_train.py --exp single_object_open_test
+```
+
+This script:
+- Loads the LeRobot dataset
+- Configures the diffusion policy or ACT model
+- Trains the model
+- Saves checkpoints
+
+### 4. Evaluate Policy (Requires Isaac Sim)
+
+```bash
+python scripts/pipeline/4_evaluate.py --exp multi_object_open
+# Run headless:
+python scripts/pipeline/4_evaluate.py --exp multi_object_open --headless
+```
+
+This script:
+- Initializes SimulationApp (only once)
+- Loads the trained checkpoint
+- Runs policy inference with async communication
+- Computes evaluation metrics
+- Generates evaluation reports
+
+## Isaac Sim Integration
+
+AutoMoMa uses lazy-loading for Isaac Sim modules. This means:
+
+1. **Planning scripts do NOT load Isaac Sim** - They only use cuRobo and can run without Isaac Sim installed
+2. **Simulation modules require explicit initialization** - SimulationApp is initialized only once per process
+
+### Using SimulationApp
+
+For scripts that need Isaac Sim, use the `get_simulation_app()` function:
+
 ```python
-from automoma import AutomomaPlanner
-from automoma.objects import ObjectDescription
-from automoma.tasks import TaskDescription
-from automoma.scenes import SceneDescription
-from automoma.robots import RobotDescription
+# First, initialize SimulationApp (do this ONCE at the start)
+from automoma.simulation import get_simulation_app
 
-# Define your robot
-robot = RobotDescription(
-    name="ur5e",
-    urdf_path="path/to/ur5e.urdf",
-    # ... other robot parameters
+sim_app = get_simulation_app(headless=False, width=1920, height=1080)
+
+# Now you can import and use simulation modules
+from automoma.simulation.env_wrapper import SimEnvWrapper
+
+env = SimEnvWrapper(cfg)
+env.setup_env()
+```
+
+### Checking SimulationApp Status
+
+```python
+from automoma.simulation import is_sim_app_initialized, require_simulation_app
+
+if not is_sim_app_initialized():
+    sim_app = get_simulation_app(headless=True)
+
+# Or raise an error if not initialized:
+require_simulation_app()  # Raises RuntimeError if not initialized
+```
+
+## Configuration
+
+### Experiment-Based Configuration
+
+AutoMoMa uses a hierarchical configuration system:
+
+1. **Base config** (`configs/config.yaml`): Default values
+2. **Experiment config** (`configs/exps/{exp_name}/*.yaml`): Overrides for specific experiments
+
+Access config values with attribute-style access (no `.get()` needed):
+
+```python
+from automoma import load_config
+
+cfg = load_config("multi_object_open")
+num_grasps = cfg.plan_cfg.num_grasps  # Attribute-style access
+task_name = cfg.info_cfg.task
+```
+
+### Planning Configuration
+
+```yaml
+plan_cfg:
+  voxel_dims: [5.0, 5.0, 5.0]
+  voxel_size: 0.02
+  collision_checker_type: VOXEL
+  cluster:
+    ap_fallback_clusters: 50
+  plan_traj:
+    stage_type: MOVE_ARTICULATED
+    batch_size: 10
+```
+
+### Recording Configuration
+
+```yaml
+dataset_cfg:
+  repo_id: "automoma/multi_object_open"
+  fps: 15
+  use_videos: true
+camera_cfg:
+  names: [ego_topdown, ego_wrist, fix_local]
+```
+
+### Training Configuration (DP and ACT)
+
+```yaml
+# Diffusion Policy
+policy:
+  type: diffusion
+  n_action_steps: 8
+  horizon: 16
+
+# Or Action Chunking Transformer (ACT)
+policy:
+  type: act
+  chunk_size: 100
+  kl_weight: 10.0
+```
+
+### Evaluation Configuration
+
+```yaml
+evaluation:
+  num_episodes: 50
+  success_threshold: 0.05
+async_inference:
+  enabled: true
+```
+
+## API Usage
+
+### Planning (No Isaac Sim)
+
+```python
+from automoma.planning import PlanningPipeline
+
+pipeline = PlanningPipeline(plan_cfg)
+pipeline.setup(scene_cfg, object_cfg, robot_cfg_path)
+results = pipeline.run_full_pipeline(...)
+```
+
+### Dataset Recording (Requires Isaac Sim)
+
+```python
+from automoma.simulation import get_simulation_app
+sim_app = get_simulation_app(headless=True)
+
+from automoma.datasets import LeRobotDatasetWrapper
+
+dataset = LeRobotDatasetWrapper(cfg)
+dataset.create()
+dataset.add(frame_data)
+dataset.save()
+dataset.close()
+```
+
+### Policy Evaluation
+
+```python
+from automoma.evaluation import PolicyRunner, get_model
+
+# Get async model client
+model = get_model(
+    checkpoint_path="model.pt",
+    policy_type="diffusion",
+    async_mode=True
 )
 
-# Define the scene
-scene = SceneDescription(
-    obstacles=[...],
-    workspace_bounds=[...],
-    # ... other scene parameters
+# Run inference
+response = model.infer_sync(observation)
+action = response.action
+```
+
+## Async Model Communication
+
+AutoMoMa uses an asynchronous communication mechanism for policy inference, compatible with LeRobot:
+
+```python
+from automoma.evaluation import LeRobotModelClient
+
+client = LeRobotModelClient(
+    checkpoint_path="model.pt",
+    device="cuda"
 )
+client.load_model()
+client.start()  # Start async worker
 
-# Define objects to manipulate
-objects = [
-    ObjectDescription(
-        name="box",
-        mesh_path="path/to/box.obj",
-        pose=[0.5, 0.0, 0.1, 0, 0, 0, 1],  # [x, y, z, qx, qy, qz, qw]
-    )
-]
+# Non-blocking inference
+request_id = client.submit_request(observation)
+response = client.get_response(request_id)
 
-# Define the task
-task = TaskDescription(
-    task_type="pick_and_place",
-    target_object="box",
-    goal_pose=[0.3, 0.3, 0.1, 0, 0, 0, 1],
-    # ... other task parameters
-)
-
-# Create planner and generate trajectory
-planner = AutomomaPlanner()
-trajectory = planner.plan(
-    robot=robot,
-    scene=scene,
-    objects=objects,
-    task=task
-)
-
-# Execute or visualize trajectory
-print(f"Generated trajectory with {len(trajectory.waypoints)} waypoints")
+# Cleanup
+client.stop()
 ```
 
-## Project Organization
+## Supported Tasks
 
-```
-automoma/
-├── src/
-│   └── automoma/
-│       ├── __init__.py          # Main package interface
-│       ├── planner/             # Core planning module
-│       │   ├── __init__.py
-│       │   ├── automoma_planner.py
-│       │   └── trajectory.py
-│       ├── objects/             # Object description and handling
-│       │   ├── __init__.py
-│       │   ├── object_description.py
-│       │   └── object_manager.py
-│       ├── tasks/               # Task definition and processing
-│       │   ├── __init__.py
-│       │   ├── task_description.py
-│       │   └── task_processor.py
-│       ├── scenes/              # Scene representation and management
-│       │   ├── __init__.py
-│       │   ├── scene_description.py
-│       │   └── scene_manager.py
-│       ├── robots/              # Robot configuration and kinematics
-│       │   ├── __init__.py
-│       │   ├── robot_description.py
-│       │   └── robot_manager.py
-│       ├── curobo_interface/    # Curobo integration
-│       │   ├── __init__.py
-│       │   ├── planner_wrapper.py
-│       │   └── config_converter.py
-│       └── utils/               # Utility functions
-│           ├── __init__.py
-│           ├── transforms.py
-│           ├── validation.py
-│           └── visualization.py
-├── tests/                       # Test suite
-│   ├── __init__.py
-│   ├── conftest.py
-│   ├── test_planner/
-│   ├── test_objects/
-│   ├── test_tasks/
-│   ├── test_scenes/
-│   ├── test_robots/
-│   ├── test_curobo_interface/
-│   └── test_utils/
-├── docs/                        # Documentation
-│   ├── source/
-│   │   ├── conf.py
-│   │   ├── index.rst
-│   │   └── api/
-│   ├── Makefile
-│   └── make.bat
-├── examples/                    # Example scripts and notebooks
-│   ├── basic_usage.py
-│   ├── pick_and_place.py
-│   └── multi_robot.py
-├── .github/
-│   └── workflows/
-│       └── ci.yml
-├── .devcontainer/
-│   ├── devcontainer.json
-│   └── Dockerfile
-├── .vscode/
-│   └── settings.json
-├── pyproject.toml
-├── README.md
-├── LICENSE
-└── .gitignore
-```
+- **Pick and Place**: Pick up objects and place at target locations
+- **Reach and Open**: Reach handles and open articulated objects (doors, drawers, etc.)
 
-## Development
+## Experiments
 
-### Setting up Development Environment
+### multi_object_open
+Full experiment with multiple objects (7221, 11622, 101773) and scenes.
 
-1. Clone the repository
-2. Install development dependencies: `pip install -e ".[dev]"`
-3. Install pre-commit hooks: `pre-commit install`
-4. Run tests: `pytest`
-
-### Running Tests
-
-```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=automoma --cov-report=html
-
-# Run specific test categories
-pytest -m unit           # Unit tests only
-pytest -m integration    # Integration tests only
-pytest -m "not slow"     # Skip slow tests
-```
-
-### Code Quality
-
-This project uses several tools to maintain code quality:
-
-- **Black**: Code formatting
-- **isort**: Import sorting
-- **flake8**: Linting
-- **mypy**: Type checking
-- **pylint**: Additional linting
-
-Run all checks:
-
-```bash
-pre-commit run --all-files
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature-name`
-3. Make your changes and add tests
-4. Ensure all tests pass and code quality checks pass
-5. Submit a pull request
+### single_object_open_test
+Quick test experiment with:
+- **Object**: 7221 only
+- **Training scenes**: scene_0_seed_0, scene_1_seed_1
+- **Test scenes**: scene_0_seed_0, scene_1_seed_1, scene_40_seed_40
+- **Models**: Supports both DP and ACT
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Acknowledgments
-
-- [NVIDIA curobo](https://github.com/NVlabs/curobo) for the underlying motion planning
-- The robotics community for inspiration and best practices
+MIT License
 
 ## Citation
 
-If you use Automoma in your research, please cite:
-
-```bibtex
-@software{automoma,
-  title={Automoma: Robot Trajectory Generation with Curobo},
-  author={Your Name},
-  year={2025},
-  url={https://github.com/yourusername/automoma}
-}
-```

@@ -5,10 +5,9 @@
 	path = third_party/curobo
 	url = https://github.com/fi6/curobo.git
 	# branch = develop
-[submodule "third_party/cuakr"]
-	path = third_party/cuakr
-	url = https://github.com/fi6/cuakr.git
-	branch = develop
-[submodule "baseline/RoboTwin"]
-	path = baseline/RoboTwin
+[submodule "policy/RoboTwin"]
+	path = policy/RoboTwin
 	url = https://github.com/chang-xinhai/RoboTwin.git
+[submodule "third_party/lerobot"]
+    path = third_party/lerobot
+    url = https://github.com/chang-xinhai/lerobot.git
