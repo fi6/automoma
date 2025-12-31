@@ -2,19 +2,19 @@
 
 # --- CONFIGURATION ---
 # Set what to run: ("PLAN" "RECORD") or just ("PLAN") or just ("RECORD")
-# RUNNING=("PLAN" "RECORD")
+RUNNING=("PLAN")
 
-# OBJECTS=("7221" "11622" "103634" "46197" "101773")
+OBJECTS=("7221" "11622" "103634" "46197" "101773")
 
-RUNNING=("RECORD")
+# RUNNING=("RECORD")
 
-OBJECTS=("7221")
+# OBJECTS=("7221")
 
 SCENES=(
     "scene_20_seed_20"
 )
 
-TIMEOUT_DURATION="2m"
+TIMEOUT_DURATION="5m"
 EXP_NAME="multi_object_open"
 MAX_EPISODES=5
 
@@ -24,7 +24,7 @@ run_plan() {
     local scene=$1
     local obj=$2
     echo "[PLAN] Processing Scene: $scene, Object: $obj"
-    timeout $TIMEOUT_DURATION /isaac-sim/python.sh scripts/pipeline/1_generate_plans.py \
+    timeout $TIMEOUT_DURATION python scripts/pipeline/1_generate_plans.py \
         --exp "$EXP_NAME" \
         --scene "$scene" \
         --object "$obj"
@@ -38,7 +38,7 @@ run_record() {
     local scene=$1
     local obj=$2
     echo "[RECORD] Rendering Scene: $scene, Object: $obj"
-    /isaac-sim/python.sh scripts/pipeline/2_render_dataset.py \
+    python scripts/pipeline/2_render_dataset.py \
         --exp "$EXP_NAME" \
         --scene "$scene" \
         --object "$obj" \
@@ -82,18 +82,11 @@ for scene in "${SCENES[@]}"; do
         # Run Planning if in RUNNING array
         if contains_element "PLAN" "${RUNNING[@]}"; then
             run_plan "$scene" "$obj"
-            plan_success=$?
-        else
-            plan_success=0 # Skip check if not running plan
         fi
 
         # Run Recording if in RUNNING array AND (Plan succeeded OR we didn't run Plan)
         if contains_element "RECORD" "${RUNNING[@]}"; then
-            if [ $plan_success -eq 0 ]; then
-                run_record "$scene" "$obj"
-            else
-                echo ">>> Skipping RECORD because PLAN failed/timed out."
-            fi
+            run_record "$scene" "$obj"
         fi
     done
 done

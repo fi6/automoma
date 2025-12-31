@@ -609,11 +609,11 @@ class CuroboPlanner(MotionPlannerInterface):
             
         return TrajResult.cat(all_results)
     def _filter_traj_with_success(self, traj_result: TrajResult, stage_name: str) -> TrajResult:
-        """Helper to filter trajectories by success mask and log progress."""
+        """Helper to log success statistics - no longer filters trajectories."""
         success_mask = traj_result.success.to(torch.bool)
-        filtered_result = traj_result[success_mask]
-        print(f"Filtered {filtered_result.num_samples}/{traj_result.num_samples} successful trajectories for {stage_name} stage.")
-        return filtered_result
+        num_successful = success_mask.sum().item()
+        print(f"{num_successful}/{traj_result.num_samples} successful trajectories for {stage_name} stage.")
+        return traj_result
 
     def _fk_filter(self, js: JointState, pose: Pose, 
                       motion_gen: MotionGen,
@@ -646,23 +646,24 @@ class CuroboPlanner(MotionPlannerInterface):
     def filter_traj_move(self, traj_result: TrajResult, robot_cfg: Dict[str, Any] = None,
                  motion_gen: MotionGen = None,
                  filter_cfg: Dict[str, Any] = None) -> TrajResult:
-        """Filter trajectories for a move stage based on success."""
+        """No additional filtering needed - success mask from planning is sufficient."""
         stage_type = filter_cfg.get("stage_type", StageType.MOVE)
-        return self._filter_traj_with_success(traj_result, stage_type.name)
+        success_mask = traj_result.success.to(torch.bool)
+        num_successful = success_mask.sum().item()
+        print(f"{num_successful}/{traj_result.num_samples} successful trajectories for {stage_type.name} stage.")
+        return traj_result
     
     def filter_traj_move_articulated(self, traj_result: TrajResult, robot_cfg: Dict[str, Any] = None,
                  motion_gen: MotionGen = None,
                  filter_cfg: Dict[str, Any] = None) -> TrajResult:
-        """Filter trajectories for a move_articulated stage based on success and FK validation."""
+        """Filter trajectories for a move_articulated stage - updates success mask based on FK validation."""
         stage_type = filter_cfg.get("stage_type", StageType.MOVE_ARTICULATED)
         
-        # Step 1: filter by success
-        traj_result = self._filter_traj_with_success(traj_result, stage_type.name)
         if traj_result.num_samples == 0:
             return traj_result
             
-        # Step 2: filter by FK validation
-        print(f"Step 2: Starting FK filtering for {stage_type.name}...")
+        # FK validation - update success mask in place
+        print(f"Starting FK filtering for {stage_type.name}...")
         
         # Initialize motion generator
         if motion_gen is None:
@@ -674,12 +675,15 @@ class CuroboPlanner(MotionPlannerInterface):
         self.position_diff_list = []
         self.rotation_diff_list = []
         
-        fk_succ_indices = []
-        
         trajectories = traj_result.trajectories
         goal_positions = traj_result.goal_states
+        success_mask = traj_result.success.clone()  # Clone to avoid modifying shared tensors
         
         for i in tqdm(range(traj_result.num_samples), desc=f"{stage_type.name} FK Filtering"):
+            # Skip if already marked as failed from planning
+            if not success_mask[i]:
+                continue
+                
             # Get goal EE pose as reference
             goal_js = JointState.from_position(self.tensor_args.to_device(goal_positions[i:i+1]))
             goal_ee_pose = motion_gen.ik_solver.fk(goal_js.position).ee_pose
@@ -691,20 +695,23 @@ class CuroboPlanner(MotionPlannerInterface):
                     traj_valid = False
                     break
             
-            if traj_valid:
-                fk_succ_indices.append(i)
+            # Mark as failed if FK validation fails
+            if not traj_valid:
+                success_mask[i] = False
                 
+        # Update success mask
+        traj_result.success = success_mask
+        num_successful = success_mask.sum().item()
+        
         # Log stats
         if self.position_diff_list:
             print(f"Position Diff - Mean: {np.mean(self.position_diff_list):.4f}, Max: {np.max(self.position_diff_list):.4f}")
         if self.rotation_diff_list:
             print(f"Rotation Diff - Mean: {np.mean(self.rotation_diff_list):.4f}, Max: {np.max(self.rotation_diff_list):.4f}")
-            
-        # Filter traj_result
-        filtered_result = traj_result[fk_succ_indices]
-        print(f"Step 2: Filtered from {traj_result.num_samples} to {filtered_result.num_samples} based on FK")
         
-        return filtered_result
+        print(f"FK Filtering: {num_successful}/{traj_result.num_samples} trajectories passed validation")
+        
+        return traj_result
     
     def plan_traj_move_articulated(self, *args, **kwargs): return self.plan_traj_move(*args, **kwargs)
     def plan_traj_reach(self, *args, **kwargs): return self.plan_traj_move(*args, **kwargs)

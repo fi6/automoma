@@ -27,7 +27,7 @@ run_plan() {
     local scene=$1
     local obj=$2
     echo "[PLAN] Processing Scene: $scene, Object: $obj"
-    timeout $TIMEOUT_DURATION python scripts/pipeline/1_generate_plans.py \
+    python scripts/pipeline/1_generate_plans.py \
         --exp "$EXP_NAME" \
         --scene "$scene" \
         --object "$obj"

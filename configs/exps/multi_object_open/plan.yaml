@@ -141,7 +141,7 @@ env_cfg:
       asset_id: '11622'
       scale: 0.6446
       start_angles: [0]
-      goal_angles: [1.404, 0.772, 0.699, 0.571]
+      goal_angles: [0.772, 0.699, 0.571, 0.515]
 
       # Optional: Per-object plan_cfg override
       plan_cfg:
@@ -155,12 +155,12 @@ env_cfg:
       asset_id: '103634'
       scale: 0.4839
       start_angles: [0]
-      goal_angles: [1.741, 1.482, 0.888, 0.761]
+      goal_angles: [1.241, 0.888, 0.761, 0.685]
 
       # Optional: Per-object plan_cfg override
       plan_cfg:
         plan_ik:
-          limit: [50, 50]
+          limit: [100, 100]
 
     '46197':
       path: assets/object/Cabinet/46197/46197_0_scaling.urdf
@@ -169,7 +169,7 @@ env_cfg:
       asset_id: '46197'
       scale: 0.5113
       start_angles: [0]
-      goal_angles: [1.718, 1.376, 1.026, 0.946]
+      goal_angles: [1.718, 1.376, 0.946, 0.628]
 
       # Optional: Per-object plan_cfg override
       plan_cfg:
@@ -183,7 +183,7 @@ env_cfg:
       asset_id: '101773'
       scale: 0.7232
       start_angles: [0]
-      goal_angles: [1.015, 0.81, 0.732, 0.697]
+      goal_angles: [1.015, 0.81, 0.697, 0.497]
 
       # Optional: Per-object plan_cfg override
       plan_cfg:
