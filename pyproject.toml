@@ -24,21 +24,19 @@ dependencies = [
     "h5py",
     "zarr",
     "scikit-learn",
+    "trimesh",
+    "yourdfpy",
+    "usd-core"
+    "omegaconf",
 ]
 
 [project.optional-dependencies]
 plan = [
     # Motion planning backend
-    "yourdfpy",
-    "omegaconf",
-    "hydra-core",
 ]
 
 record = [
     # Isaac Sim stack (usually provided by the Isaac Sim container environment)
-    "trimesh",
-    "warp-lang",
-    "usd-core"
 ]
 
 eval = [

@@ -178,7 +178,7 @@ ARG CACHE_DATE=2024-04-11
 # github
 
 RUN mkdir /pkgs && mkdir /pkgs/automoma-docker && mkdir /pkgs/automoma-docker/third_party
-RUN mkdir /pkgs/automoma-docker/third_party/cuakr
+# RUN mkdir /pkgs/automoma-docker/third_party/cuakr
 COPY third_party/curobo /pkgs/automoma-docker/third_party/curobo
 RUN find /pkgs/automoma-docker/third_party/curobo/src/curobo/curobolib/ -type f -name "*.so" -delete || true
 # confirm that the .so files are deleted, else exit 1
@@ -270,10 +270,10 @@ RUN apt-get update && \
 # RUN $omni_python -m pip install "robometrics[evaluator] @ git+https://github.com/fishbotics/robometrics.git"
 
 # install cuakr
-RUN $omni_python -m pip install colorlog==6.9.0 pyglet==1.5.31 scikit-learn==1.6.1 matplotlib==3.10.0 zstandard fpsample==0.3.3 pandas==2.3.3
+# RUN $omni_python -m pip install colorlog==6.9.0 pyglet==1.5.31 scikit-learn==1.6.1 matplotlib==3.10.0 zstandard fpsample==0.3.3 pandas==2.3.3
 
-COPY third_party/cuakr /pkgs/automoma-docker/third_party/cuakr
-RUN cd /pkgs/automoma-docker/third_party/cuakr && $omni_python -m pip install .
+COPY third_party/lerobot /pkgs/automoma-docker/third_party/lerobot
+RUN cd /pkgs/automoma-docker/third_party/lerobot && $omni_python -m pip install .
 
 # install automoma
 COPY src /pkgs/automoma-docker/src
