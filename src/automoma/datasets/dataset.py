@@ -1,5 +1,6 @@
 import numpy as np
 import os
+from automoma.utils.logging import logger
 
 class BaseDatasetWrapper:
     '''
@@ -106,10 +107,10 @@ class LeRobotDatasetWrapper(BaseDatasetWrapper):
         dataset_path = Path(self.cfg.root) / self.cfg.repo_id
         os.makedirs(dataset_path, exist_ok=True)
         if dataset_path.exists():
-            print(f"Removing existing dataset at {dataset_path}")
+            logger.warning(f"Removing existing dataset at {dataset_path}")
             shutil.rmtree(dataset_path)
         
-        print(f"Creating dataset at {dataset_path}")
+        logger.info(f"Creating dataset at {dataset_path}")
         
         # create dataset
         self.dataset = LeRobotDataset.create(
@@ -120,7 +121,7 @@ class LeRobotDatasetWrapper(BaseDatasetWrapper):
             robot_type= self.cfg.robot_type,
             use_videos= self.cfg.use_videos,
         )
-        print(f"Created dataset at {dataset_path}")
+        logger.info(f"Created dataset at {dataset_path}")
     def add(self, data):
         frame = {
             "observation.state": np.array(data["joint_data"], dtype=np.float32),
