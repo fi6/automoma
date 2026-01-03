@@ -12,7 +12,7 @@
 mkdir -p $(pwd)/data/automoma-docker-$1
 mkdir -p $(pwd)/logs/automoma-docker-$1
 
-GPU_ID=$2
+GPU_ID=$1
 if [ -z "$GPU_ID" ]; then
     echo "Error: GPU_ID is required. Usage: ./start_docker.sh <suffix> <gpu_id>"
     exit 1
