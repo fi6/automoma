@@ -1,5 +1,6 @@
 import os
 import torch
+import re
 import yaml
 from typing import Dict, Any
 
@@ -58,18 +59,73 @@ def recursive_stats(path: str) -> Dict[str, Any]:
 
     return node_stats
 
+def analyze_experimental_results(file_path):
+    with open(file_path, 'r') as f:
+        # 使用 safe_load 避免安全风险
+        data = yaml.safe_load(f)
+
+    # 1. 对 Docker 容器名进行排序 (automoma-docker-1, 2, 3...)
+    docker_keys = sorted(
+        data.keys(), 
+        key=lambda x: int(re.search(r'docker-(\d+)', x).group(1)) if re.search(r'docker-(\d+)', x) else x
+    )
+
+    for docker_node in docker_keys:
+        docker_content = data[docker_node]
+        docker_success_sum = 0
+        
+        print(f"\n{'='*20} {docker_node} {'='*20}")
+
+        # 遍历任务 (如 multi_object_open)
+        for task_name, task_content in docker_content.items():
+            # 这里的路径根据你的 YAML 结构：traj -> summit_franka
+            robot_data = task_content.get('traj', {}).get('summit_franka', {})
+            
+            # 2. 对场景 ID 进行排序 (scene_0, scene_1, scene_2...)
+            sorted_scene_ids = sorted(
+                robot_data.keys(),
+                key=lambda x: int(re.search(r'scene_(\d+)', x).group(1)) if re.search(r'scene_(\d+)', x) else x
+            )
+
+            for scene_id in sorted_scene_ids:
+                scene_data = robot_data[scene_id]
+                scene_total_success = 0
+                
+                # 遍历内部嵌套结构：seed_id -> grasp_id -> stage_id -> traj_data.pt
+                if isinstance(scene_data, dict):
+                    for seed_id, seed_content in scene_data.items():
+                        if isinstance(seed_content, dict):
+                            for grasp_id, grasp_content in seed_content.items():
+                                if isinstance(grasp_content, dict):
+                                    for stage_id, stage_content in grasp_content.items():
+                                        # 提取具体成功数
+                                        success = stage_content.get('traj_data.pt', {}).get('num_success', 0)
+                                        scene_total_success += success
+                
+                # 打印当前场景的统计
+                print(f"  {scene_id:25} | Success: {scene_total_success}")
+                docker_success_sum += scene_total_success
+
+        # 3. 打印该 Docker 容器的总计
+        print(f"{'-'*50}")
+        print(f"TOTAL for {docker_node}: {docker_success_sum}")
+        print(f"{'-'*50}")
+
 def main():
     # Set your data root path here
     data_root = "data" 
     output_yaml = f"{data_root}/data_statistics.yaml"
     
-    print(f"Starting statistics collection for: {data_root}")
-    tree_data = recursive_stats(data_root)
+    # print(f"Starting statistics collection for: {data_root}")
+    # tree_data = recursive_stats(data_root)
     
-    with open(output_yaml, 'w') as f:
-        yaml.dump(tree_data, f, sort_keys=False, default_flow_style=False)
+    # with open(output_yaml, 'w') as f:
+    #     yaml.dump(tree_data, f, sort_keys=False, default_flow_style=False)
     
-    print(f"Statistics successfully saved to {output_yaml}")
+    # print(f"Statistics successfully saved to {output_yaml}")
+    
+    print("\nStarting analysis of `num_success` from the generated YAML...")
+    analyze_experimental_results(output_yaml)
 
 if __name__ == "__main__":
     main()
