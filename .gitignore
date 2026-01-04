@@ -5,6 +5,7 @@ tests/
 z-reference/
 .vscode/
 outputs/
+viz_results/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

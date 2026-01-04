@@ -19,6 +19,7 @@ if [ -z "$GPU_ID" ]; then
 fi
 
 docker run --name automoma_$1 --entrypoint bash -it --rm \
+    --shm-size=8g \
     --gpus "device=$GPU_ID" \
     --mount type=bind,source=$(pwd)/scripts,target=/pkgs/automoma-docker/scripts,readonly=true \
     --mount type=bind,source=$(pwd)/assets,target=/pkgs/automoma-docker/assets,readonly=true \
