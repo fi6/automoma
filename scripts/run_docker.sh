@@ -82,12 +82,10 @@ run_record() {
     echo "[RECORD] Rendering Scene: $scene, Object: $obj. Log: $log_file"
 
     # data/automoma-docker-1/multi_object_open/lerobot/multi_object_open_7221_scene_0_seed_0 if found, skip
-    for docker_id in (1 2 3 4 5); do
-        if [ -d "/pkgs/automoma-docker-$docker_id/data/$EXP_NAME/lerobot/${EXP_NAME}_${obj}_${scene}" ]; then
-            echo ">>> [RECORD] Data already exists in docker $docker_id. Skipping rendering."
-            return 0
-        fi
-    done
+    if [ -d "/pkgs/automoma-docker/data/$EXP_NAME/lerobot/${EXP_NAME}_${obj}_${scene}" ]; then
+        echo ">>> [RECORD] Data already exists in docker $docker_id. Skipping rendering."
+        return 0
+    fi
     /isaac-sim/python.sh scripts/pipeline/2_render_dataset.py \
         --exp "$EXP_NAME" \
         --scene "$scene" \

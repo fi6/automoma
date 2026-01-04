@@ -26,6 +26,7 @@ Pipeline Overview:
 
 import os
 import logging
+from tqdm import tqdm
 from typing import Dict, List, Optional, Any, Tuple
 import torch
 import numpy as np
@@ -621,81 +622,6 @@ class OpenTask(BaseTask):
     
     # ==================== Recording Pipeline ====================
     
-    def run_recording_pipeline(
-        self,
-        traj_dir: str,
-        dataset_wrapper,
-    ) -> int:
-        """
-        Run the recording pipeline to create a dataset from trajectories.
-        
-        Args:
-            traj_dir: Directory containing trajectory files
-            dataset_wrapper: Dataset wrapper for saving
-            
-        Returns:
-            Number of episodes recorded
-        """
-        from automoma.utils.file_utils import load_traj
-        
-        traj_path = Path(traj_dir)
-        traj_files = list(traj_path.glob("**/traj_data.pt"))
-        
-        print(f"Found {len(traj_files)} trajectory files to process")
-        
-        # Check if resume is enabled
-        resume = getattr(self.cfg, 'resume', True)
-        if hasattr(self.cfg, 'record_cfg') and hasattr(self.cfg.record_cfg, 'resume'):
-            resume = self.cfg.record_cfg.resume
-        
-        print(f"Resume mode: {resume}")
-        
-        episodes_recorded = 0
-        
-        for traj_file in traj_files:
-            # Check if this trajectory has already been recorded
-            if resume and self._check_trajectory_recorded(traj_file, dataset_wrapper):
-                print(f"Skipping {traj_file} (already recorded)")
-                continue
-            
-            print(f"Processing trajectory file: {traj_file}")
-            try:
-                traj_data = torch.load(traj_file, weights_only=False)
-                trajectories = traj_data["trajectories"]
-                success = traj_data["success"]
-                
-                # Ensure they are torch tensors
-                if not isinstance(trajectories, torch.Tensor):
-                    trajectories = torch.tensor(trajectories)
-                if not isinstance(success, torch.Tensor):
-                    success = torch.tensor(success)
-                
-                print(f"Loaded {len(trajectories)} trajectories, {success.sum()} successful")
-                
-                # Ensure trajectories is 3D (N, T, D)
-                if trajectories.ndim == 2:
-                    trajectories = trajectories.unsqueeze(0)
-                if success.ndim == 0:
-                    success = success.unsqueeze(0)
-                
-                # Filter successful trajectories
-                mask = success.to(torch.bool)
-                successful_trajs = trajectories[mask]
-                
-                print(f"Processing {len(successful_trajs)} successful trajectories")
-                
-                for traj in successful_trajs:
-                    if self._record_trajectory(traj, dataset_wrapper):
-                        episodes_recorded += 1
-                
-                # Create marker file after successful recording
-                marker_file = traj_file.parent / ".recorded"
-                marker_file.touch()
-                        
-            except Exception as e:
-                print(f"Error processing {traj_file}: {e}")
-        
-        return episodes_recorded
     
     def run_recording_pipeline_with_trajs(
         self,
@@ -719,18 +645,12 @@ class OpenTask(BaseTask):
         
         episodes_recorded = 0
         
-        for traj in trajectories:
+        for traj in tqdm(trajectories, desc="Recording trajectories"):
             if self._record_trajectory(traj, dataset_wrapper):
                 episodes_recorded += 1
         
         return episodes_recorded
     
-    def _check_trajectory_recorded(self, traj_file: Path, dataset_wrapper) -> bool:
-        """Check if trajectory has already been recorded in the dataset."""
-        # Simple check: if the trajectory file was modified before the dataset was created
-        # or if a marker file exists indicating it's been processed
-        marker_file = traj_file.parent / ".recorded"
-        return marker_file.exists()
     
     def _record_trajectory(self, trajectory: torch.Tensor, dataset_wrapper) -> bool:
         """
