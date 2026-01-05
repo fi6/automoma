@@ -67,6 +67,77 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def load_or_generate_successful_trajs(traj_dir: str, seed: int = None) -> torch.Tensor:
+    """
+    Load successful trajectories from cache or generate and cache them.
+    
+    If all_successful_trajs.pt exists in traj_dir, load and return it.
+    Otherwise, load all trajectory files, concatenate them, randomize order, save to cache, and return.
+    
+    Args:
+        traj_dir: Directory containing trajectory files
+        seed: Random seed for shuffling (if provided)
+    
+    Returns:
+        torch.Tensor: Concatenated successful trajectories with randomized order
+    """
+    cache_file = Path(traj_dir) / "all_successful_trajs.pt"
+    
+    # Check if cache exists
+    if cache_file.exists():
+        logger.info(f"Loading cached trajectories from: {cache_file}")
+        all_successful_trajs = torch.load(cache_file, weights_only=False)
+        logger.info(f"Loaded {len(all_successful_trajs)} trajectories from cache")
+        return all_successful_trajs
+    
+    # Load all trajectory files
+    traj_path = Path(traj_dir)
+    traj_files = list(traj_path.glob("**/traj_data.pt"))
+    logger.info(f"Found {len(traj_files)} trajectory files")
+    
+    # Load and collect all successful trajectories
+    all_successful_trajs = []
+    for traj_file in traj_files:
+        try:
+            traj_data = torch.load(traj_file, weights_only=False)
+            trajectories = traj_data["trajectories"]
+            
+            # Filter successful trajectories
+            if "success" in traj_data:
+                success_mask = traj_data["success"]
+                successful_trajs = trajectories[success_mask]
+                if len(successful_trajs) > 0:
+                    all_successful_trajs.append(successful_trajs)
+            else:
+                if len(trajectories) > 0:
+                    all_successful_trajs.append(trajectories)
+        except Exception as e:
+            logger.warning(f"Error loading {traj_file}: {e}")
+    
+    if not all_successful_trajs:
+        raise RuntimeError(f"No successful trajectories found in {traj_dir}")
+    
+    # Concatenate all successful trajectories
+    all_successful_trajs = torch.cat(all_successful_trajs, dim=0)
+    logger.info(f"Total successful trajectories: {len(all_successful_trajs)}")
+    
+    # Randomize order
+    if seed is not None:
+        torch.manual_seed(seed)
+        logger.info(f"Shuffling trajectories with seed={seed}")
+    
+    indices = torch.randperm(len(all_successful_trajs))
+    print(f"Shuffled trajectory indices: {indices.tolist()}")
+    all_successful_trajs = all_successful_trajs[indices]
+    
+    # Save to cache
+    logger.info(f"Saving cached trajectories to: {cache_file}")
+    cache_file.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(all_successful_trajs, cache_file)
+    
+    return all_successful_trajs
+
+
 def run_recording(cfg: Config, scene_name: str, object_id: str, max_episodes: int = None, dry_run: bool = False):
     """
     Run recording for ONE scene-object combination.
@@ -202,45 +273,17 @@ def run_recording(cfg: Config, scene_name: str, object_id: str, max_episodes: in
         dataset_wrapper.close()
         return 1
     
-    # Load all trajectory files
-    traj_files = list(traj_path.glob("**/traj_data.pt"))
-    logger.info(f"Found {len(traj_files)} trajectory files")
-    
-    # Load and collect all successful trajectories
-    all_successful_trajs = []
-    for traj_file in traj_files:
-        try:
-            traj_data = torch.load(traj_file, weights_only=False)
-            trajectories = traj_data["trajectories"]
-            
-            # Filter successful trajectories
-            if "success" in traj_data:
-                success_mask = traj_data["success"]
-                successful_trajs = trajectories[success_mask]
-                if len(successful_trajs) > 0:
-                    all_successful_trajs.append(successful_trajs)
-            else:
-                if len(trajectories) > 0:
-                    all_successful_trajs.append(trajectories)
-        except Exception as e:
-            logger.warning(f"Error loading {traj_file}: {e}")
-    
-    if not all_successful_trajs:
-        logger.warning(f"No successful trajectories found")
+    # Load or generate successful trajectories (with caching)
+    try:
+        all_successful_trajs = load_or_generate_successful_trajs(traj_dir, seed=seed)
+    except RuntimeError as e:
+        logger.warning(f"No successful trajectories found: {e}")
         dataset_wrapper.close()
         return 1
     
-    # Concatenate all successful trajectories
-    all_successful_trajs = torch.cat(all_successful_trajs, dim=0)
-    logger.info(f"Total successful trajectories: {len(all_successful_trajs)}")
-    
-    # Randomly sample trajectories if max_episodes is set
+    # Trajectories if max_episodes is set
     if max_episodes is not None and len(all_successful_trajs) > max_episodes:
-        if seed is not None:
-            torch.manual_seed(seed)
-        
-        indices = torch.randperm(len(all_successful_trajs))[:max_episodes]
-        sampled_trajs = all_successful_trajs[indices]
+        sampled_trajs = all_successful_trajs[:max_episodes]
         logger.info(f"Randomly sampled {max_episodes} trajectories (seed={seed})")
     else:
         sampled_trajs = all_successful_trajs
