@@ -1,5 +1,8 @@
-import numpy as np
 import os
+import shutil
+from pathlib import Path
+import numpy as np
+from automoma.utils.logging import logger
 
 class BaseDatasetWrapper:
     '''
@@ -34,12 +37,60 @@ class BaseDatasetWrapper:
     def close(self):
         raise NotImplementedError("The close method must be implemented by subclasses.")
 
+class DataStorageProxy:
+    def __init__(self, physical_root, use_ramdisk=False, ramdisk_base="/dev/shm"):
+        self.physical_root = Path(physical_root)
+        self.use_ramdisk = use_ramdisk
+        
+        if self.use_ramdisk:
+            # We use a subfolder to avoid collisions with other processes
+            self.active_root = Path(ramdisk_base) / "lerobot_buffer" / self.physical_root.name
+        else:
+            self.active_root = self.physical_root
+
+    def setup(self):
+        """Prepare the working directory."""
+        if self.active_root.exists():
+            shutil.rmtree(self.active_root)
+        # self.active_root.mkdir(parents=True, exist_ok=True)
+        return self.active_root
+
+    def post_save_sync(self):
+        """Called after save_episode() to offload data and keep RAM clean."""
+        if not self.use_ramdisk:
+            return
+
+        # 1. Sync the current state to physical disk
+        # This moves the .mp4 and .parquet files created by LeRobot
+        self.physical_root.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(self.active_root, self.physical_root, dirs_exist_ok=True)
+        
+        # 2. Critical cleanup: Remove the temporary raw images to free up RAM
+        # LeRobot keeps these in 'videos/temp_images' until the episode is closed
+        temp_dir = self.active_root / "videos" / "temp_images"
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir)
+            logger.debug("RAMDisk: Cleared temporary raw frames.")
+
+    def finalize(self):
+        """Clean up the RAMDisk entirely at the end of the session."""
+        if self.use_ramdisk and self.active_root.exists():
+            shutil.rmtree(self.active_root)
+            logger.info("RAMDisk: Final cleanup complete.")
+
 class LeRobotDatasetWrapper(BaseDatasetWrapper):
     def __init__(self, cfg):
         
         self.dataset = None
         self.cfg = cfg
         self.task = cfg.get("task", "manipulation")
+        
+        # Initialize the Proxy for IO management
+        self.storage_proxy = DataStorageProxy(
+            physical_root=Path(self.cfg.root)/self.cfg.repo_id,
+            use_ramdisk=self.cfg.get("use_ramdisk", False),
+            ramdisk_base=self.cfg.get("ramdisk_path", "/dev/shm")
+        )
         
     def _init_features(self):
         features = {
@@ -102,25 +153,20 @@ class LeRobotDatasetWrapper(BaseDatasetWrapper):
         # init features
         self._init_features()
         
-        # Check if dataset already exists and remove it to avoid FileExistsError
-        dataset_path = Path(self.cfg.root) / self.cfg.repo_id
-        os.makedirs(dataset_path, exist_ok=True)
-        if dataset_path.exists():
-            print(f"Removing existing dataset at {dataset_path}")
-            shutil.rmtree(dataset_path)
-        
-        print(f"Creating dataset at {dataset_path}")
+        # The proxy decides if this is /dev/shm or /data/...
+        active_path = self.storage_proxy.setup()
         
         # create dataset
         self.dataset = LeRobotDataset.create(
             repo_id = self.cfg.repo_id,
-            root = dataset_path,
+            root = active_path,
             fps = self.cfg.fps,
             features= self.features,
             robot_type= self.cfg.robot_type,
             use_videos= self.cfg.use_videos,
         )
-        print(f"Created dataset at {dataset_path}")
+        logger.info(f"Created dataset at {active_path}")
+        
     def add(self, data):
         frame = {
             "observation.state": np.array(data["joint_data"], dtype=np.float32),
@@ -171,11 +217,19 @@ class LeRobotDatasetWrapper(BaseDatasetWrapper):
         self.dataset.add_frame(frame)
         
     def save(self):
+        """Saves the current episode and triggers the proxy sync."""
+        # LeRobot writes the video to the active_path
         self.dataset.save_episode()
+        
+        # Proxy handles moving the video to physical disk and clearing RAM
+        self.storage_proxy.post_save_sync()
+        
     
     def close(self):
+        """Finalizes the dataset and cleans up RAMDisk."""
         self.dataset.finalize()
-        # push to hub if required
+        self.storage_proxy.finalize()
+        
         if self.cfg.push_to_hub:
             self.dataset.push_to_hub(tags=["automoma"], private=True)
     

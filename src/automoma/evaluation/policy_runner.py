@@ -12,6 +12,7 @@ import torch
 
 from automoma.core.config import EvalConfig
 from automoma.evaluation.metrics import MetricsCalculator, EvaluationMetrics
+from automoma.utils.logging import logger
 
 
 @dataclass
@@ -633,9 +634,9 @@ class PolicyRunner:
         with open(results_path, "w") as f:
             json.dump(metrics.to_dict(), f, indent=2)
         
-        print(f"Results saved to {results_path}")
-        print(f"Success rate: {metrics.success_rate:.2%}")
-        print(f"Position error: {metrics.position_error_mean:.4f} +/- {metrics.position_error_std:.4f}")
+        logger.info(f"Results saved to {results_path}")
+        logger.info(f"Success rate: {metrics.success_rate:.2%}")
+        logger.info(f"Position error: {metrics.position_error_mean:.4f} +/- {metrics.position_error_std:.4f}")
     
     def cleanup(self) -> None:
         """Cleanup resources."""

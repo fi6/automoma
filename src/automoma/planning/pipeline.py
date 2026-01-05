@@ -18,9 +18,7 @@ from automoma.utils.file_utils import (
     get_grasp_poses,
 )
 from automoma.utils.math_utils import get_open_ee_pose, stack_iks_angle
-
-
-logger = logging.getLogger(__name__)
+from automoma.utils.logging import logger
 
 
 @dataclass
@@ -196,9 +194,9 @@ class PlanningPipeline:
         )
         ik_result.iks = stack_iks_angle(ik_result.iks, -angle)
         
-        print(f"  Angle {angle:.4f} rad: Found {ik_result.iks.shape[0]} IK solutions")
+        logger.info(f"  Angle {angle:.4f} rad: Found {ik_result.iks.shape[0]} IK solutions")
         ik_result = self.planner.ik_clustering(ik_result, **self.clustering_params)
-        print(f"    After clustering: {ik_result.iks.shape[0]} IK solutions")
+        logger.info(f"    After clustering: {ik_result.iks.shape[0]} IK solutions")
         
         return ik_result
     
@@ -209,7 +207,7 @@ class PlanningPipeline:
         results = []
         
         for grasp_id, grasp_pose in enumerate(grasp_poses):
-            print(f"\n{'='*80}\nProcessing Grasp {grasp_id + 1}/{len(grasp_poses)}\n{'='*80}")
+            logger.info(f"\n{'='*80}\nProcessing Grasp {grasp_id + 1}/{len(grasp_poses)}\n{'='*80}")
             
             akr_robot_cfg_path = f"assets/object/{self.object_cfg['asset_type']}/{object_id}/summit_franka_{object_id}_0_grasp_{grasp_id:04d}.yml"
             
@@ -232,8 +230,8 @@ class PlanningPipeline:
                 save_traj(result.filtered_traj_result, os.path.join(base_dir, "filtered_traj_data.pt"))
             
             results.append(result)
-            print(f"Grasp {grasp_id}: {'SUCCESS' if result.success else 'FAILED'}")
+            logger.info(f"Grasp {grasp_id}: {'SUCCESS' if result.success else 'FAILED'}")
             if result.error_message:
-                print(f"  Error: {result.error_message}")
+                logger.error(f"  Error: {result.error_message}")
         
         return results

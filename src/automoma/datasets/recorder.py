@@ -3,6 +3,7 @@ from automoma.simulation.env_wrapper import SimEnvWrapper
 from automoma.datasets.dataset import LeRobotDatasetWrapper, HDF5DatasetWrapper, ZarrDatasetWrapper
 from automoma.utils.math_utils import pose_multiply, unpack_ik
 from automoma.utils.robot_utils import adjust_pose_for_robot
+from automoma.utils.logging import logger
 
 from tqdm import tqdm
 
@@ -19,7 +20,7 @@ class Recorder:
     def replay_ik(self, iks, robot_type):
         '''Replay inverse kinematics data for a given robot type.'''
         for i, ik in enumerate(zip(iks)):
-            print(f"Replaying IK {i+1}/{len(iks)}")
+            logger.info(f"Replaying IK {i+1}/{len(iks)}")
             robot_state, env_state = unpack_ik(ik)
             robot_state = self._adjust_pose_for_robot(robot_state, robot_type)
             self.env_warpper.set_state(robot_state, env_state)

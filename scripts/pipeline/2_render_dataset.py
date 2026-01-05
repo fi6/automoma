@@ -289,13 +289,30 @@ def run_recording(cfg: Config, scene_name: str, object_id: str, max_episodes: in
         sampled_trajs = all_successful_trajs
         logger.info(f"Using all {len(sampled_trajs)} trajectories")
     
+    # Check if recording is already complete (resume logic)
+    marker_file = traj_path / ".recorded"
+    if marker_file.exists():
+        logger.info(f"Recording already complete for this scene-object combination (marker file exists)")
+        dataset_wrapper.close()
+        if not dry_run and task.env is not None:
+            task.env.close()
+            task.env = None
+        logger.info("Skipping recording")
+        return 0
+    
     # Run recording pipeline
     if not dry_run and task.env is not None:
         logger.info("Starting recording pipeline...")
         episodes_recorded = task.run_recording_pipeline_with_trajs(sampled_trajs, dataset_wrapper)
         logger.info(f"Recorded {episodes_recorded} episodes")
+        
+        # Create marker file after successful recording
+        if episodes_recorded > 0:
+            marker_file.touch()
+            logger.info(f"Created marker file: {marker_file}")
     else:
         logger.info("Dry run - no recording performed")
+        episodes_recorded = 0
     
     # Finalize dataset
     dataset_wrapper.close()
