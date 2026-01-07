@@ -49,7 +49,7 @@ record_cfg:
       - panda_finger_joint2
     task: "open_articulated_object"
     # for IO problem
-    use_ramdisk: false
+    use_ramdisk: true
     ramdisk_path: "/dev/shm"
 
 
