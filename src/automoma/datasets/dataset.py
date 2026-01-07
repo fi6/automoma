@@ -38,45 +38,66 @@ class BaseDatasetWrapper:
         raise NotImplementedError("The close method must be implemented by subclasses.")
 
 class DataStorageProxy:
-    def __init__(self, physical_root, use_ramdisk=False, ramdisk_base="/dev/shm"):
+    """
+    Manages redirection of IO to RAMDisk (/dev/shm) to prevent physical disk wear 
+    and latency during high-frequency recording.
+    """
+    def __init__(self, physical_root, repo_id, use_ramdisk=False, ramdisk_base="/dev/shm"):
         self.physical_root = Path(physical_root)
+        self.repo_id = repo_id
         self.use_ramdisk = use_ramdisk
         
         if self.use_ramdisk:
-            # We use a subfolder to avoid collisions with other processes
-            self.active_root = Path(ramdisk_base) / "lerobot_buffer" / self.physical_root.name
+            import tempfile
+            # Create a unique sandbox in RAM
+            self.active_root = Path(ramdisk_base) / "lerobot_proxy" / repo_id
+            self.temp_root = Path(ramdisk_base) / "lerobot_proxy" / "temp"
+            
+            # --- CRITICAL: Environment Redirection ---
+            # Force ffmpeg, tempfile, and HF metadata into RAM to stop physical IO leakage
+            os.environ["TMPDIR"] = str(self.temp_root)
+            # os.environ["HF_LEROBOT_HOME"] = str(self.active_root / "hf_home")
+            # os.environ["HF_HOME"] = str(self.active_root / "hf_cache")
+            
+            # Update tempfile module's internal state to reflect TMPDIR change immediately
+            tempfile.tempdir = None 
+            _temp_path = tempfile.gettempdir()
+            
+            logger.info(f"Proxy Active | RAM Path: {self.active_root} | Temp: {_temp_path}")
         else:
             self.active_root = self.physical_root
-
-    def setup(self):
-        """Prepare the working directory."""
+            
         if self.active_root.exists():
+            logger.warning(f"Active root {self.active_root} exists, overwriting...")
             shutil.rmtree(self.active_root)
-        # self.active_root.mkdir(parents=True, exist_ok=True)
+
+    def get_path(self):
         return self.active_root
 
-    def post_save_sync(self):
-        """Called after save_episode() to offload data and keep RAM clean."""
+    def finalize(self):
+        """Moves data from RAMDisk to Physical Disk at the end of recording."""
         if not self.use_ramdisk:
             return
 
-        # 1. Sync the current state to physical disk
-        # This moves the .mp4 and .parquet files created by LeRobot
-        self.physical_root.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(self.active_root, self.physical_root, dirs_exist_ok=True)
-        
-        # 2. Critical cleanup: Remove the temporary raw images to free up RAM
-        # LeRobot keeps these in 'videos/temp_images' until the episode is closed
-        temp_dir = self.active_root / "videos" / "temp_images"
-        if temp_dir.exists():
-            shutil.rmtree(temp_dir)
-            logger.debug("RAMDisk: Cleared temporary raw frames.")
+        try:
+            # The destination should be the repo folder under the physical root
+            destination = self.physical_root / self.repo_id
+            
+            if destination.exists():
+                logger.warning(f"Destination {destination} exists, overwriting...")
+                shutil.rmtree(destination)
+            
+            destination.parent.mkdir(parents=True, exist_ok=True)
 
-    def finalize(self):
-        """Clean up the RAMDisk entirely at the end of the session."""
-        if self.use_ramdisk and self.active_root.exists():
+            logger.info(f"Synchronizing: RAMDisk -> Physical Disk ({destination})...")
+            # Copy the entire directory structure
+            shutil.copytree(self.active_root, destination, dirs_exist_ok=True)
+            
+            logger.info("Sync complete. Cleaning up RAMDisk...")
             shutil.rmtree(self.active_root)
-            logger.info("RAMDisk: Final cleanup complete.")
+            
+        except Exception as e:
+            logger.error(f"Failed to finalize proxy sync: {e}")
 
 class LeRobotDatasetWrapper(BaseDatasetWrapper):
     def __init__(self, cfg):
@@ -87,7 +108,8 @@ class LeRobotDatasetWrapper(BaseDatasetWrapper):
         
         # Initialize the Proxy for IO management
         self.storage_proxy = DataStorageProxy(
-            physical_root=Path(self.cfg.root)/self.cfg.repo_id,
+            physical_root=self.cfg.root,
+            repo_id=self.cfg.repo_id,
             use_ramdisk=self.cfg.get("use_ramdisk", False),
             ramdisk_base=self.cfg.get("ramdisk_path", "/dev/shm")
         )
@@ -153,21 +175,23 @@ class LeRobotDatasetWrapper(BaseDatasetWrapper):
         # init features
         self._init_features()
         
-        # The proxy decides if this is /dev/shm or /data/...
-        active_path = self.storage_proxy.setup()
+        lerobot_path = self.storage_proxy.get_path()
         
         # create dataset
         self.dataset = LeRobotDataset.create(
             repo_id = self.cfg.repo_id,
-            root = active_path,
+            root = lerobot_path,
             fps = self.cfg.fps,
             features= self.features,
             robot_type= self.cfg.robot_type,
             use_videos= self.cfg.use_videos,
         )
-        logger.info(f"Created dataset at {active_path}")
+        logger.info(f"Created dataset at {lerobot_path}")
         
     def add(self, data):
+        """
+        Maps standard robot data format to LeRobot features.
+        """
         frame = {
             "observation.state": np.array(data["joint_data"], dtype=np.float32),
             "observation.eef": np.array(data["eef_pose_data"], dtype=np.float32),
@@ -218,19 +242,16 @@ class LeRobotDatasetWrapper(BaseDatasetWrapper):
         
     def save(self):
         """Saves the current episode and triggers the proxy sync."""
-        # LeRobot writes the video to the active_path
+        # LeRobot writes the video to the lerobot_path
         self.dataset.save_episode()
-        
-        # Proxy handles moving the video to physical disk and clearing RAM
-        self.storage_proxy.post_save_sync()
-        
-    
     def close(self):
         """Finalizes the dataset and cleans up RAMDisk."""
         self.dataset.finalize()
+        # Trigger the physical move if using RAMDisk
         self.storage_proxy.finalize()
         
         if self.cfg.push_to_hub:
+            logger.info(f"Pushing dataset {self.cfg.repo_id} to Hugging Face Hub...")
             self.dataset.push_to_hub(tags=["automoma"], private=True)
     
 
