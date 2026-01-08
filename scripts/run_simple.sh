@@ -29,6 +29,13 @@ python third_party/lerobot/src/lerobot/scripts/lerobot_dataset_viz.py \
     --save 1 \
     --output-dir ./viz_results
 
+
+# Remote Viusalization
+python third_party/lerobot/src/lerobot/scripts/lerobot_dataset_viz.py \
+    --repo-id multi_object_open_46197_scene_30_seed_30 \
+    --root data/automoma-docker-4/multi_object_open/lerobot/multi_object_open_46197_scene_30_seed_30 \
+    --episode-index 0 \
+    --video-backend pyav 
     
 lerobot-train \
   --policy.type=act \
