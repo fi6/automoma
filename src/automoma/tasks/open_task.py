@@ -621,7 +621,8 @@ class OpenTask(BaseTask):
         return initial_states
     
     # ==================== Recording Pipeline ====================
-    
+    def run_recording_pipeline(self, traj_dir, dataset_wrapper):
+        return super().run_recording_pipeline(traj_dir, dataset_wrapper)
     
     def run_recording_pipeline_with_trajs(
         self,
