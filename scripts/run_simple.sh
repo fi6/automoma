@@ -114,3 +114,16 @@ python scripts/pipeline/4_evaluate.py \
   --policy-type act   \
   --checkpoint outputs/train/act_single_object_open_test_2/checkpoints/last/pretrained_model  \
   --initial-state-path data/single_object_open_test/traj/summit_franka/scene_0_seed_0/7221/grasp_0000/stage_0/start_iks.pt
+
+
+# Evaluate with multi_object_open configuration
+python scripts/pipeline/4_evaluate.py \
+  --exp multi_object_open  \
+  --policy-type act
+
+
+python scripts/pipeline/4_evaluate.py \
+  --exp single_object_open_test  \
+  --policy-type act   \
+  --checkpoint outputs/train/act_single_object_open_test_2/checkpoints/last/pretrained_model  \
+  --initial-state-path data/single_object_open_test/traj/summit_franka/scene_0_seed_0/7221/grasp_0000/stage_0/start_iks.pt
