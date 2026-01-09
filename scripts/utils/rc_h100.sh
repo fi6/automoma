@@ -33,14 +33,15 @@ EXCLUDE_DIRS=(
     "__pycache__"
     "*.pyc"
     "*.log"
+    "viz_results"
 )
 
 # ======================
 # Build rsync exclude flags
 # ======================
-RSYNC_EXCLUDE_FLAGS=""
+RSYNC_EXCLUDE_ARGS=()
 for dir in "${EXCLUDE_DIRS[@]}"; do
-    RSYNC_EXCLUDE_FLAGS+="--exclude='$dir' "
+    RSYNC_EXCLUDE_ARGS+=("--exclude=$dir")
 done
 
 # ======================
@@ -48,7 +49,7 @@ done
 # ======================
 echo "Syncing $LOCAL_DIR → $USER@$HOST:$REMOTE_DIR"
 rsync -avz \
-      $RSYNC_EXCLUDE_FLAGS \
+      "${RSYNC_EXCLUDE_ARGS[@]}" \
       -e "ssh -p $PORT -i $KEY" \
       "$LOCAL_DIR" "$USER@$HOST:$REMOTE_DIR"
 
