@@ -3,6 +3,7 @@ import sys
 import glob
 import re
 from pathlib import Path
+os.environ["HF_HUB_OFFLINE"] = "1"
 
 # --- 1. 环境配置 ---
 lerobot_path = os.path.join(os.getcwd(), "third_party/lerobot/src")

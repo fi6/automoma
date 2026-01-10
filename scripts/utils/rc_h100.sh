@@ -13,7 +13,7 @@ PROJECT_NAME="automoma"
 # Local project directory
 LOCAL_DIR="$HOME/projects/$PROJECT_NAME/"    
 # Remote destination directory
-REMOTE_DIR="/home/xinhai/projects/$PROJECT_NAME"  
+REMOTE_DIR="$HOME/projects/$PROJECT_NAME"  
 
 # Slurm interactive job settings
 PARTITION="h100"
@@ -25,6 +25,7 @@ COMMENT="interactive_debug"
 # Directories to exclude during rsync (space-separated, relative to LOCAL_DIR)
 EXCLUDE_DIRS=(
     "data"
+    "data_ing"
     "assets"
     "outputs"
     "checkpoints"
@@ -33,14 +34,15 @@ EXCLUDE_DIRS=(
     "__pycache__"
     "*.pyc"
     "*.log"
+    "viz_results"
 )
 
 # ======================
 # Build rsync exclude flags
 # ======================
-RSYNC_EXCLUDE_FLAGS=""
+RSYNC_EXCLUDE_ARGS=()
 for dir in "${EXCLUDE_DIRS[@]}"; do
-    RSYNC_EXCLUDE_FLAGS+="--exclude='$dir' "
+    RSYNC_EXCLUDE_ARGS+=("--exclude=$dir")
 done
 
 # ======================
@@ -48,7 +50,7 @@ done
 # ======================
 echo "Syncing $LOCAL_DIR → $USER@$HOST:$REMOTE_DIR"
 rsync -avz \
-      $RSYNC_EXCLUDE_FLAGS \
+      "${RSYNC_EXCLUDE_ARGS[@]}" \
       -e "ssh -p $PORT -i $KEY" \
       "$LOCAL_DIR" "$USER@$HOST:$REMOTE_DIR"
 
