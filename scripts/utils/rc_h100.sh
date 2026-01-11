@@ -13,7 +13,7 @@ PROJECT_NAME="automoma"
 # Local project directory
 LOCAL_DIR="$HOME/projects/$PROJECT_NAME/"    
 # Remote destination directory
-REMOTE_DIR="/home/xinhai/projects/$PROJECT_NAME"  
+REMOTE_DIR="$HOME/projects/$PROJECT_NAME"  
 
 # Slurm interactive job settings
 PARTITION="h100"
@@ -25,6 +25,7 @@ COMMENT="interactive_debug"
 # Directories to exclude during rsync (space-separated, relative to LOCAL_DIR)
 EXCLUDE_DIRS=(
     "data"
+    "data_ing"
     "assets"
     "outputs"
     "checkpoints"
