@@ -7,6 +7,14 @@ python scripts/pipeline/2_render_dataset.py --exp single_object_open_test --head
 
 python scripts/pipeline/2_render_dataset.py --exp single_object_open_test --max-episodes 10
 
+python scripts/pipeline/4_evaluate.py \
+    --run-dir outputs/train/dp3_multi_object_open_7221_scene_0_seed_0 \
+    --dataset_root data/multi_object_open/lerobot/multi_object_open_7221_scene_0_seed_0
+
+python scripts/pipeline/4_evaluate.py \
+    --run-dir outputs/train/act_multi_object_open_7221_scene_0_seed_0 \
+    --dataset_root data/multi_object_open/lerobot/multi_object_open_7221_scene_0_seed_0
+
 lerobot-dataset-viz \
     --repo-id single_object_open_test \
     --root data/single_object_open_test/lerobot/single_object_open_test \

@@ -714,7 +714,6 @@ class CuroboPlanner(MotionPlannerInterface):
         return traj_result
     
     def plan_traj_move_articulated(self, *args, **kwargs): return self.plan_traj_move(*args, **kwargs)
-    def plan_traj_reach(self, *args, **kwargs): return self.plan_traj_move(*args, **kwargs)
     def plan_traj_grasp(self, *args, **kwargs): return self.plan_traj_move(*args, **kwargs)
     def plan_traj_lift(self, *args, **kwargs): return self.plan_traj_move(*args, **kwargs)
     def plan_traj_release(self, *args, **kwargs): return self.plan_traj_move(*args, **kwargs)

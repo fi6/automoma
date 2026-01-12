@@ -222,7 +222,7 @@ def compute_success(
 class MetricsCalculator:
     """Calculate comprehensive evaluation metrics."""
     
-    def __init__(self, success_threshold: float = 0.05):
+    def __init__(self, success_threshold: float = 0.05, **kwargs):
         self.success_threshold = success_threshold
         self.reset()
     

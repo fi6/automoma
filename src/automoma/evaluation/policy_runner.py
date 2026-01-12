@@ -245,66 +245,87 @@ class LeRobotModelClient(AsyncModelClient):
         checkpoint_path: str,
         policy_type: str = "diffusion",
         device: str = "cuda",
+        dataset_id: str = None,
+        dataset_root: str = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.checkpoint_path = checkpoint_path
         self.policy_type = policy_type
         self.device = device
+        self.dataset_id = dataset_id
+        self.dataset_root = dataset_root
         self.policy = None
+        self.preprocess = None
+        self.postprocess = None
     
     def load_model(self) -> None:
-        """Load the LeRobot policy model."""
+        """Load the LeRobot policy model with preprocessing/postprocessing."""
         if not os.path.exists(self.checkpoint_path):
             print(f"Checkpoint not found: {self.checkpoint_path}")
             return
         
         try:
-            # Import LeRobot components
-            try:
-                from lerobot.policies.factory import make_policy
-            except ImportError:
-                from lerobot.common.policies.factory import make_policy
-            
-            from omegaconf import OmegaConf
+            from automoma.utils.file_utils import get_abs_path
             
             # Check if checkpoint is a directory (pretrained model format)
-            if os.path.isdir(self.checkpoint_path):
-                print(f"Loading pretrained model from directory: {self.checkpoint_path}")
-                if self.policy_type == "act":
-                    try:
-                        from lerobot.policies.act.modeling_act import ACTPolicy
-                    except ImportError:
-                        from lerobot.common.policies.act.modeling_act import ACTPolicy
-                    self.policy = ACTPolicy.from_pretrained(self.checkpoint_path)
-                elif self.policy_type == "diffusion":
-                    try:
-                        from lerobot.policies.diffusion.modeling_diffusion import DiffusionPolicy
-                    except ImportError:
-                        from lerobot.common.policies.diffusion.modeling_diffusion import DiffusionPolicy
-                    self.policy = DiffusionPolicy.from_pretrained(self.checkpoint_path)
-                else:
-                    raise ValueError(f"Unsupported policy type for pretrained loading: {self.policy_type}")
-            else:
-                # Load checkpoint file (.pt)
-                checkpoint = torch.load(self.checkpoint_path, map_location=self.device)
-                
-                # Create policy from config
-                if "config" in checkpoint:
-                    config = OmegaConf.create(checkpoint["config"])
-                    self.policy = make_policy(config)
-                    self.policy.load_state_dict(checkpoint["state_dict"])
-                else:
-                    # Try to load as raw state dict
-                    print("Loading checkpoint as raw state dict")
-                    self.policy = checkpoint
+            if not os.path.isdir(self.checkpoint_path):
+                raise ValueError(f"Checkpoint path must be a directory for pretrained models: {self.checkpoint_path}")
             
+            print(f"Loading pretrained model from directory: {self.checkpoint_path}")
+            
+            # Load policy
+            if self.policy_type == "act":
+                from lerobot.policies.act.modeling_act import ACTPolicy
+                self.policy = ACTPolicy.from_pretrained(self.checkpoint_path)
+            elif self.policy_type == "diffusion":
+                from lerobot.policies.diffusion.modeling_diffusion import DiffusionPolicy
+                self.policy = DiffusionPolicy.from_pretrained(self.checkpoint_path)
+            elif self.policy_type == "dp3":
+                from lerobot.policies.dp3.modeling_dp3 import DP3Policy
+                self.policy = DP3Policy.from_pretrained(self.checkpoint_path)
+            elif self.policy_type == "pi0":
+                from lerobot.policies.pi0.modeling_pi0 import PI0Policy
+                self.policy = PI0Policy.from_pretrained(self.checkpoint_path)
+            elif self.policy_type == "pi05":
+                from lerobot.policies.pi05.modeling_pi05 import PI05Policy
+                self.policy = PI05Policy.from_pretrained(self.checkpoint_path)
+            else:
+                raise ValueError(f"Unsupported policy type for pretrained loading: {self.policy_type}")
+        
             if hasattr(self.policy, "eval"):
                 self.policy.eval()
             if hasattr(self.policy, "to"):
                 self.policy.to(self.device)
             
-            print(f"Model loaded from {self.checkpoint_path}")
+            print(f"✓ Model loaded from {self.checkpoint_path}")
+            
+            # Load metadata and create preprocessors if dataset info provided
+            if self.dataset_id and self.dataset_root:
+                try:
+                    from lerobot.datasets.lerobot_dataset import LeRobotDatasetMetadata
+                    from lerobot.policies.factory import make_pre_post_processors
+                    
+                    print(f"Loading dataset metadata for preprocessing from ID: {self.dataset_id}")
+                    print(f"Using dataset root: {self.dataset_root}")
+                    
+                    dataset_id_abs = get_abs_path(os.path.join("data", self.dataset_id))
+                    dataset_metadata = LeRobotDatasetMetadata(
+                        repo_id=dataset_id_abs, 
+                        root=self.dataset_root
+                    )
+                    
+                    self.preprocess, self.postprocess = make_pre_post_processors(
+                        self.policy.config, 
+                        dataset_stats=dataset_metadata.stats
+                    )
+                    print(f"✓ Loaded preprocessing/postprocessing from dataset: {self.dataset_id}")
+                except Exception as e:
+                    print(f"Warning: Could not load preprocessors: {e}")
+                    self.preprocess = None
+                    self.postprocess = None
+            else:
+                print("Warning: No dataset_id/dataset_root provided, skipping preprocessing/postprocessing")
             
         except Exception as e:
             print(f"Failed to load model: {e}")
@@ -344,6 +365,16 @@ class LeRobotModelClient(AsyncModelClient):
                 if isinstance(depth, np.ndarray) and depth.ndim == 2:
                     depth = depth[np.newaxis, ...]
                 flat_obs[f"observation.depth.{name}"] = depth
+        
+        # Map pointcloud
+        if "obs_data" in observation and "pointcloud" in observation["obs_data"]:
+            for name, pc in observation["obs_data"]["pointcloud"].items():
+                # Map to observation.pointcloud (standard for DP3)
+                # If multiple cameras, the last one will overwrite unless we have logic to merge
+                # But usually there is one main sensor for PC
+                flat_obs["observation.pointcloud"] = pc
+                # Also keep named version for flexibility
+                flat_obs[f"observation.pointcloud.{name}"] = pc
                 
         return flat_obs
 
@@ -370,14 +401,23 @@ class LeRobotModelClient(AsyncModelClient):
             # Convert observation to tensor format expected by LeRobot
             obs_tensor = self._prepare_observation(observation)
             
-            # Run inference
+            # Run inference with preprocessing/postprocessing
             with torch.no_grad():
+                # Apply preprocessing (normalization) if configured
+                if self.preprocess:
+                    obs_tensor = self.preprocess(obs_tensor)
+                
+                # Policy Inference
                 if hasattr(self.policy, "select_action"):
                     action = self.policy.select_action(obs_tensor)
                 elif hasattr(self.policy, "forward"):
                     action = self.policy(obs_tensor)
                 else:
                     raise ValueError("Policy has no inference method")
+                
+                # Apply postprocessing (denormalization) if configured
+                if self.postprocess:
+                    action = self.postprocess(action)
             
             # Convert action to numpy
             if isinstance(action, torch.Tensor):
@@ -649,6 +689,8 @@ def get_model(
     policy_type: str = "diffusion",
     device: str = "cuda",
     async_mode: bool = True,
+    dataset_id: str = None,
+    dataset_root: str = None,
 ) -> LeRobotModelClient:
     """
     Factory function to get a LeRobot model client.
@@ -660,6 +702,8 @@ def get_model(
         policy_type: Type of policy (diffusion, act, vq_bet)
         device: Device to run on
         async_mode: Whether to use async inference
+        dataset_id: Dataset ID for preprocessing/postprocessing
+        dataset_root: Dataset root path for preprocessing/postprocessing
         
     Returns:
         LeRobotModelClient instance
@@ -668,6 +712,8 @@ def get_model(
         checkpoint_path=checkpoint_path,
         policy_type=policy_type,
         device=device,
+        dataset_id=dataset_id,
+        dataset_root=dataset_root,
     )
     client.load_model()
     
