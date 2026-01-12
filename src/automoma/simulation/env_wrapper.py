@@ -332,6 +332,47 @@ class SimEnvWrapper:
             obj.set_joint_positions(env_state_float, [joint_id])
             self.history_env_state.append(env_state_float)
     
+    def apply_object_action(self, joint_position: float, joint_velocity: float = 0.0) -> None:
+        """
+        Apply action to the target object (fallback strategy).
+        
+        Args:
+            joint_position: Target joint position
+            joint_velocity: Target joint velocity
+        """
+        from omni.isaac.core.utils.types import ArticulationAction
+        import numpy as np
+        
+        try:
+            obj = self.sim.world.scene.get_object("target_object")
+            if obj is None:
+                return
+                
+            if not obj._articulation_view.initialized:
+                obj.get_articulation_controller()
+
+            # Use object_cfg from env_cfg
+            if not self.cfg or not self.cfg.object_cfg:
+                return
+            object_cfg = self._to_dict(self.cfg.object_cfg)
+            if 'joint_id' not in object_cfg and object_cfg:
+                first_key = list(object_cfg.keys())[0]
+                object_cfg = object_cfg[first_key]
+            
+            # Get joint id
+            joint_id = object_cfg.get("joint_id", 0)
+            # Some implementation uses joint_id-1 but set_state uses joint_id. 
+            # We follow set_state pattern here for consistency within this class.
+            
+            action = ArticulationAction(
+                joint_positions=np.array([joint_position]), 
+                joint_velocities=np.array([joint_velocity]), 
+                joint_indices=np.array([joint_id])
+            )
+            obj.get_articulation_controller().apply_action(action)
+        except Exception as e:
+            logger.warning(f"Failed to apply object action: {e}")
+
     def set_gripper(self, value: float) -> None:
         """
         Set gripper state.
