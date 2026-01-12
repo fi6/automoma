@@ -213,7 +213,7 @@ def run_recording(cfg: Config, scene_name: str, object_id: str, max_episodes: in
     if not dry_run:
         try:
             # Create environment wrapper
-            env = SimEnvWrapper(cfg)
+            env = SimEnvWrapper(cfg.env_cfg)
             
             # Convert Config objects to dict for setup_env
             scene_cfg_dict = scene_cfg.to_dict() if hasattr(scene_cfg, 'to_dict') else scene_cfg
