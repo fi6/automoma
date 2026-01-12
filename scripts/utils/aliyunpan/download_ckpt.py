@@ -3,7 +3,7 @@ import subprocess
 import yaml
 
 # --- Configuration ---
-LOCAL_DOWNLOAD_ROOT = "/home/xinhai/projects/automoma/outputs_train_ckpt_download"
+LOCAL_DOWNLOAD_ROOT = "/home/xinhai/projects/automoma/outputs/train_download"
 YUNPAN_DATA_ROOT = "/Research/automoma/ckpt"
 
 # Paths
@@ -11,7 +11,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_LOG_FILE = os.path.join(SCRIPT_DIR, "upload_ckpt_log.yaml")
 DOWNLOAD_LOG_FILE = os.path.join(SCRIPT_DIR, "download_ckpt_log.yaml")
 ALIYUNPAN_PATH = "/home/xinhai/env/aliyunpan-v0.3.7-linux-amd64/aliyunpan"
-
+ALIYUNPAN_PATH_2 = "/home/xinhai/Documents/env/aliyunpan-v0.3.7-linux-amd64/aliyunpan"
 
 def load_yaml(path):
     if os.path.exists(path):
@@ -33,7 +33,11 @@ def download_folder(folder_name):
     os.makedirs(local_dest_dir, exist_ok=True)
 
     print(f"--- Downloading: {folder_name} (checkpoints/) ---")
-    cmd = [ALIYUNPAN_PATH, "download", remote_path, "--saveto", local_dest_dir]
+    # Determine which aliyunpan binary to use without reassigning the module constant.
+    exec_path = ALIYUNPAN_PATH if os.path.exists(ALIYUNPAN_PATH) else ALIYUNPAN_PATH_2
+    if not os.path.exists(exec_path):
+        return False, f"Error: aliyunpan not found at {ALIYUNPAN_PATH} or {ALIYUNPAN_PATH_2}"
+    cmd = [exec_path, "download", remote_path, "--saveto", local_dest_dir]
 
     try:
         subprocess.run(cmd, check=True)

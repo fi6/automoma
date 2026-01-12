@@ -26,13 +26,57 @@ def save_log(path, data):
 
 def upload_folder(folder_name):
     local_checkpoints = os.path.join(LOCAL_CKPT_ROOT, folder_name, "checkpoints")
-    remote_path = os.path.join(YUNPAN_DATA_ROOT, folder_name) + "/"
-
     if not os.path.exists(local_checkpoints):
         return False, "Local checkpoints not found"
 
-    print(f"--- Uploading: {folder_name} (checkpoints/) ---")
-    cmd = [ALIYUNPAN_PATH, "upload", local_checkpoints, remote_path]
+    # Prefer the `last` link if present; resolve it to the actual checkpoint folder.
+    last_link = os.path.join(local_checkpoints, "last")
+    target_dir = None
+
+    if os.path.exists(last_link):
+        # If it's a symlink, resolve directly.
+        if os.path.islink(last_link):
+            resolved = os.path.realpath(last_link)
+            if os.path.isdir(resolved):
+                target_dir = resolved
+        else:
+            # If it's a plain file that contains the name, try to read it.
+            try:
+                with open(last_link, 'r') as f:
+                    name = f.read().strip()
+                candidate = os.path.join(local_checkpoints, name)
+                if os.path.isdir(candidate):
+                    target_dir = candidate
+            except Exception:
+                target_dir = None
+
+    # Fallback: choose the checkpoint folder with the largest numeric name.
+    if target_dir is None:
+        candidates = [d for d in os.listdir(local_checkpoints)
+                      if os.path.isdir(os.path.join(local_checkpoints, d)) and d != 'last']
+        # Prefer numeric step folders
+        numeric = []
+        for d in candidates:
+            try:
+                numeric.append((int(d), d))
+            except Exception:
+                pass
+        if numeric:
+            _, best = max(numeric)
+            target_dir = os.path.join(local_checkpoints, best)
+        elif candidates:
+            candidates.sort()
+            target_dir = os.path.join(local_checkpoints, candidates[-1])
+
+    if target_dir is None or not os.path.isdir(target_dir):
+        return False, "No checkpoint folder found to upload"
+
+    last_name = os.path.basename(target_dir)
+    print(f"--- Uploading: {folder_name}/checkpoints/{last_name} ---")
+
+    # Upload only the resolved checkpoint folder into remote checkpoints/ path
+    remote_checkpoints_path = os.path.join(YUNPAN_DATA_ROOT, folder_name, "checkpoints") + "/"
+    cmd = [ALIYUNPAN_PATH, "upload", target_dir, remote_checkpoints_path]
 
     try:
         subprocess.run(cmd, check=True)
