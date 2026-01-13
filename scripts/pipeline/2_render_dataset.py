@@ -127,7 +127,7 @@ def load_or_generate_successful_trajs(traj_dir: str, seed: int = None) -> torch.
         logger.info(f"Shuffling trajectories with seed={seed}")
     
     indices = torch.randperm(len(all_successful_trajs))
-    print(f"Shuffled trajectory indices: {indices.tolist()}")
+    print(f"Shuffled trajectory indices: {indices.tolist()[:10]}...")  # Print first 10 indices for verification
     all_successful_trajs = all_successful_trajs[indices]
     
     # Save to cache

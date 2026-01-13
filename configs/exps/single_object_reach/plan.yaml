@@ -1,0 +1,129 @@
+# Plan Configuration for Single Object Reach Test Experiment
+# Test experiment for object 7221 - reaching to grasp positions
+#
+# This config is for the reach task which moves the robot to a grasp position
+# without opening the articulated object.
+
+# =============================================================================
+# Experiment Info
+# =============================================================================
+info_cfg:
+  task: 'single_object_reach_test'
+  robot: 'summit_franka'
+  scene:
+    [
+      scene_0_seed_0,
+      scene_1_seed_1,
+      scene_3_seed_3,
+      scene_7_seed_7,
+      scene_8_seed_8,
+    ]
+  object: ['7221']
+  description: 'Single object reach task for pipeline validation'
+
+# =============================================================================
+# Planning Configuration
+# =============================================================================
+plan_cfg:
+  # Output directory for this experiment
+  output_dir: 'data/single_object_reach_test'
+
+  # Number of grasp poses to use
+  num_grasps: 20
+
+  # Collision world parameters
+  voxel_dims: [5.0, 5.0, 5.0]
+  voxel_size: 0.02
+  expand_dims: [1.0, 0.2, 0.2]
+  collision_checker_type: 'VOXEL'
+
+  # Motion planning seeds
+  num_trajopt_seeds: 12
+  num_graph_seeds: 12
+  interpolation_dt: 0.05
+
+  # IK clustering parameters
+  cluster:
+    ap_fallback_clusters: 30
+    ap_clusters_upperbound: 80
+    ap_cluster_lowerbound: 10
+
+  # IK planning limits [start_limit, goal_limit]
+  # For reach task: start = collision-free random positions, goal = grasp position
+  plan_ik:
+    limit: [50, 100]
+
+  # Initial IK generation parameters (for collision-free random sampling)
+  initial_ik:
+    num_samples: 50
+    radius_range: [0.5, 1.5]  # Distance from object
+    angle_range: [1.9635, 4.3197]  # 5/8*pi to 11/8*pi (roughly behind to sides of object)
+    theta_noise_std: 0.1  # Gaussian noise for base orientation
+
+  # Trajectory planning parameters
+  plan_traj:
+    batch_size: 10
+    expand_to_pairs: true
+
+  # Trajectory filtering thresholds
+  filter:
+    position_tolerance: 0.01
+    rotation_tolerance: 0.05
+    # Base rotation filter: filter trajectories with base_z rotation > 2*pi
+    max_base_rotation: 6.28  # One full circle
+    rotation_limit: 3.14  # Half circle
+
+  # Resume support - skip already completed planning tasks
+  resume: true
+
+# =============================================================================
+# Environment Configuration (No sim_cfg needed for planning)
+# =============================================================================
+env_cfg:
+  # Robot Configuration
+  robot_cfg:
+    robot_type: 'summit_franka'
+    path: 'assets/robot/summit_franka/summit_franka.yml'
+    mobile_base_dof: 3
+    arm_dof: 7
+    gripper_dof: 2
+    total_dof: 12
+
+  # Object Configuration (single object: 7221)
+  object_cfg:
+    '7221':
+      path: assets/object/Microwave/7221/7221_0_scaling.urdf
+      pose: [0, 0, 0, 1, 0, 0, 0]
+      asset_type: 'Microwave'
+      asset_id: '7221'
+      scale: 0.3563
+      start_angles: [0]  # Object starts closed
+      goal_angles: [0]   # Object stays closed for reach task
+
+      # Optional: Per-object plan_cfg override
+      plan_cfg:
+        plan_ik:
+          limit: [50, 100]
+
+  # Scene Configuration
+  scene_cfg:
+    scene_0_seed_0:
+      path: 'assets/scene/infinigen/kitchen_1130/scene_0_seed_0/export/export_scene.blend/export_scene.usdc'
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: 'assets/scene/infinigen/kitchen_1130/scene_0_seed_0/info/metadata.json'
+    scene_1_seed_1:
+      path: 'assets/scene/infinigen/kitchen_1130/scene_1_seed_1/export/export_scene.blend/export_scene.usdc'
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: 'assets/scene/infinigen/kitchen_1130/scene_1_seed_1/info/metadata.json'
+    scene_3_seed_3:
+      path: 'assets/scene/infinigen/kitchen_1130/scene_3_seed_3/export/export_scene.blend/export_scene.usdc'
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: 'assets/scene/infinigen/kitchen_1130/scene_3_seed_3/info/metadata.json'
+    scene_7_seed_7:
+      path: 'assets/scene/infinigen/kitchen_1130/scene_7_seed_7/export/export_scene.blend/export_scene.usdc'
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: 'assets/scene/infinigen/kitchen_1130/scene_7_seed_7/info/metadata.json'
+    scene_8_seed_8:
+      path: 'assets/scene/infinigen/kitchen_1130/scene_8_seed_8/export/export_scene.blend/export_scene.usdc'
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: 'assets/scene/infinigen/kitchen_1130/scene_8_seed_8/info/metadata.json'

@@ -1,3 +1,4 @@
+import math
 import os
 import json
 import numpy as np
@@ -643,14 +644,47 @@ class CuroboPlanner(MotionPlannerInterface):
             
         return position_diff < position_tolerance and rotation_diff < rotation_tolerance
 
+    def _base_rotation_filter(self, traj_result: TrajResult, rotation_limit: float = 2 * np.pi) -> TrajResult:
+        """
+        Marks trajectories as failed if base rotation exceeds one full circle.
+        
+        The base_z joint (index 2) is a revolute joint with limits [-6.0, 6.0].
+        We filter out trajectories where the total rotation exceeds 2*pi.
+        """        
+        if traj_result.trajectories is None or traj_result.trajectories.shape[0] == 0:
+            return traj_result
+        print("Applying base rotation filter with limit:", rotation_limit)
+        base_z_idx = 2  # base_z is the 3rd joint (index 2)
+        success_mask = traj_result.success.clone()
+        
+        for i in range(traj_result.trajectories.shape[0]):
+            if not success_mask[i]:
+                continue
+            
+            trajectory = traj_result.trajectories[i]
+            base_z_traj = trajectory[:, base_z_idx]
+            rotation_diff = base_z_traj[-1] - base_z_traj[0]
+            
+            if abs(rotation_diff) > rotation_limit:
+                success_mask[i] = False
+        
+        num_passed = success_mask.sum().item()
+        print(f"Base rotation filter: {num_passed}/{traj_result.trajectories.shape[0]} trajectories passed")
+        
+        traj_result.success = success_mask
+        return traj_result
     def filter_traj_move(self, traj_result: TrajResult, robot_cfg: Dict[str, Any] = None,
                  motion_gen: MotionGen = None,
                  filter_cfg: Dict[str, Any] = None) -> TrajResult:
-        """No additional filtering needed - success mask from planning is sufficient."""
+        """Filter trajectories for a move stage."""
+        # Base rotation filter
+        rotation_limit = filter_cfg.get("rotation_limit", 2 * np.pi)
+        traj_result = self._base_rotation_filter(traj_result, rotation_limit)
+        
         stage_type = filter_cfg.get("stage_type", StageType.MOVE)
         success_mask = traj_result.success.to(torch.bool)
         num_successful = success_mask.sum().item()
-        print(f"{num_successful}/{traj_result.num_samples} successful trajectories for {stage_type.name} stage.")
+        print(f"{num_successful}/{traj_result.num_samples} successful trajectories for {stage_type.name} stage after filtering.")
         return traj_result
     
     def filter_traj_move_articulated(self, traj_result: TrajResult, robot_cfg: Dict[str, Any] = None,

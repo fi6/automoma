@@ -682,12 +682,6 @@ class OpenTask(BaseTask):
             next_robot_state = next_step_data[:-1]
             next_robot_state = adjust_pose_for_robot(next_robot_state, self.cfg.env_cfg.robot_cfg.robot_type)
             
-            # Fallback strategy: Apply action to object to enforce opening (freely)
-            next_env_state = next_step_data[-1:]
-            if len(next_env_state) > 0:
-                next_angle = float(next_env_state[0])
-                self.env.apply_object_action(next_angle, 0.3)
-
             self.env.set_state(robot_state, env_state)
             self.env.step()
             
