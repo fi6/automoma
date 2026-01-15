@@ -870,7 +870,7 @@ class ReachTask(BaseTask):
                 # Depending on implementation, res might be IKResult or dict
                 iks = None
                 if isinstance(res, dict):
-                    iks = res.get("start_iks", res.get("initial_iks"))
+                    iks = res.get("start_iks", res.get("initial_iks", res.get("iks")))
                 elif hasattr(res, "iks"):
                     iks = res.iks
                 

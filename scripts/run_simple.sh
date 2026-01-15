@@ -79,8 +79,14 @@ python scripts/pipeline/4_evaluate.py \
 python scripts/pipeline/1_generate_plans.py --exp single_object_reach --scene scene_0_seed_0 --object 7221
 
 # Step 2: Render dataset
-python scripts/pipeline/2_render_dataset.py --exp single_object_reach --scene scene_0_seed_0 --object 7221 --max-episodes 10 --headless
+python scripts/pipeline/2_render_dataset.py --exp single_object_reach --scene scene_0_seed_0 --object 7221 --max-episodes 100 --headless
 
+# Step 3: Train policies
+
+# Step 4: Evaluate policies
+python scripts/pipeline/4_evaluate.py \
+    --run-dir outputs/train/dp3_single_object_reach_7221_scene_0_seed_0 \
+    --dataset_root data/single_object_reach/lerobot/single_object_reach_7221_scene_0_seed_0
 
 
 ###############################################################

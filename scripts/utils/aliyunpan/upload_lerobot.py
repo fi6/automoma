@@ -5,7 +5,7 @@ import yaml
 # --- 配置区域 ---
 LOCAL_DATA_ROOT = "/home/xinhai/projects/automoma/data"
 YUNPAN_DATA_ROOT = "/Research/automoma/data/friday_data"
-REPO_ID = "multi_object_open"
+REPO_ID = "single_object_reach"
 SUB_DIR = "lerobot"
 OBJECTS = ["7221", "11622", "103634", "46197", "101773"]
 

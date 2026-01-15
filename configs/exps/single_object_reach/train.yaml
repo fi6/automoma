@@ -5,7 +5,7 @@
 # Experiment Info
 # =============================================================================
 info_cfg:
-  task: "single_object_reach_test"
+  task: "single_object_reach"
   robot: "summit_franka"
   description: "Train diffusion policy and ACT for single object reach test"
 
@@ -14,8 +14,8 @@ info_cfg:
 # =============================================================================
 train_cfg:
   # Dataset info
-  dataset_repo_id: "single_object_reach_test"
-  dataset_root: "data/single_object_reach_test/lerobot/single_object_reach_test"
+  dataset_repo_id: "single_object_reach"
+  dataset_root: "data/single_object_reach/lerobot/single_object_reach"
   
   # Training parameters
   batch_size: 128
@@ -25,10 +25,10 @@ train_cfg:
   save_freq: 1000
   
   # Job naming
-  job_name: "act_single_object_reach_test"
+  job_name: "act_single_object_reach"
   
   # Output
-  output_dir: "outputs/train/act_single_object_reach_test"
+  output_dir: "outputs/train/act_single_object_reach"
   
   # Wandb
   wandb_enable: true
