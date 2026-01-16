@@ -28,6 +28,13 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+# Setup logging early
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 # --- CRITICAL INITIALIZATION ---
 # Isaac Sim's SimulationApp MUST be initialized before any other imports that might touch pxr or omni.
 # We do a quick parse of sys.argv to get the headless flag before importing anything else.
@@ -56,14 +63,6 @@ from automoma.evaluation.policy_runner import get_model
 from automoma.evaluation.metrics import MetricsCalculator
 from automoma.utils.robot_utils import adjust_pose_for_robot
 from automoma.utils.file_utils import load_object_from_metadata
-
-
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 
 def parse_run_dir_info(run_dir_name):
@@ -218,9 +217,6 @@ def run_evaluation(
         policy_type = eval_cfg.policy_type if hasattr(eval_cfg, 'policy_type') else "diffusion"
         if cfg.policy_cfg:
             policy_config = getattr(cfg.policy_cfg, policy_type, None)
-            if policy_config is None and policy_type == "dp3":
-                policy_config = getattr(cfg.policy_cfg, "diffusion", None)
-            
             if policy_config:
                 # Try model_path first (for pretrained models), then checkpoint_path
                 checkpoint_path = getattr(policy_config, 'model_path', None) or getattr(policy_config, 'checkpoint_path', None)
@@ -233,10 +229,6 @@ def run_evaluation(
     policy_type = eval_cfg.policy_type if hasattr(eval_cfg, 'policy_type') else "diffusion"
     if cfg.policy_cfg:
         policy_config = getattr(cfg.policy_cfg, policy_type, None)
-        if policy_config is None and policy_type == "dp3":
-            # Fallback to diffusion config if dp3 is missing
-            policy_config = getattr(cfg.policy_cfg, "diffusion", None)
-            
         if policy_config:
             if dataset_id:
                 policy_config.dataset_id = dataset_id

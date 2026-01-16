@@ -7,7 +7,7 @@
 # Experiment Info
 # =============================================================================
 info_cfg:
-  task: "single_object_reach_test"
+  task: "single_object_reach"
   robot: "summit_franka"
   scene: [scene_0_seed_0, scene_1_seed_1, scene_3_seed_3, scene_7_seed_7, scene_8_seed_8]
   object: ["7221"]
@@ -24,13 +24,13 @@ record_cfg:
   
   # Data Source Configuration (where to load trajectory data from)
   data_cfg:
-    traj_dir: "data/single_object_reach_test/traj"
+    traj_dir: "data/single_object_reach/traj"
     input_format: "pt"  # PyTorch tensor files
     
   # Dataset Output Configuration (where to save recorded data)
   dataset_cfg:
-    repo_id: "single_object_reach_test"
-    root: "data/single_object_reach_test/lerobot"
+    repo_id: "single_object_reach"
+    root: "data/single_object_reach/lerobot"
     fps: 15
     use_videos: true
     push_to_hub: false
@@ -102,7 +102,7 @@ env_cfg:
     width: 320
     height: 240
     pointcloud:
-      num_points: 4096
+      num_points: 1024
       random_drop_points: 8192
       use_fps: true
     cameras:
@@ -116,7 +116,7 @@ env_cfg:
         pose_type: local
         depth: true
         pointcloud:
-          num_points: 4096
+          num_points: 1024
           random_drop_points: 8192
           use_fps: true
       ego_wrist:

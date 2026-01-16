@@ -8,7 +8,7 @@
 # Experiment Info
 # =============================================================================
 info_cfg:
-  task: 'single_object_reach_test'
+  task: 'single_object_reach'
   robot: 'summit_franka'
   scene:
     [
@@ -26,7 +26,7 @@ info_cfg:
 # =============================================================================
 plan_cfg:
   # Output directory for this experiment
-  output_dir: 'data/single_object_reach_test'
+  output_dir: 'data/single_object_reach'
 
   # Number of grasp poses to use
   num_grasps: 20
