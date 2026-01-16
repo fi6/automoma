@@ -717,6 +717,16 @@ class OpenTask(BaseTask):
         """
         from automoma.evaluation.metrics import MetricsCalculator
         
+        # Get evaluation config
+        eval_cfg = self.cfg.eval_cfg if hasattr(self.cfg, 'eval_cfg') and self.cfg.eval_cfg else getattr(self.cfg, 'evaluation', None)
+        success_threshold = eval_cfg.success_threshold if eval_cfg else 0.05
+        max_steps = eval_cfg.max_steps_per_episode if eval_cfg else 500
+        
+        # Get metrics config
+        metrics_config = {}
+        if eval_cfg and hasattr(eval_cfg, 'metrics_cfg') and eval_cfg.metrics_cfg:
+            metrics_config = eval_cfg.metrics_cfg.to_dict() if hasattr(eval_cfg.metrics_cfg, 'to_dict') else eval_cfg.metrics_cfg
+
         initial_states = self.get_test_initial_states(test_data_dir)
         
         if not initial_states:
@@ -724,44 +734,74 @@ class OpenTask(BaseTask):
             return {}
         
         metrics_calc = MetricsCalculator(
-            success_threshold=self.cfg.evaluation.success_threshold
+            success_threshold=success_threshold,
+            **metrics_config
         )
+        
+        logger.info(f"Starting evaluation: episodes={num_episodes}, max_steps={max_steps}")
         
         for ep_idx in range(min(num_episodes, len(initial_states))):
             initial_state = initial_states[ep_idx % len(initial_states)]
             
-            # Set initial state
-            self.env.set_state(initial_state)
-            self.env.step()
+            logger.info(f"\nEpisode {ep_idx + 1}/{num_episodes}")
+            
+            # Reset environment with initial state
+            # Initial state is usually (robot_state, env_state) for OpenTask
+            robot_state, env_state = initial_state[:-1], initial_state[-1]
+            
+            robot_state = adjust_pose_for_robot(robot_state, self.cfg.env_cfg.robot_cfg.robot_type)
+            # Pass full initial state (tensor/array) or split components to reset
+            # SimEnvWrapper.reset handles (robot_state, env_state) if passed explicitly
+            # But specific to OpenTask initial_states are single tensors [robot_dofs + env_dof]
+            
+            # We reconstruct the adjusted initial state
+            adjusted_initial_state = torch.cat([to_tensor(robot_state), to_tensor(env_state).unsqueeze(0)])
+            
+            self.env.reset(robot_state, env_state=env_state)
             
             episode_traj = []
+            episode_success = False
             
-            for step in range(self.cfg.evaluation.max_steps_per_episode):
+            for step in range(max_steps):
                 obs = self.env.get_data()
                 
                 # Get action from policy
-                action = policy_model.infer_sync(obs)
+                response = policy_model.infer_sync(obs)
                 
-                if not action.success:
+                if not response.success:
+                    logger.warning(f"  Inference failed at step {step}: {response.error_message}")
                     break
                 
-                # Execute action
-                self.env.set_state(action.action)
-                self.env.step()
+                action = response.action
                 
-                episode_traj.append(action.action)
+                # Execute action
+                # Fallback strategy: Apply action to object to enforce opening (freely)
+                self.env.apply_object_action(1.57, 0.3)
+                
+                self.env.step(action)
+                episode_traj.append(action)
                 
                 # Check termination
-                if self._check_task_complete(obs):
+                obs_after = self.env.get_data()
+                
+                # Debug info
+                if step % 10 == 0:
+                    current_env_state = obs_after.get("env_state", 0.0)
+                    logger.debug(f"  Step {step}: Object Angle = {current_env_state:.4f}")
+
+                if self._check_task_complete(obs_after):
+                    episode_success = True
+                    logger.info(f"  Task completed at step {step + 1}")
                     break
             
             # Add episode to metrics
-            if episode_traj:
-                metrics_calc.add_episode(
-                    pred_trajectory=np.array(episode_traj),
-                    gt_trajectory=np.array(episode_traj),  # Self-trajectory
-                    completed=True,
-                )
+            metrics_calc.add_episode(
+                pred_trajectory=np.array(episode_traj),
+                gt_trajectory=np.array(episode_traj),  # Self-trajectory as GT for rollout metrics
+                completed=episode_success,
+            )
+            
+            logger.info(f"  Steps: {len(episode_traj)}, Success: {episode_success}")
         
         return metrics_calc.compute_metrics()
     

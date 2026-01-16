@@ -38,9 +38,11 @@ def _register_builtin_tasks():
     """Register all built-in task implementations."""
     from automoma.tasks.open_task import OpenTask, ReachOpenTask
     from automoma.tasks.pick_place_task import PickTask, PlaceTask, PickPlaceTask
+    from automoma.tasks.reach_task import ReachTask
     
     _TASK_REGISTRY["open"] = OpenTask
     _TASK_REGISTRY["reach_open"] = ReachOpenTask
+    _TASK_REGISTRY["reach"] = ReachTask
     _TASK_REGISTRY["pick"] = PickTask
     _TASK_REGISTRY["place"] = PlaceTask
     _TASK_REGISTRY["pick_place"] = PickPlaceTask
@@ -48,6 +50,7 @@ def _register_builtin_tasks():
     # Aliases
     _TASK_REGISTRY["multi_object_open"] = OpenTask
     _TASK_REGISTRY["single_object_open_test"] = OpenTask
+    _TASK_REGISTRY["single_object_reach"] = ReachTask
 
 
 class TaskFactory:
