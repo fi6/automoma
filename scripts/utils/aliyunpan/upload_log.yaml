@@ -66,3 +66,6 @@ multi_object_open:
   multi_object_open_7221_scene_7_seed_7: Success
   multi_object_open_7221_scene_8_seed_8: Success
   multi_object_open_7221_scene_9_seed_9: Success
+single_object_reach:
+  single_object_reach_7221_scene_0_seed_0: Success
+  single_object_reach_7221_scene_0_seed_0_1000: Success
