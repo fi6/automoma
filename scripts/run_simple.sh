@@ -227,3 +227,36 @@ python -m lerobot.scripts.lerobot_edit_dataset \
         --operation.backup false \
         --operation.ignore_invalid true \
         --operation.feature_names "['observation.depth.ego_topdown', 'observation.depth.ego_wrist', 'observation.depth.fix_local', 'observation.eef']"
+
+
+
+###############################################################
+# Example usage: Utils of docker
+###############################################################
+
+# Step 1: Build docker
+bash docker/build_docker.sh
+
+# Step 2: Start docker
+GPU_ID=1
+bash docker/start_docker.sh $GPU_ID
+
+# Step 3: Inside docker, run automoma
+OBJECT_ID="7221"
+bash scripts/run_docker.sh $OBJECT_ID
+
+# Utils OBJECTS=("7221" "11622" "103634" "46197" "101773")
+bash docker/start_docker.sh 1
+bash scripts/run_docker.sh 7221
+
+bash docker/start_docker.sh 2
+bash scripts/run_docker.sh 11622
+
+bash docker/start_docker.sh 3
+bash scripts/run_docker.sh 103634
+
+bash docker/start_docker.sh 4
+bash scripts/run_docker.sh 46197
+
+bash docker/start_docker.sh 5
+bash scripts/run_docker.sh 101773

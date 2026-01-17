@@ -87,8 +87,8 @@ Both tests validate:
 plan_cfg:
   num_grasps: 20
   filter:
-    position_threshold: 0.01
-    orientation_threshold: 0.05
+    position_tolerance: 0.01
+    rotation_tolerance: 0.05
 
 # Object override
 object_cfg:
@@ -96,14 +96,14 @@ object_cfg:
     plan_cfg:
       num_grasps: 50
       filter:
-        position_threshold: 0.02
+        position_tolerance: 0.02
 
 # Result for object 7221
 _resolved_plan_cfg:
   num_grasps: 50                        # ← overridden
   filter:
-    position_threshold: 0.02            # ← overridden
-    orientation_threshold: 0.05         # ← inherited
+    position_tolerance: 0.02            # ← overridden
+    rotation_tolerance: 0.05         # ← inherited
 ```
 
 ## Usage Examples

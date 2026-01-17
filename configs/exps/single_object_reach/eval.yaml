@@ -47,8 +47,8 @@ eval_cfg:
     
     # Success criteria for reach task
     criteria:
-      position_threshold: 0.05   # meters (EE to target)
-      orientation_threshold: 0.1  # radians
+      position_tolerance: 0.05   # meters (EE to target)
+      rotation_tolerance: 0.1  # radians
       completion_required: true
     
   # Per-scene episode distribution
