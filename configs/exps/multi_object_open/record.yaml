@@ -133,7 +133,7 @@ env_cfg:
     width: 320
     height: 240
     pointcloud:
-      num_points: 4096
+      num_points: 1024
       random_drop_points: 8192
       use_fps: true
     cameras:
@@ -147,7 +147,7 @@ env_cfg:
         pose_type: local
         depth: true
         pointcloud:
-          num_points: 4096
+          num_points: 1024
           random_drop_points: 8192
           use_fps: true
       ego_wrist:

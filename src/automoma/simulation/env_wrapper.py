@@ -99,7 +99,7 @@ class SimEnvWrapper:
         from automoma.planning.planner import BasePlanner
         
         # Initialize components
-        self.sim = IsaacSimManager(self.cfg.env_cfg)
+        self.sim = IsaacSimManager(self.cfg)
         self.scene = InfinigenBuilder(self.sim)
         self.sensors = SensorRig(self.sim)
         
@@ -132,9 +132,9 @@ class SimEnvWrapper:
         # Get configs (support both dict and Config objects)
         if object_cfg is None:
             # Use object_cfg from env_cfg
-            if not self.cfg.env_cfg or not self.cfg.env_cfg.object_cfg:
+            if not self.cfg or not self.cfg.object_cfg:
                 raise ValueError("env_cfg.object_cfg is required in config")
-            object_cfg = self._to_dict(self.cfg.env_cfg.object_cfg)
+            object_cfg = self._to_dict(self.cfg.object_cfg)
             # Handle multi-object config: pick first one if 'pose' not present
             if 'pose' not in object_cfg and object_cfg:
                 first_key = list(object_cfg.keys())[0]
@@ -145,9 +145,9 @@ class SimEnvWrapper:
                 
         if scene_cfg is None:
             # Use scene_cfg from env_cfg
-            if not self.cfg.env_cfg or not self.cfg.env_cfg.scene_cfg:
+            if not self.cfg or not self.cfg.scene_cfg:
                 raise ValueError("env_cfg.scene_cfg is required in config")
-            scene_cfg = self._to_dict(self.cfg.env_cfg.scene_cfg)
+            scene_cfg = self._to_dict(self.cfg.scene_cfg)
             # Handle multi-scene config
             if 'pose' not in scene_cfg and scene_cfg:
                 first_key = list(scene_cfg.keys())[0]
@@ -157,18 +157,18 @@ class SimEnvWrapper:
             
         # TODO: fix robot_cfg robot_config can be either a dict with 'path' key or already loaded robot config
         from automoma.utils.file_utils import load_robot_cfg, process_robot_cfg
-        if not self.cfg.env_cfg or not self.cfg.env_cfg.robot_cfg:
+        if not self.cfg or not self.cfg.robot_cfg:
             raise ValueError("env_cfg.robot_cfg is required in config")
-        self.cfg.env_cfg.robot_cfg.robot = process_robot_cfg(load_robot_cfg(self.cfg.env_cfg.robot_cfg["path"]))
-        robot_cfg = self._to_dict(self.cfg.env_cfg.robot_cfg)
+        self.cfg.robot_cfg.robot = process_robot_cfg(load_robot_cfg(self.cfg.robot_cfg["path"]))
+        robot_cfg = self._to_dict(self.cfg.robot_cfg)
         # print(f"Robot config used for setup: {robot_cfg}")
         # Use camera_cfg from env_cfg
         sensors_cfg = None
-        if self.cfg.env_cfg:
-            if hasattr(self.cfg.env_cfg, 'sensors_cfg') and self.cfg.env_cfg.sensors_cfg:
-                sensors_cfg = self._to_dict(self.cfg.env_cfg.sensors_cfg)
-            elif hasattr(self.cfg.env_cfg, 'camera_cfg') and self.cfg.env_cfg.camera_cfg:
-                sensors_cfg = self._to_dict(self.cfg.env_cfg.camera_cfg)
+        if self.cfg:
+            if hasattr(self.cfg, 'sensors_cfg') and self.cfg.sensors_cfg:
+                sensors_cfg = self._to_dict(self.cfg.sensors_cfg)
+            elif hasattr(self.cfg, 'camera_cfg') and self.cfg.camera_cfg:
+                sensors_cfg = self._to_dict(self.cfg.camera_cfg)
         
         # Setup scene, object, and robot
         obj_pose = object_cfg.get('pose')
@@ -189,14 +189,14 @@ class SimEnvWrapper:
         self.sim.set_deactivate_prims(deactivate_prim_paths)
         # Set collision free
         collision_free_prim_paths = []
-        if self.cfg.env_cfg and self.cfg.env_cfg.sim_cfg and hasattr(self.cfg.env_cfg.sim_cfg, 'collision_free_prim_paths'):
-            collision_free_prim_paths = self.cfg.env_cfg.sim_cfg.collision_free_prim_paths
+        if self.cfg and self.cfg.sim_cfg and hasattr(self.cfg.sim_cfg, 'collision_free_prim_paths'):
+            collision_free_prim_paths = self.cfg.sim_cfg.collision_free_prim_paths
         self.sim.set_isaacsim_collision_free(prim_paths=collision_free_prim_paths)
         
         # Set lighting
         lighting_mode = 2  # default
-        if self.cfg.env_cfg and self.cfg.env_cfg.sim_cfg and hasattr(self.cfg.env_cfg.sim_cfg, 'lighting_mode'):
-            lighting_mode = self.cfg.env_cfg.sim_cfg.lighting_mode
+        if self.cfg and self.cfg.sim_cfg and hasattr(self.cfg.sim_cfg, 'lighting_mode'):
+            lighting_mode = self.cfg.sim_cfg.lighting_mode
         self.sim.set_lighting(lighting_mode)
         
         # Setup physics
@@ -271,7 +271,7 @@ class SimEnvWrapper:
             current_state = self.get_robot_state()
             action_np = to_numpy(action)
             
-            base_dof = self.cfg.env_cfg.robot_cfg.get("mobile_base_dof", 3)
+            base_dof = self.cfg.robot_cfg.get("mobile_base_dof", 3)
             
             if len(action_np) == len(current_state) and base_dof > 0:
                 # Construct new state
@@ -321,9 +321,9 @@ class SimEnvWrapper:
                 obj.get_articulation_controller()
             
             # Use object_cfg from env_cfg
-            if not self.cfg.env_cfg or not self.cfg.env_cfg.object_cfg:
+            if not self.cfg or not self.cfg.object_cfg:
                 raise ValueError("env_cfg.object_cfg is required in config")
-            object_cfg = self._to_dict(self.cfg.env_cfg.object_cfg)
+            object_cfg = self._to_dict(self.cfg.object_cfg)
             # Handle multi-object config
             if 'joint_id' not in object_cfg and object_cfg:
                 first_key = list(object_cfg.keys())[0]
@@ -332,6 +332,47 @@ class SimEnvWrapper:
             obj.set_joint_positions(env_state_float, [joint_id])
             self.history_env_state.append(env_state_float)
     
+    def apply_object_action(self, joint_position: float, joint_velocity: float = 0.0) -> None:
+        """
+        Apply action to the target object (fallback strategy).
+        
+        Args:
+            joint_position: Target joint position
+            joint_velocity: Target joint velocity
+        """
+        from omni.isaac.core.utils.types import ArticulationAction
+        import numpy as np
+        
+        try:
+            obj = self.sim.world.scene.get_object("target_object")
+            if obj is None:
+                return
+                
+            if not obj._articulation_view.initialized:
+                obj.get_articulation_controller()
+
+            # Use object_cfg from env_cfg
+            if not self.cfg or not self.cfg.object_cfg:
+                return
+            object_cfg = self._to_dict(self.cfg.object_cfg)
+            if 'joint_id' not in object_cfg and object_cfg:
+                first_key = list(object_cfg.keys())[0]
+                object_cfg = object_cfg[first_key]
+            
+            # Get joint id
+            joint_id = object_cfg.get("joint_id", 0)
+            # Some implementation uses joint_id-1 but set_state uses joint_id. 
+            # We follow set_state pattern here for consistency within this class.
+            
+            action = ArticulationAction(
+                joint_positions=np.array([joint_position]), 
+                joint_velocities=np.array([joint_velocity]), 
+                joint_indices=np.array([joint_id])
+            )
+            obj.get_articulation_controller().apply_action(action)
+        except Exception as e:
+            logger.warning(f"Failed to apply object action: {e}")
+
     def set_gripper(self, value: float) -> None:
         """
         Set gripper state.
@@ -396,7 +437,7 @@ class SimEnvWrapper:
         action = next_np.copy()
         
         # For mobile base DOFs, compute delta
-        base_dof = self.cfg.env_cfg.robot_cfg.get("mobile_base_dof", 3)
+        base_dof = self.cfg.robot_cfg.get("mobile_base_dof", 3)
         if len(current_np) >= base_dof and len(next_np) >= base_dof:
             action[:base_dof] = next_np[:base_dof] - current_np[:base_dof]
         

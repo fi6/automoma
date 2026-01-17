@@ -11,9 +11,9 @@ if lerobot_path not in sys.path:
     sys.path.append(lerobot_path)
 
 try:
-    from lerobot.datasets.lerobot_dataset import LeRobotDataset, LeRobotDatasetMetadata
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
 except ImportError as e:
-    print(f"❌ 错误: 无法导入 LeRobotDataset 或 LeRobotDatasetMetadata。\n请在 projects/automoma 根目录下运行。\n{e}")
+    print(f"❌ 错误: 无法导入 LeRobotDataset。\n请在 projects/automoma 根目录下运行。\n{e}")
     sys.exit(1)
 
 # --- 新增: 自然排序算法 ---
@@ -29,7 +29,7 @@ def natural_sort_key(path):
 
 def check_integrity():
     # --- 2. 搜索数据集 ---
-    base_pattern = os.path.join("data", "multi_object_open", "lerobot", "*")
+    base_pattern = os.path.join("/home/xinhai/projects/automoma/data_aliyunpan_download/Research/automoma/data/friday_data/multi_object_open/lerobot", "*")
     
     print(f"🔍 正在扫描路径: {base_pattern} ...")
     all_paths = glob.glob(base_pattern)
@@ -71,38 +71,26 @@ def check_integrity():
             empty_datasets.append(str(path))
             continue
 
-        # [检测 2]: 尝试加载并按 episode 验证（使用 LeRobotDatasetMetadata）
+        # [检测 2]: 尝试加载
         try:
-            meta = LeRobotDatasetMetadata(repo_id, root=path)
-            if meta.total_episodes == 0:
-                raise ValueError("Number of episodes is 0.")
-
-            # 验证每个 episode 的 parquet 和视频文件是否存在
-            for ep_idx in range(meta.total_episodes):
-                data_path = meta.root / meta.get_data_file_path(ep_idx)
-                if not data_path.exists():
-                    raise ValueError(f"Parquet file is missing in: {data_path}")
-
-                for vid_key in meta.video_keys:
-                    vid_path = meta.root / meta.get_video_file_path(ep_idx, vid_key)
-                    if not vid_path.exists():
-                        raise ValueError(f"Video file is missing in: {vid_path}")
-
+            ds = LeRobotDataset(repo_id=repo_id, root=path, episodes=[0])
+            _ = ds.meta # 触发元数据读取
+            
             print("✅ 正常    | OK")
             valid_count += 1
-
+            
         except Exception as e:
-            print("❌ 损坏    | 检查失败")
-
+            print("❌ 损坏    | 加载失败")
+            
             error_msg = str(e)
             if "Parquet magic bytes not found" in error_msg:
                 reason = "Parquet头损坏"
-            elif "No such file or directory" in error_msg or "missing" in error_msg:
+            elif "No such file or directory" in error_msg:
                 reason = "关键文件缺失"
             else:
                 reason = error_msg.split('\n')[-1]
             print(reason)
-
+            
             corrupt_datasets.append({"path": str(path), "reason": reason})
             corrupt_count += 1
 

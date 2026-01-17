@@ -52,10 +52,21 @@ def load_ik(path: str) -> IKResult:
     """Load IKResult from a file."""
     ik_data = torch.load(path, weights_only=False)
     print(f"IK data loaded from {path}")
-    return IKResult(
-        start_iks=ik_data["start_iks"],
-        goal_iks=ik_data.get("goal_iks")
-    )
+    # Support different key names for backward compatibility
+    # New format: target_poses, iks
+    # Old format: start_iks, goal_iks
+    if "target_poses" in ik_data and "iks" in ik_data:
+        return IKResult(
+            target_poses=ik_data["target_poses"],
+            iks=ik_data["iks"]
+        )
+    else:
+        # Old format - use start_iks as iks
+        start_iks = ik_data.get("start_iks", ik_data.get("iks"))
+        return IKResult(
+            target_poses=ik_data.get("target_poses", torch.zeros(start_iks.shape[0], 7)),
+            iks=start_iks
+        )
 
 def save_traj(traj_result: TrajResult, path: str) -> None:
     """Save TrajResult to a file."""
