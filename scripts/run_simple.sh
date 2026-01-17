@@ -13,7 +13,7 @@ python scripts/pipeline/2_render_dataset.py --exp single_object_open_test --scen
 exp_name="multi_object_open_7221_scene_0_seed_0"
 dataset_root=data/multi_object_open/lerobot/$exp_name
 rm -rf outputs/train/act_$exp_name
-lerobot-train \
+CUDA_VISIBLE_DEVICES=1  lerobot-train \
   --policy.type=act \
   --batch_size=128 \
   --steps=100000 \
@@ -27,13 +27,15 @@ lerobot-train \
   --policy.n_action_steps=16 \
   --policy.optimizer_lr=1e-4 \
   --policy.push_to_hub=false \
-  --policy.device=cuda:6 \
-  --wandb.enable=true \
+  --policy.device=cuda \
+  --wandb.enable=false \
   --output_dir=outputs/train/act_$exp_name \
-  --dataset.preload=true
+  --dataset.preload=true \
+  --dataset.filter_features_by_policy=true
 
 # (2) DP3
 exp_name="multi_object_open_7221_scene_0_seed_0"
+dataset_root=data/multi_object_open/lerobot/$exp_name
 rm -rf outputs/train/dp3_$exp_name
 lerobot-train \
   --policy.type=dp3 \
@@ -44,12 +46,13 @@ lerobot-train \
   --save_freq=5000 \
   --job_name=dp3_$exp_name \
   --dataset.repo_id=$exp_name \
-  --dataset.root=data/$exp_name \
+  --dataset.root=$dataset_root \
   --policy.push_to_hub=false \
   --policy.device=cuda \
-  --wandb.enable=true \
+  --wandb.enable=false \
   --output_dir=outputs/train/dp3_$exp_name \
-  --dataset.preload=true
+  --dataset.preload=true \
+  --dataset.filter_features_by_policy=true
 
 
 # (3) Diffusion Policy
@@ -67,12 +70,35 @@ lerobot-train \
   --dataset.repo_id=$exp_name \
   --dataset.root=$dataset_root \
   --policy.push_to_hub=false \
-  --policy.device=cuda \
-  --wandb.enable=true \
   --output_dir=outputs/train/dp_$exp_name \
-  --dataset.preload=true
+  --policy.device=cuda \
+  --wandb.enable=false \
+  --dataset.preload=true \
+  --dataset.filter_features_by_policy=true
 
-
+# (4) Pi05
+exp_name="multi_object_open_7221_scene_0_seed_0"
+dataset_root=data/multi_object_open/lerobot/$exp_name
+rm -rf outputs/train/pi05_$exp_name
+lerobot-train \
+    --policy.type=pi05 \
+    --policy.dtype=bfloat16 \
+    --policy.freeze_vision_encoder=false \
+    --policy.train_expert_only=false \
+    --job_name=pi05_training \
+    --dataset.repo_id=$exp_name \
+    --dataset.root=$dataset_root \
+    --output_dir=outputs/train/pi05_$exp_name \
+    --policy.repo_id=lerobot/pi05_base \
+    --policy.pretrained_path=lerobot/pi05_base \
+    --policy.compile_model=true \
+    --policy.gradient_checkpointing=true \
+    --wandb.enable=false \
+    --steps=3000 \
+    --policy.device=cuda \
+    --batch_size=32 \
+    --dataset.preload=true \
+    --dataset.filter_features_by_policy=true
 
 # Step 4: Evaluate policies
 # (1) ACT
@@ -194,8 +220,10 @@ python -m lerobot.scripts.lerobot_edit_dataset \
 
 
 exp_name="single_object_reach_7221_scene_0_seed_0"
-dataset_root="$(pwd)/data/single_object_reach/lerobot/$exp_name"
+dataset_root="$(pwd)/data/multi_object_open/lerobot/$exp_name"
 python -m lerobot.scripts.lerobot_edit_dataset \
         --repo_id $dataset_root \
         --operation.type remove_feature \
+        --operation.backup false \
+        --operation.ignore_invalid true \
         --operation.feature_names "['observation.depth.ego_topdown', 'observation.depth.ego_wrist', 'observation.depth.fix_local', 'observation.eef']"
