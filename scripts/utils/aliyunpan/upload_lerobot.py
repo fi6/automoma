@@ -1,6 +1,7 @@
 import os
 import subprocess
 import yaml
+import argparse
 
 # --- 配置区域 ---
 LOCAL_DATA_ROOT = "/home/xinhai/projects/automoma/data"
@@ -8,12 +9,19 @@ YUNPAN_DATA_ROOT = "/Research/automoma/data/friday_data"
 REPO_ID = "single_object_reach"
 SUB_DIR = "lerobot"
 OBJECTS = ["7221", "11622", "103634", "46197", "101773"]
+# OBJECTS = ["7221"]
 
 # 自动获取脚本所在目录下的日志路径
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_FILE = os.path.join(SCRIPT_DIR, "upload_log.yaml")
 ALIYUNPAN_PATH = "/home/xinhai/env/aliyunpan-v0.3.7-linux-amd64/aliyunpan"
 ALIYUNPAN_PATH_2 = "/home/xinhai/Documents/env/aliyunpan-v0.3.7-linux-amd64/aliyunpan"
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Upload lerobot folders to aliyunpan")
+    parser.add_argument('--exp', type=str, help='Specific folder name to upload (e.g., multi_object_open_7221_scene_25_seed_25)')
+    parser.add_argument('--force', action='store_true', help='Force upload even if marked Success in log')
+    return parser.parse_args()
 
 def load_log():
     if os.path.exists(LOG_FILE):
@@ -45,6 +53,7 @@ def upload_folder(folder_name):
         return False, f"Error: {e}"
 
 def main():
+    args = parse_args()
     upload_log = load_log()
     if REPO_ID not in upload_log:
         upload_log[REPO_ID] = {}
@@ -54,15 +63,23 @@ def main():
         print(f"错误: 本地路径 {local_lerobot_path} 不存在")
         return
 
-    # 筛选并排序
-    folders = [f for f in os.listdir(local_lerobot_path) 
-               if f.startswith(f"{REPO_ID}_") and "scene_" in f]
-    
-    # 按物体ID和场景编号排序
-    folders.sort() 
+    if args.exp:
+        folders = [args.exp]
+    else:
+        # 筛选并排序
+        folders = [f for f in os.listdir(local_lerobot_path) 
+                   if f.startswith(f"{REPO_ID}_") and "scene_" in f]
+        folders = [f for f in folders if any(obj in f for obj in OBJECTS)]
+        # 按物体ID和场景编号排序
+        folders.sort()
 
     for folder in folders:
-        if upload_log[REPO_ID].get(folder) == "Success":
+        local_path = os.path.join(local_lerobot_path, folder)
+        if not os.path.exists(local_path):
+            print(f"错误: 本地文件夹不存在: {folder}")
+            continue
+
+        if upload_log[REPO_ID].get(folder) == "Success" and not args.force:
             print(f"跳过已上传: {folder}")
             continue
 

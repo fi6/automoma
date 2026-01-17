@@ -1,6 +1,7 @@
 import os
 import subprocess
 import yaml
+import argparse
 
 # --- 配置区域 ---
 # 下载到哪？（可以按需修改）
@@ -14,6 +15,12 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_LOG_FILE = os.path.join(SCRIPT_DIR, "upload_log.yaml")
 DOWNLOAD_LOG_FILE = os.path.join(SCRIPT_DIR, "download_log.yaml")
 ALIYUNPAN_PATH = "/home/xinhai/env/aliyunpan-v0.3.7-linux-amd64/aliyunpan"
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Download lerobot folders from aliyunpan")
+    parser.add_argument('--exp', type=str, help='Specific folder name to download (e.g., multi_object_open_7221_scene_25_seed_25)')
+    parser.add_argument('--force', action='store_true', help='Force download even if marked Success in log')
+    return parser.parse_args()
 
 def load_yaml(path):
     if os.path.exists(path):
@@ -43,6 +50,7 @@ def download_folder(folder_name):
         return False, f"Error: {e}"
 
 def main():
+    args = parse_args()
     upload_log = load_yaml(UPLOAD_LOG_FILE)
     download_log = load_yaml(DOWNLOAD_LOG_FILE)
 
@@ -53,12 +61,18 @@ def main():
     if REPO_ID not in download_log:
         download_log[REPO_ID] = {}
 
-    # 获取所有上传成功的文件夹
-    tasks = [f for f, s in upload_log[REPO_ID].items() if s == "Success"]
-    tasks.sort()
+    if args.exp:
+        tasks = [args.exp]
+    else:
+        # 获取所有上传成功的文件夹
+        tasks = [f for f, s in upload_log[REPO_ID].items() if s == "Success"]
+        tasks.sort()
 
     for folder in tasks:
-        if download_log[REPO_ID].get(folder) == "Success":
+        if args.exp and upload_log[REPO_ID].get(folder) != "Success":
+            print(f"警告: {folder} 在 upload_log 中没有标记为 Success，仍将尝试下载。")
+
+        if download_log[REPO_ID].get(folder) == "Success" and not args.force:
             print(f"跳过已下载: {folder}")
             continue
 

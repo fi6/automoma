@@ -29,7 +29,7 @@ def natural_sort_key(path):
 
 def check_integrity():
     # --- 2. 搜索数据集 ---
-    base_pattern = os.path.join("data", "multi_object_open", "lerobot", "*")
+    base_pattern = os.path.join("/home/xinhai/projects/automoma/data_aliyunpan_download/Research/automoma/data/friday_data/multi_object_open/lerobot", "*")
     
     print(f"🔍 正在扫描路径: {base_pattern} ...")
     all_paths = glob.glob(base_pattern)
