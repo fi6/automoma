@@ -313,8 +313,6 @@ def get_open_ee_pose(
 
     # 1. Fix default angle is not zero
     if default_joint_cfg is not None:
-        # Update joint angle to tenser
-        default_joint_cfg = {k: torch.tensor(v) for k, v in default_joint_cfg.items()}
         object_urdf.update_cfg(default_joint_cfg)
 
     # 2: Compute relative pose of the grasp and handle in object frame
