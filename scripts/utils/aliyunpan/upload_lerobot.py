@@ -15,6 +15,7 @@ OBJECTS = ["7221", "11622", "103634", "46197", "101773"]
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_FILE = os.path.join(SCRIPT_DIR, "upload_log.yaml")
 ALIYUNPAN_PATH = "/home/xinhai/env/aliyunpan-v0.3.7-linux-amd64/aliyunpan"
+ALIYUNPAN_PATH_2 = "/home/xinhai/Documents/env/aliyunpan-v0.3.7-linux-amd64/aliyunpan"
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Upload lerobot folders to aliyunpan")
@@ -40,7 +41,10 @@ def upload_folder(folder_name):
         return False, "Local path not found"
 
     print(f"--- 正在上传: {folder_name} ---")
-    cmd = [ALIYUNPAN_PATH, "upload", local_path, remote_path]
+    exec_path = ALIYUNPAN_PATH if os.path.exists(ALIYUNPAN_PATH) else ALIYUNPAN_PATH_2
+    if not os.path.exists(exec_path):
+        return False, f"Error: aliyunpan not found at {ALIYUNPAN_PATH} or {ALIYUNPAN_PATH_2}"
+    cmd = [exec_path, "upload", local_path, remote_path]
     
     try:
         result = subprocess.run(cmd, check=True)
