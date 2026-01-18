@@ -199,6 +199,19 @@ lerobot-dataset-viz \
     --save 1 \
     --output-dir ./viz_results
 
+# Merge Dataset
+dataset_root="$(pwd)/data/multi_object_open/lerobot_test"
+exp_name_new="multi_object_open_merged"
+repo_ids_str="[
+    '$dataset_root/multi_object_open_11622_scene_18_seed_18',
+    '$dataset_root/multi_object_open_7221_scene_0_seed_0',
+    '$dataset_root/multi_object_open_46197_scene_38_seed_38'
+]"
+python -m lerobot.scripts.lerobot_edit_dataset \
+    --repo_id "$dataset_root/$exp_name_new" \
+    --operation.type merge \
+    --operation.repo_ids "$repo_ids_str"
+
 
 # Split Dataset
 exp_name="multi_object_open_7221_scene_0_seed_0"
