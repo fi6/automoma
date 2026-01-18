@@ -44,8 +44,8 @@ eval_cfg:
     
     # Success criteria
     criteria:
-      position_threshold: 0.05   # meters
-      orientation_threshold: 0.1  # radians
+      position_tolerance: 0.05   # meters
+      rotation_tolerance: 0.1  # radians
       angle_threshold: 0.1        # radians for articulation
       completion_required: true
     

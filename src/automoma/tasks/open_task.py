@@ -382,17 +382,17 @@ class OpenTask(BaseTask):
         plan_cfg = self.get_plan_cfg(object_id)
         
         # Get filter parameters with defaults
-        position_threshold = 0.01
-        orientation_threshold = 0.05
+        position_tolerance = 0.01
+        rotation_tolerance = 0.05
         
         if hasattr(plan_cfg, 'filter') and plan_cfg.filter:
-            position_threshold = getattr(plan_cfg.filter, 'position_threshold', 0.01)
-            orientation_threshold = getattr(plan_cfg.filter, 'orientation_threshold', 0.05)
+            position_tolerance = getattr(plan_cfg.filter, 'position_tolerance', 0.01)
+            rotation_tolerance = getattr(plan_cfg.filter, 'rotation_tolerance', 0.05)
         
         filter_cfg = {
             "stage_type": stage_type,
-            "position_tolerance": position_threshold,
-            "rotation_tolerance": orientation_threshold,
+            "position_tolerance": position_tolerance,
+            "rotation_tolerance": rotation_tolerance,
         }
         
         # Use AKR motion_gen for trajectory filtering (same as planning)
@@ -1119,17 +1119,17 @@ class ReachOpenTask(BaseTask):
         plan_cfg = self.cfg.plan_cfg
         
         # Get filter parameters with defaults
-        position_threshold = 0.01
-        orientation_threshold = 0.05
+        position_tolerance = 0.01
+        rotation_tolerance = 0.05
         
         if hasattr(plan_cfg, 'filter') and plan_cfg.filter:
-            position_threshold = getattr(plan_cfg.filter, 'position_threshold', 0.01)
-            orientation_threshold = getattr(plan_cfg.filter, 'orientation_threshold', 0.05)
+            position_tolerance = getattr(plan_cfg.filter, 'position_tolerance', 0.01)
+            rotation_tolerance = getattr(plan_cfg.filter, 'rotation_tolerance', 0.05)
         
         filter_cfg = {
             "stage_type": stage_type,
-            "position_tolerance": position_threshold,
-            "rotation_tolerance": orientation_threshold,
+            "position_tolerance": position_tolerance,
+            "rotation_tolerance": rotation_tolerance,
         }
         
         # Stage 1 (MOVE_ARTICULATED) requires AKR, Stage 0 (MOVE) uses default

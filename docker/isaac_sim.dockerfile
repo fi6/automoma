@@ -289,6 +289,7 @@ COPY LICENSE /pkgs/automoma-docker/LICENSE
 RUN cd /pkgs/automoma-docker && $omni_python -m pip install .
 
 RUN $omni_python -m pip install numpy==1.26.4
+RUN $omni_python -m pip install yourdfpy==0.0.58
 
 RUN ln -s /pkgs/automoma-docker/assets /isaac-sim/kit/python/lib/python3.10/assets
 

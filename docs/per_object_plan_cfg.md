@@ -56,8 +56,8 @@ Example:
 plan_cfg:
   num_grasps: 20
   filter:
-    position_threshold: 0.01
-    orientation_threshold: 0.05
+    position_tolerance: 0.01
+    rotation_tolerance: 0.05
 
 # Object override
 object_cfg:
@@ -65,13 +65,13 @@ object_cfg:
     plan_cfg:
       num_grasps: 50
       filter:
-        position_threshold: 0.02
-        # orientation_threshold not specified
+        position_tolerance: 0.02
+        # rotation_tolerance not specified
 
 # Result for object 7221:
 # num_grasps: 50 (overridden)
-# filter.position_threshold: 0.02 (overridden)
-# filter.orientation_threshold: 0.05 (inherited from default)
+# filter.position_tolerance: 0.02 (overridden)
+# filter.rotation_tolerance: 0.05 (inherited from default)
 ```
 
 ### 3. Usage in Code

@@ -59,8 +59,8 @@ object_cfg:
   "big_motion_object":
     plan_cfg:
       filter:
-        position_threshold: 0.02  # vs default 0.01
-        orientation_threshold: 0.08  # vs default 0.05
+        position_tolerance: 0.02  # vs default 0.01
+        rotation_tolerance: 0.08  # vs default 0.05
 ```
 
 ## Available Parameters
@@ -92,8 +92,8 @@ plan_cfg:
     expand_to_pairs: true
   
   filter:
-    position_threshold: 0.01
-    orientation_threshold: 0.05
+    position_tolerance: 0.01
+    rotation_tolerance: 0.05
   
   resume: true
 ```
