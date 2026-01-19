@@ -255,7 +255,7 @@ class LeRobotDatasetWrapper_v1(BaseDatasetWrapper):
             self.dataset.push_to_hub(tags=["automoma"], private=True)
 
 
-class LerobotDatasetWrapper(LeRobotDatasetWrapper_v1):
+class LeRobotDatasetWrapper(LeRobotDatasetWrapper_v1):
     def _init_features(self):
         features = {
             "observation.state": {

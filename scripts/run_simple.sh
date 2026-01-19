@@ -6,7 +6,8 @@
 python scripts/pipeline/1_generate_plans.py --exp multi_object_open --scene scene_0_seed_0 --object 7221
 
 # Step 2: Render dataset
-python scripts/pipeline/2_render_dataset.py --exp single_object_open_test --scene scene_0_seed_0 --object 7221 --headless --max-episodes 10
+python scripts/pipeline/2_render_dataset.py --exp multi_object_open --scene scene_0_seed_0 --object 7221 --max-episodes 10
+python scripts/pipeline/2_render_dataset.py --exp multi_object_open --scene scene_0_seed_0 --object 7221 --headless --max-episodes 10
 
 # Step 3: Train policies
 # (1) ACT
