@@ -104,8 +104,31 @@ lerobot-train \
 # Step 4: Evaluate policies
 # (1) ACT
 python scripts/pipeline/4_evaluate.py \
-    --run-dir outputs/train/act_multi_object_open_7221_scene_0_seed_0 \
-    --dataset_root data/multi_object_open/lerobot/multi_object_open_7221_scene_0_seed_0
+    --exp multi_object_open \
+    --policy-type act \
+    --checkpoint-dir outputs/train/act_multi_object_open_7221_scene_0_seed_0 \
+    --initial-state-path data/multi_object_open/traj/summit_franka/scene_0_seed_0/7221 \
+    --scene scene_0_seed_0 \
+    --object 7221 \
+    --headless
+
+python scripts/pipeline/4_evaluate.py \
+    --exp multi_object_open \
+    --policy-type dp3 \
+    --checkpoint-dir outputs/train/dp3_multi_object_open_7221_scene_0_seed_0 \
+    --initial-state-path data/multi_object_open/traj/summit_franka/scene_0_seed_0/7221 \
+    --scene scene_0_seed_0 \
+    --object 7221 \
+    --headless
+
+python scripts/pipeline/4_evaluate.py \
+    --exp multi_object_open \
+    --policy-type act \
+    --checkpoint-dir outputs/train/act_multi_object_open_11622_scene_25_seed_0 \
+    --initial-state-path data/multi_object_open/traj/summit_franka/scene_0_seed_0/7221 \
+    --scene scene_0_seed_0 \
+    --object 7221 \
+    --headless
 
 # (2) DP3
 python scripts/pipeline/4_evaluate.py \

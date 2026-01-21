@@ -749,7 +749,7 @@ class ReachTask(BaseTask):
     def run_evaluation_pipeline(
         self,
         policy_model,
-        test_data_dir: str,
+        initial_state_path: str,
         num_episodes: int,
     ) -> Dict[str, Any]:
         """
@@ -760,7 +760,8 @@ class ReachTask(BaseTask):
         
         Args:
             policy_model: Trained policy model
-            test_data_dir: Directory with test data for initial states
+            initial_state_path: Path to a start_iks.pt file or a directory
+                containing trajectory data for initial states
             num_episodes: Number of evaluation episodes
             
         Returns:
@@ -778,7 +779,7 @@ class ReachTask(BaseTask):
         if eval_cfg and hasattr(eval_cfg, 'metrics_cfg') and eval_cfg.metrics_cfg:
             metrics_config = eval_cfg.metrics_cfg.to_dict() if hasattr(eval_cfg.metrics_cfg, 'to_dict') else eval_cfg.metrics_cfg
 
-        initial_states = self.get_test_initial_states(test_data_dir)
+        initial_states = self.get_test_initial_states(initial_state_path)
         
         if not initial_states:
             logger.warning("No test initial states found")
@@ -886,31 +887,4 @@ class ReachTask(BaseTask):
             import random
             random.shuffle(initial_states)
             
-        return initial_states
-        """
-        Load test initial states for reach task evaluation.
-        
-        For reach task, we load the start IKs (random initial positions).
-        """
-        initial_states = []
-        test_path = Path(test_data_dir)
-        
-        # Load start IKs from trajectory data
-        ik_files = list(test_path.glob("**/start_iks.pt"))
-        
-        logger.info(f"Found {len(ik_files)} IK files in {test_data_dir}")
-        
-        for ik_file in ik_files:
-            try:
-                ik_data = torch.load(ik_file, weights_only=True)
-                iks = ik_data["iks"] if isinstance(ik_data, dict) else ik_data.iks
-                
-                # Take first IK as initial state
-                if len(iks) > 0:
-                    initial_states.append(iks[0])
-                    
-            except Exception as e:
-                logger.warning(f"Error loading {ik_file}: {e}")
-        
-        logger.info(f"Loaded {len(initial_states)} initial states")
         return initial_states

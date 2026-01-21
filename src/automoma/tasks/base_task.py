@@ -409,7 +409,7 @@ class BaseTask(ABC):
     def run_evaluation_pipeline(
         self,
         policy_model,
-        test_data_dir: str,
+        initial_state_path: str,
         num_episodes: int,
     ) -> Dict[str, Any]:
         """
@@ -424,7 +424,8 @@ class BaseTask(ABC):
         
         Args:
             policy_model: Trained policy model with infer_sync() method
-            test_data_dir: Directory with test data for initial states
+            initial_state_path: Path to a start_iks.pt file or a directory
+                containing trajectory data for initial states
             num_episodes: Number of evaluation episodes
             
         Returns:
@@ -436,7 +437,7 @@ class BaseTask(ABC):
     # Helper Methods (can be used by subclasses)
     # =========================================================================
     
-    def get_test_initial_states(self, test_data_dir: str) -> List[torch.Tensor]:
+    def get_test_initial_states(self, initial_state_path: str) -> List[torch.Tensor]:
         """
         Load test initial states from trajectory data.
         
@@ -445,27 +446,38 @@ class BaseTask(ABC):
         Subclasses can override for different initialization strategies.
         
         Args:
-            test_data_dir: Directory containing test trajectory data
+            initial_state_path: Path to a start_iks.pt file or a directory
+                containing trajectory data.
             
         Returns:
             List of initial state tensors
         """
         initial_states = []
-        test_path = Path(test_data_dir)
-        
-        # Load start IKs from trajectory data
-        ik_files = list(test_path.glob("**/start_iks.pt"))
-        
-        logger.info(f"Found {len(ik_files)} IK files in {test_data_dir}")
+        test_path = Path(initial_state_path)
+
+        # Accept either a single file or a directory
+        if test_path.is_file():
+            ik_files = [test_path]
+        else:
+            ik_files = list(test_path.glob("**/start_iks.pt"))
+
+        logger.info(f"Found {len(ik_files)} IK files in {initial_state_path}")
         
         for ik_file in ik_files:
             try:
                 ik_data = torch.load(ik_file, weights_only=True)
-                iks = ik_data["iks"] if isinstance(ik_data, dict) else ik_data.iks
-                
+                if isinstance(ik_data, dict) and "iks" in ik_data:
+                    iks = ik_data["iks"]
+                elif hasattr(ik_data, "iks"):
+                    iks = ik_data.iks
+                else:
+                    iks = ik_data
+
                 # Take first IK as initial state
-                if len(iks) > 0:
+                if hasattr(iks, "__len__") and len(iks) > 0:
                     initial_states.append(iks[0])
+                elif iks is not None:
+                    initial_states.append(iks)
                     
             except Exception as e:
                 logger.warning(f"Error loading {ik_file}: {e}")

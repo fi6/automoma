@@ -1,6 +1,7 @@
 # Specific to Python Project
 /assets/
 data/
+data_meta/
 data_ing/
 tests/
 z-reference/

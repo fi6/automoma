@@ -6,7 +6,7 @@ from typing import Dict, List, Any, Optional, Union
 from curobo.util_file import load_yaml
 from automoma.core.types import IKResult, TrajResult
 from scipy.spatial.transform import Rotation as R
-
+from pathlib import Path
 
 def get_project_dir() -> str:
     return os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -149,3 +149,45 @@ def load_object_from_metadata(metadata_path: str, object_cfg: Dict[str, Any]) ->
     
     print(f"Object loaded from metadata: {object_info['name']} with dimensions {object_info['dimensions']}")
     return object_cfg
+
+
+def get_latest_checkpoint(run_dir):
+    """Find the latest checkpoint in run_dir (searching recursively for checkpoints/)."""
+    # Pattern: .../checkpoints/XXXXXX/pretrained_model
+    # or .../checkpoints/*.pt
+    
+    run_dir_path = Path(run_dir)
+    
+    # Search for any directory named 'checkpoints' recursively
+    ckpt_dirs = list(run_dir_path.rglob("checkpoints"))
+    if not ckpt_dirs:
+        return None
+        
+    # Pick the one with the most subdirectories if multiple exist (unlikely in standard setup)
+    # or just use the first one found that has numeric subdirs
+    best_pretrained = None
+    best_step = -1
+    
+    for ckpt_dir in ckpt_dirs:
+        # Look for numeric directories (000000, 010000, etc.)
+        subdirs = [d for d in ckpt_dir.iterdir() if d.is_dir() and d.name.isdigit()]
+        if subdirs:
+            # Sort by step number
+            subdirs.sort(key=lambda x: int(x.name))
+            latest = subdirs[-1]
+            step = int(latest.name)
+            
+            if step > best_step:
+                pretrained = latest / "pretrained_model"
+                if pretrained.exists():
+                    best_pretrained = str(pretrained)
+                    best_step = step
+            
+        # Fallback: look for .pt files in this checkpoints dir
+        pt_files = list(ckpt_dir.glob("*.pt"))
+        if pt_files and best_pretrained is None:
+            # naive sort by mtime if steps are not available
+            pt_files.sort(key=lambda x: x.stat().st_mtime)
+            best_pretrained = str(pt_files[-1])
+            
+    return best_pretrained

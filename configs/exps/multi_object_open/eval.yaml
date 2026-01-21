@@ -19,17 +19,17 @@ eval_cfg:
   use_async_inference: true
   device: "cuda"
   policy_type: "act"  # Default policy type for evaluation
-  output_dir: "outputs/eval/single_object_open_test"
+  output_dir: "outputs/eval/multi_object_open"
   
   # Initial state configuration
   data_cfg:
     initial_state: "FILE"
-    test_data_dir: "data/single_object_open_test/traj"
+    test_data_dir: "data/multi_object_open/traj"
     
   # Dataset configuration (for evaluation metrics)
   dataset_cfg:
-    repo_id: "single_object_open_test"
-    root: "data/single_object_open_test/lerobot/single_object_open_test"
+    repo_id: "multi_object_open"
+    root: "data/multi_object_open/lerobot/multi_object_open"
     
   # Metrics configuration
   metrics_cfg:
@@ -71,14 +71,14 @@ eval_cfg:
 policy_cfg:
   # ACT Policy
   act:
-    checkpoint_path: "outputs/train/act_single_object_open_test/checkpoint_10000.pt"
-    model_path: "outputs/train/act_multi_object_open_7221_scene_0_seed_0/checkpoints/070000/pretrained_model"
+    checkpoint_path: ""
+    model_path: ""
     policy_type: "act"
     device: "cuda"
     
     # Dataset configuration for preprocessing/postprocessing
-    dataset_id: "multi_object_open_7221_scene_0_seed_0"
-    dataset_root: "data/multi_object_open/lerobot/multi_object_open_7221_scene_0_seed_0"
+    dataset_id: ""
+    dataset_root: ""
     
     # ACT inference parameters
     chunk_size: 16
@@ -87,7 +87,7 @@ policy_cfg:
     
   # Diffusion Policy
   diffusion:
-    checkpoint_path: "outputs/train/dp_single_object_open_test/checkpoint_10000.pt"
+    checkpoint_path: ""
     policy_type: "diffusion"
     device: "cuda"
     

@@ -701,7 +701,7 @@ class OpenTask(BaseTask):
     def run_evaluation_pipeline(
         self,
         policy_model,
-        test_data_dir: str,
+        initial_state_path: str,
         num_episodes: int,
     ) -> Dict[str, Any]:
         """
@@ -709,7 +709,8 @@ class OpenTask(BaseTask):
         
         Args:
             policy_model: Trained policy model
-            test_data_dir: Directory with test data for initial states
+            initial_state_path: Path to a start_iks.pt file or a directory
+                containing trajectory data for initial states
             num_episodes: Number of evaluation episodes
             
         Returns:
@@ -727,7 +728,7 @@ class OpenTask(BaseTask):
         if eval_cfg and hasattr(eval_cfg, 'metrics_cfg') and eval_cfg.metrics_cfg:
             metrics_config = eval_cfg.metrics_cfg.to_dict() if hasattr(eval_cfg.metrics_cfg, 'to_dict') else eval_cfg.metrics_cfg
 
-        initial_states = self.get_test_initial_states(test_data_dir)
+        initial_states = self.get_test_initial_states(initial_state_path)
         
         if not initial_states:
             logger.warning("No test initial states found")
@@ -747,15 +748,8 @@ class OpenTask(BaseTask):
             
             # Reset environment with initial state
             # Initial state is usually (robot_state, env_state) for OpenTask
-            robot_state, env_state = initial_state[:-1], initial_state[-1]
-            
+            robot_state, env_state = initial_state[:-1], initial_state[-1]            
             robot_state = adjust_pose_for_robot(robot_state, self.cfg.env_cfg.robot_cfg.robot_type)
-            # Pass full initial state (tensor/array) or split components to reset
-            # SimEnvWrapper.reset handles (robot_state, env_state) if passed explicitly
-            # But specific to OpenTask initial_states are single tensors [robot_dofs + env_dof]
-            
-            # We reconstruct the adjusted initial state
-            adjusted_initial_state = torch.cat([to_tensor(robot_state), to_tensor(env_state).unsqueeze(0)])
             
             self.env.reset(robot_state, env_state=env_state)
             
