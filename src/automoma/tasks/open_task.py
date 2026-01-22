@@ -557,69 +557,6 @@ class OpenTask(BaseTask):
         
         return abs(current_angle - goal_angle) < 0.1  # 0.1 radian tolerance
     
-    def get_test_initial_states(self, test_data_dir: str) -> List[torch.Tensor]:
-        """
-        Load test initial states for open task evaluation.
-        
-        For open task, the robot should start already grasping the handle
-        at the start angle position.
-        """
-        # Check if specific initial state path is provided in config
-        eval_cfg = self.cfg.eval_cfg if self.cfg.eval_cfg else self.cfg.evaluation
-        
-        initial_state_path = None
-        if eval_cfg:
-            if hasattr(eval_cfg, 'initial_state_path'):
-                initial_state_path = eval_cfg.initial_state_path
-            elif isinstance(eval_cfg, dict) and 'initial_state_path' in eval_cfg:
-                initial_state_path = eval_cfg['initial_state_path']
-        
-        if initial_state_path:
-            ik_path = Path(self.project_root) / initial_state_path
-            logger.info(f"Loading initial state from specific path: {ik_path}")
-            
-            if not ik_path.exists():
-                logger.warning(f"Initial state file not found: {ik_path}")
-            else:
-                try:
-                    ik_data = torch.load(ik_path, weights_only=True)
-                    # Handle both dict (IKResult) and direct tensor
-                    if isinstance(ik_data, dict) and "iks" in ik_data:
-                        iks = ik_data["iks"]
-                    elif hasattr(ik_data, "iks"):
-                        iks = ik_data.iks
-                    else:
-                        iks = ik_data
-                        
-                    # Return all IKs found in the file as potential initial states
-                    if len(iks) > 0:
-                        logger.info(f"Loaded {len(iks)} initial states from {ik_path}")
-                        
-                        processed_states = []
-                        for ik in iks:
-                            # Split into robot state and env state
-                            # Assuming last element is env state (angle)
-                            robot_state = ik[:-1]
-                            env_state = ik[-1:]
-                            
-                            # Adjust robot state
-                            robot_state = adjust_pose_for_robot(robot_state, self.cfg.env_cfg.robot_cfg.robot_type)
-                            
-                            processed_states.append((robot_state, env_state))
-                            
-                        return processed_states
-                    else:
-                        logger.warning("No IKs found in file")
-                except Exception as e:
-                    logger.error(f"Error loading initial state file: {e}")
-
-        initial_states = super().get_test_initial_states(test_data_dir)
-        
-        if not initial_states:
-            logger.warning("No test initial states found, using start IKs")
-        
-        return initial_states
-    
     # ==================== Recording Pipeline ====================
     def run_recording_pipeline(self, traj_dir, dataset_wrapper):
         return super().run_recording_pipeline(traj_dir, dataset_wrapper)
@@ -730,10 +667,18 @@ class OpenTask(BaseTask):
 
         initial_states = self.get_test_initial_states(initial_state_path)
         
-        if not initial_states:
-            logger.warning("No test initial states found")
-            return {}
+        # Deterministic random sampling of initial states
+        seed = getattr(eval_cfg, "seed", 42) if eval_cfg else 42
+        initial_states = list(initial_states)  # ensure indexable/iterable
+        rng = np.random.default_rng(seed)
+        if num_episodes <= len(initial_states):
+            indices = rng.choice(len(initial_states), size=num_episodes, replace=False)
+        else:
+            indices = rng.choice(len(initial_states), size=num_episodes, replace=True)
+        initial_states = [initial_states[int(i)] for i in indices]
+        logger.info(f"Sampled {len(initial_states)} initial states with seed={seed}")
         
+        # Initialize metrics calculator
         metrics_calc = MetricsCalculator(
             success_threshold=success_threshold,
             **metrics_config
@@ -741,8 +686,8 @@ class OpenTask(BaseTask):
         
         logger.info(f"Starting evaluation: episodes={num_episodes}, max_steps={max_steps}")
         
-        for ep_idx in range(min(num_episodes, len(initial_states))):
-            initial_state = initial_states[ep_idx % len(initial_states)]
+        for ep_idx in range(num_episodes):
+            initial_state = initial_states[ep_idx]
             
             logger.info(f"\nEpisode {ep_idx + 1}/{num_episodes}")
             
@@ -752,9 +697,11 @@ class OpenTask(BaseTask):
             robot_state = adjust_pose_for_robot(robot_state, self.cfg.env_cfg.robot_cfg.robot_type)
             
             self.env.reset(robot_state, env_state=env_state)
+            policy_model.reset()
             
             episode_traj = []
             episode_success = False
+            self.env.apply_object_action(1.57, 0.05)
             
             for step in range(max_steps):
                 obs = self.env.get_data()
@@ -770,18 +717,22 @@ class OpenTask(BaseTask):
                 
                 # Execute action
                 # Fallback strategy: Apply action to object to enforce opening (freely)
-                self.env.apply_object_action(1.57, 0.3)
                 
                 self.env.step(action)
+                
                 episode_traj.append(action)
                 
                 # Check termination
                 obs_after = self.env.get_data()
                 
                 # Debug info
-                if step % 10 == 0:
-                    current_env_state = obs_after.get("env_state", 0.0)
-                    logger.debug(f"  Step {step}: Object Angle = {current_env_state:.4f}")
+                current_env_state = obs_after.get("env_state", 0.0)
+                logger.info(f"  Step {step + 1}: Env State = {current_env_state:.4f}")
+                logger.info(f"    Robot State Before = {obs.get('joint_data', None)}")
+                logger.info(f"    Robot State After = {obs_after.get('joint_data', None)}")
+                logger.info(f"    [Differ] = {np.array(obs_after.get('joint_data', None)) - np.array(obs.get('joint_data', None))}")
+                logger.info(f"    [Action] = {action}")
+                
 
                 if self._check_task_complete(obs_after):
                     episode_success = True

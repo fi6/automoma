@@ -13,6 +13,7 @@ info_cfg:
 # Evaluation Configuration
 # =============================================================================
 eval_cfg:
+  seed: 42
   num_episodes: 30
   max_steps_per_episode: 40
   success_threshold: 0.05
@@ -187,7 +188,7 @@ env_cfg:
     width: 320
     height: 240
     pointcloud:
-      num_points: 1024
+      num_points: 4096
       random_drop_points: 8192
       use_fps: true
     cameras:
@@ -201,7 +202,7 @@ env_cfg:
         pose_type: local
         depth: true
         pointcloud:
-          num_points: 1024
+          num_points: 4096
           random_drop_points: 8192
           use_fps: true
       ego_wrist:

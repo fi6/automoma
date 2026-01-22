@@ -69,7 +69,7 @@ policy_cfg:
     
     # Additional Diffusion-specific parameters
     num_inference_steps: 10
-    down_dims: [256, 512, 1024]
+    down_dims: [256, 512, 4096]
     kernel_size: 5
     n_groups: 8
     

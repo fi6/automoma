@@ -8,7 +8,7 @@
 # Experiment Info
 # =============================================================================
 info_cfg:
-  task: 'single_object_reach'
+  task: 'single_object_pickkkk'
   robot: 'summit_franka'
   scene:
     [
@@ -26,7 +26,7 @@ info_cfg:
 # =============================================================================
 plan_cfg:
   # Output directory for this experiment
-  output_dir: 'data/single_object_reach'
+  output_dir: 'data/single_object_pickkkk'
 
   # Number of grasp poses to use
   num_grasps: 20
@@ -92,20 +92,6 @@ env_cfg:
   # Object Configuration (single object: 7221)
   object_cfg:
     '7221':
-      path: assets/object/Microwave/7221/7221_0_scaling.urdf
-      pose: [0, 0, 0, 1, 0, 0, 0]
-      asset_type: 'Microwave'
-      asset_id: '7221'
-      scale: 0.3563
-      start_angles: [0]  # Object starts closed
-      goal_angles: [0]   # Object stays closed for reach task
-
-      # Optional: Per-object plan_cfg override
-      plan_cfg:
-        plan_ik:
-          limit: [50, 100]
-          
-    '1000':
       path: assets/object/Mug/1000/1000_0_scaling.urdf
       pose: [0, 0, 0, 1, 0, 0, 0]
       asset_type: 'Mug'

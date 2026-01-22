@@ -156,7 +156,7 @@ class LeRobotDatasetWrapper_v1(BaseDatasetWrapper):
         for cam in self.cfg.camera.names:
             cam_cfg = self.cfg.camera.cameras.get(cam, {})
             if cam_cfg.get("pointcloud", False) and "pointcloud" in cam_cfg:
-                total_pc_points += cam_cfg.get("pointcloud", {}).get("num_points", 1024)
+                total_pc_points += cam_cfg.get("pointcloud", {}).get("num_points", 4096)
         
         if total_pc_points > 0:
             features[f"observation.pointcloud"] = {

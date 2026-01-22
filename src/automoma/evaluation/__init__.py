@@ -11,7 +11,6 @@ from automoma.evaluation.metrics import (
     compute_success,
 )
 from automoma.evaluation.policy_runner import (
-    PolicyRunner,
     AsyncModelClient,
     LeRobotModelClient,
     InferenceRequest,
@@ -30,7 +29,6 @@ __all__ = [
     "compute_joint_error",
     "compute_success",
     # Policy Runner
-    "PolicyRunner",
     "AsyncModelClient",
     "LeRobotModelClient",
     "InferenceRequest",

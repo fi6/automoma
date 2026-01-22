@@ -142,7 +142,7 @@ class IsaacSimManager:
         action = action_registry.get_action("omni.kit.viewport.menubar.lighting", "set_lighting_mode_rig")
         action.execute(lighting_mode=mode)
         
-    def step(self, step=5, render=True):
+    def step(self, step=1, render=True):
         """Step the Isaac Sim world"""
         if step == -1:
             # If step is -1, run until the simulation app is running

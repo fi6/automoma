@@ -903,9 +903,9 @@ class Replayer:
                     pcd_config.USE_FPS = False
                     pcd_config.random_drop_points = min(
                         int(1 / 4 * 240 * 320),  # Based on camera resolution
-                        2 * 1024,  # 2 * n_points from config
+                        2 * 4096,  # 2 * n_points from config
                     )
-                    pcd_config.n_points = 1024  # From CollectConfig.POINT_CLOUD_CONFIG
+                    pcd_config.n_points = 4096  # From CollectConfig.POINT_CLOUD_CONFIG
                     
                     processed_pc = process_point_cloud(colored_pc, pcd_config)
                     observations["point_cloud"]["combined"] = processed_pc

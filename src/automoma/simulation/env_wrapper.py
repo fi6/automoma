@@ -191,6 +191,7 @@ class SimEnvWrapper:
         collision_free_prim_paths = []
         if self.cfg and self.cfg.sim_cfg and hasattr(self.cfg.sim_cfg, 'collision_free_prim_paths'):
             collision_free_prim_paths = self.cfg.sim_cfg.collision_free_prim_paths
+        # TODO: enable when eval
         self.sim.set_isaacsim_collision_free(prim_paths=collision_free_prim_paths)
         
         # Set lighting
@@ -266,6 +267,10 @@ class SimEnvWrapper:
         Returns:
             Observation after step
         """
+        
+        robot_state = None
+        
+        # Apply action if provided
         if action is not None:
             # Handle action application (delta base + absolute arm)
             current_state = self.get_robot_state()
@@ -279,19 +284,19 @@ class SimEnvWrapper:
                 # Integrate base: new_base = current_base + delta_base
                 new_state[:base_dof] = current_state[:base_dof] + action_np[:base_dof]
                 # Arm is already absolute in action
-                
-                self.set_state(new_state)
             else:
-                # Fallback: assume action is full state or no base dof
-                self.set_state(action)
+                # Assume full absolute positions
+                new_state = action_np
+            robot_state = new_state
         
         # Step simulation
         for _ in range(5):
             self.sim.step(step=1,render=True)
+            self.set_state(robot_state=robot_state)
             self.sensors.update()
         
         self.current_step += 1
-    
+        
     def set_state(self, robot_state: torch.Tensor = None, env_state = None):
         """
         Set robot and environment state.
@@ -343,35 +348,32 @@ class SimEnvWrapper:
         from omni.isaac.core.utils.types import ArticulationAction
         import numpy as np
         
-        try:
-            obj = self.sim.world.scene.get_object("target_object")
-            if obj is None:
-                return
-                
-            if not obj._articulation_view.initialized:
-                obj.get_articulation_controller()
+        obj = self.sim.world.scene.get_object("target_object")
+        if obj is None:
+            return
+            
+        if not obj._articulation_view.initialized:
+            obj.get_articulation_controller()
 
-            # Use object_cfg from env_cfg
-            if not self.cfg or not self.cfg.object_cfg:
-                return
-            object_cfg = self._to_dict(self.cfg.object_cfg)
-            if 'joint_id' not in object_cfg and object_cfg:
-                first_key = list(object_cfg.keys())[0]
-                object_cfg = object_cfg[first_key]
-            
-            # Get joint id
-            joint_id = object_cfg.get("joint_id", 0)
-            # Some implementation uses joint_id-1 but set_state uses joint_id. 
-            # We follow set_state pattern here for consistency within this class.
-            
-            action = ArticulationAction(
-                joint_positions=np.array([joint_position]), 
-                joint_velocities=np.array([joint_velocity]), 
-                joint_indices=np.array([joint_id])
-            )
-            obj.get_articulation_controller().apply_action(action)
-        except Exception as e:
-            logger.warning(f"Failed to apply object action: {e}")
+        # Use object_cfg from env_cfg
+        if not self.cfg or not self.cfg.object_cfg:
+            return
+        object_cfg = self._to_dict(self.cfg.object_cfg)
+        if 'joint_id' not in object_cfg and object_cfg:
+            first_key = list(object_cfg.keys())[0]
+            object_cfg = object_cfg[first_key]
+        
+        # Get joint id
+        joint_id = object_cfg.get("joint_id", 0)
+        # Some implementation uses joint_id-1 but set_state uses joint_id. 
+        # We follow set_state pattern here for consistency within this class.
+        
+        action = ArticulationAction(
+            joint_positions=np.array([joint_position]), 
+            joint_velocities=np.array([joint_velocity]), 
+            joint_indices=np.array([joint_id])
+        )
+        obj.get_articulation_controller().apply_action(action)
 
     def set_gripper(self, value: float) -> None:
         """

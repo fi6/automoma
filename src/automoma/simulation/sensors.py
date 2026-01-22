@@ -232,7 +232,7 @@ class SensorRig:
         # Process the colored pointcloud
         cfg = {
             'random_drop_points': pc_cfg.get('random_drop_points', 5000),
-            'n_points': pc_cfg.get('num_points', 1024),
+            'n_points': pc_cfg.get('num_points', 4096),
             'USE_FPS': pc_cfg.get('use_fps', True)
         }
         

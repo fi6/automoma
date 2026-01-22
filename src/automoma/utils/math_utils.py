@@ -479,7 +479,7 @@ def process_point_cloud(point_cloud, cfg=None):
         point_cloud: Point cloud with shape (N, 6) - positions (xyz) and colors (rgb)
         cfg: Configuration dict with optional keys:
             - random_drop_points: int, default 5000
-            - n_points: int, default 1024
+            - n_points: int, default 4096
             - USE_FPS: bool, default True
         
     Returns:
@@ -493,7 +493,7 @@ def process_point_cloud(point_cloud, cfg=None):
     if cfg is None:
         cfg = {}
     random_drop_points = cfg.get('random_drop_points', 5000)
-    n_points = cfg.get('n_points', 1024)
+    n_points = cfg.get('n_points', 4096)
     USE_FPS = cfg.get('USE_FPS', True)
     
     # 1. Filter out invalid points

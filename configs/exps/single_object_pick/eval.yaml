@@ -1,0 +1,174 @@
+# Evaluation Configuration for Single Object Reach Test Experiment
+# Configuration for evaluating trained policies on reach task
+#
+# Key difference from open task: No object articulation during evaluation
+# Success is measured by EE reaching the target position
+
+# =============================================================================
+# Experiment Info
+# =============================================================================
+info_cfg:
+  task: "single_object_reach"
+  robot: "summit_franka"
+  description: "Evaluate policies on single object reach"
+
+# =============================================================================
+# Evaluation Configuration
+# =============================================================================
+eval_cfg:
+  num_episodes: 30
+  max_steps_per_episode: 60  # Reach typically needs more steps
+  success_threshold: 0.05  # 5cm position error threshold
+  use_async_inference: true
+  device: "cuda"
+  policy_type: "act"  # Default policy type for evaluation
+  output_dir: "outputs/eval/single_object_reach"
+  
+  # Initial state configuration
+  data_cfg:
+    initial_state: "FILE"
+    test_data_dir: "data/single_object_reach/traj"
+    
+  # Dataset configuration (for evaluation metrics)
+  dataset_cfg:
+    repo_id: "single_object_reach"
+    root: "data/single_object_reach/lerobot/single_object_reach"
+    
+  # Metrics configuration
+  metrics_cfg:
+    position_error: true
+    orientation_error: true
+    joint_error: true
+    trajectory_smoothness: true
+    inference_time: true
+    success_rate: true
+    per_scene_success_rate: true
+    generalization_gap: true
+    
+    # Success criteria for reach task
+    criteria:
+      position_tolerance: 0.05   # meters (EE to target)
+      rotation_tolerance: 0.1  # radians
+      completion_required: true
+    
+  # Per-scene episode distribution
+  episodes_per_scene:
+    scene_0_seed_0: 10
+    scene_1_seed_1: 10
+    scene_3_seed_3: 10
+  
+  # Output settings
+  output:
+    save_videos: true
+    save_trajectories: true
+    save_observations: false
+    video:
+      fps: 15
+      codec: "mp4v"
+      resolution: [640, 480]
+
+# =============================================================================
+# Policy Configuration
+# =============================================================================
+policy_cfg:
+  # ACT Policy
+  act:
+    checkpoint_path: ""
+    model_path: ""
+    policy_type: "act"
+    device: "cuda"
+    
+    # Dataset configuration for preprocessing/postprocessing
+    dataset_id: "single_object_reach"
+    dataset_root: "data/single_object_reach/lerobot/single_object_reach"
+    
+    # ACT inference parameters
+    chunk_size: 16
+    n_action_steps: 16
+    temporal_ensemble: true
+    
+  # Diffusion Policy
+  diffusion:
+    checkpoint_path: "outputs/train/dp_single_object_reach/checkpoint_10000.pt"
+    policy_type: "diffusion"
+    device: "cuda"
+    
+    # Diffusion inference parameters
+    num_inference_steps: 10
+    n_action_steps: 8
+    n_obs_steps: 2
+  
+  # DP3 Policy
+  dp3:
+    checkpoint_path: "outputs/train/dp3_single_object_reach/checkpoint_10000.pt"
+    policy_type: "dp3"
+    device: "cuda"
+
+    # Diffusion inference parameters
+    num_inference_steps: 31
+    n_action_steps: 8
+    n_obs_steps: 3
+
+# =============================================================================
+# Async Inference Configuration (for LeRobot)
+# =============================================================================
+async_inference_cfg:
+  enabled: true
+  batch_size: 1
+  prefetch_factor: 2
+  
+# =============================================================================
+# Environment Configuration
+# =============================================================================
+env_cfg:
+  # Simulation Configuration
+  sim_cfg:
+    headless: false
+    width: 1920
+    height: 1080
+    lighting_mode: 2
+    physics_dt: 0.01666666666
+    rendering_dt: 0.01666666666
+  
+  # Robot Configuration
+  robot_cfg:
+    robot_type: "summit_franka"
+    path: "assets/robot/summit_franka/summit_franka.yml"
+    mobile_base_dof: 3
+    arm_dof: 7
+    gripper_dof: 2
+    total_dof: 12
+  
+  # Object Configuration
+  object_cfg:
+    "7221":
+      path: assets/object/Microwave/7221/7221_0_scaling.urdf
+      pose: [0, 0, 0, 1, 0, 0, 0]
+      asset_type: "Microwave"
+      asset_id: "7221"
+      scale: 0.3563
+      start_angles: [0]
+      goal_angles: [0]  # Object stays closed for reach
+
+  # Scene Configuration
+  scene_cfg:
+    scene_0_seed_0:
+      path: 'assets/scene/infinigen/kitchen_1130/scene_0_seed_0/export/export_scene.blend/export_scene.usdc'
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: 'assets/scene/infinigen/kitchen_1130/scene_0_seed_0/info/metadata.json'
+    scene_1_seed_1:
+      path: 'assets/scene/infinigen/kitchen_1130/scene_1_seed_1/export/export_scene.blend/export_scene.usdc'
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: 'assets/scene/infinigen/kitchen_1130/scene_1_seed_1/info/metadata.json'
+    scene_3_seed_3:
+      path: 'assets/scene/infinigen/kitchen_1130/scene_3_seed_3/export/export_scene.blend/export_scene.usdc'
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: 'assets/scene/infinigen/kitchen_1130/scene_3_seed_3/info/metadata.json'
+    scene_7_seed_7:
+      path: 'assets/scene/infinigen/kitchen_1130/scene_7_seed_7/export/export_scene.blend/export_scene.usdc'
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: 'assets/scene/infinigen/kitchen_1130/scene_7_seed_7/info/metadata.json'
+    scene_8_seed_8:
+      path: 'assets/scene/infinigen/kitchen_1130/scene_8_seed_8/export/export_scene.blend/export_scene.usdc'
+      pose: [0, 0, -0.13, 1, 0, 0, 0]
+      metadata_path: 'assets/scene/infinigen/kitchen_1130/scene_8_seed_8/info/metadata.json'

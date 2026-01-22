@@ -301,31 +301,24 @@ class LeRobotModelClient(AsyncModelClient):
             print(f"✓ Model loaded from {self.checkpoint_path}")
             
             # Load metadata and create preprocessors if dataset info provided
-            if self.dataset_id and self.dataset_root:
-                try:
-                    from lerobot.datasets.lerobot_dataset import LeRobotDatasetMetadata
-                    from lerobot.policies.factory import make_pre_post_processors
-                    
-                    print(f"Loading dataset metadata for preprocessing from ID: {self.dataset_id}")
-                    print(f"Using dataset root: {self.dataset_root}")
-                    
-                    dataset_id_abs = get_abs_path(os.path.join("data", self.dataset_id))
-                    dataset_metadata = LeRobotDatasetMetadata(
-                        repo_id=dataset_id_abs, 
-                        root=self.dataset_root
-                    )
-                    
-                    self.preprocess, self.postprocess = make_pre_post_processors(
-                        self.policy.config, 
-                        dataset_stats=dataset_metadata.stats
-                    )
-                    print(f"✓ Loaded preprocessing/postprocessing from dataset: {self.dataset_id}")
-                except Exception as e:
-                    print(f"Warning: Could not load preprocessors: {e}")
-                    self.preprocess = None
-                    self.postprocess = None
-            else:
-                print("Warning: No dataset_id/dataset_root provided, skipping preprocessing/postprocessing")
+            from lerobot.datasets.lerobot_dataset import LeRobotDatasetMetadata
+            from lerobot.policies.factory import make_pre_post_processors
+            
+            print(f"Loading dataset metadata for preprocessing from ID: {self.dataset_id}")
+            print(f"Using dataset root: {self.dataset_root}")
+            
+            dataset_id_abs = get_abs_path(os.path.join("data", self.dataset_id))
+            dataset_metadata = LeRobotDatasetMetadata(
+                repo_id=dataset_id_abs, 
+                root=self.dataset_root
+            )
+            
+            self.preprocess, self.postprocess = make_pre_post_processors(
+                self.policy.config, 
+                self.checkpoint_path,
+                dataset_stats=dataset_metadata.stats
+            )
+            print(f"✓ Loaded preprocessing/postprocessing from dataset: {self.dataset_id}")
             
         except Exception as e:
             print(f"Failed to load model: {e}")
@@ -377,75 +370,55 @@ class LeRobotModelClient(AsyncModelClient):
                 flat_obs[f"observation.pointcloud.{name}"] = pc
                 
         return flat_obs
-
+    
+    def reset(self) -> None:
+        """Reset any internal state if needed."""
+        self.policy.reset()
     def _process_request(self, request: InferenceRequest) -> InferenceResponse:
         """Process inference request using LeRobot policy."""
         start_time = time.time()
         
-        if self.policy is None:
-            return InferenceResponse(
-                request_id=request.request_id,
-                action=np.array([]),
-                inference_time=time.time() - start_time,
-                success=False,
-                error_message="Model not loaded",
-            )
+        observation = request.observation
         
-        try:
-            observation = request.observation
+        # Flatten observation if it comes from SimEnvWrapper (has obs_data)
+        if "obs_data" in observation:
+            observation = self._flatten_observation(observation)
+        
+        # DEBUG: import matplotlib.pyplot as plt; import numpy as np; img = np.transpose(observation['observation.images.ego_topdown'], (1,2,0)); plt.imshow(img); plt.axis('off'); plt.show()
+        # DEBUG: import matplotlib.pyplot as plt; import numpy as np; pc = observation['observation.pointcloud.ego_topdown']; fig = plt.figure(); ax = fig.add_subplot(111, projection='3d'); ax.scatter(pc[:,0], pc[:,1], pc[:,2], c=pc[:,3:6]/np.max(pc[:,3:6]), s=1); ax.set_xlabel('X'); ax.set_ylabel('Y'); ax.set_zlabel('Z'); plt.show()
+        
+        # Convert observation to tensor format expected by LeRobot
+        obs_tensor = self._prepare_observation(observation)
+        
+        # Run inference with preprocessing/postprocessing
+        with torch.no_grad():
+            # Apply preprocessing (normalization) if configured
+            obs_tensor = self.preprocess(obs_tensor)
             
-            # Flatten observation if it comes from SimEnvWrapper (has obs_data)
-            if "obs_data" in observation:
-                observation = self._flatten_observation(observation)
+            # Policy Inference
+            action = self.policy.select_action(obs_tensor)
             
-            # Convert observation to tensor format expected by LeRobot
-            obs_tensor = self._prepare_observation(observation)
-            
-            # Run inference with preprocessing/postprocessing
-            with torch.no_grad():
-                # Apply preprocessing (normalization) if configured
-                if self.preprocess:
-                    obs_tensor = self.preprocess(obs_tensor)
-                
-                # Policy Inference
-                if hasattr(self.policy, "select_action"):
-                    action = self.policy.select_action(obs_tensor)
-                elif hasattr(self.policy, "forward"):
-                    action = self.policy(obs_tensor)
-                else:
-                    raise ValueError("Policy has no inference method")
-                
-                # Apply postprocessing (denormalization) if configured
-                if self.postprocess:
-                    action = self.postprocess(action)
-            
-            # Convert action to numpy
-            if isinstance(action, torch.Tensor):
-                action = action.cpu().numpy()
-            if action.ndim > 1:
-                action = action.squeeze()
-            
-            # Log action stats occasionally
-            if np.random.random() < 0.05:
-                print(f"Action stats: mean={action.mean():.4f}, std={action.std():.4f}, min={action.min():.4f}, max={action.max():.4f}")
-            
-            inference_time = time.time() - start_time
-            
-            return InferenceResponse(
-                request_id=request.request_id,
-                action=action,
-                inference_time=inference_time,
-                success=True,
-            )
-            
-        except Exception as e:
-            return InferenceResponse(
-                request_id=request.request_id,
-                action=np.array([]),
-                inference_time=time.time() - start_time,
-                success=False,
-                error_message=str(e),
-            )
+            # Apply postprocessing (denormalization) if configured
+            action = self.postprocess(action)
+        
+        # Convert action to numpy
+        if isinstance(action, torch.Tensor):
+            action = action.cpu().numpy()
+        if action.ndim > 1:
+            action = action.squeeze()
+        
+        # Log action stats occasionally
+        if np.random.random() < 0.05:
+            print(f"Action stats: mean={action.mean():.4f}, std={action.std():.4f}, min={action.min():.4f}, max={action.max():.4f}")
+        
+        inference_time = time.time() - start_time
+        
+        return InferenceResponse(
+            request_id=request.request_id,
+            action=action,
+            inference_time=inference_time,
+            success=True,
+        )
     
     def _prepare_observation(self, observation: Dict[str, Any]) -> Dict[str, torch.Tensor]:
         """Convert observation dict to tensor dict for LeRobot."""
@@ -475,214 +448,6 @@ class LeRobotModelClient(AsyncModelClient):
             obs_tensor[key] = tensor
         
         return obs_tensor
-
-
-class PolicyRunner:
-    """
-    Policy runner for evaluating trained models.
-    
-    Supports both synchronous and asynchronous inference modes.
-    """
-    
-    def __init__(self, cfg: EvalConfig):
-        self.cfg = cfg
-        self.model_client = None
-        self.env = None
-        self.metrics_calculator = MetricsCalculator(
-            success_threshold=cfg.success_threshold
-        )
-    
-    def setup_env(self, env_wrapper=None) -> None:
-        """Setup the evaluation environment."""
-        self.env = env_wrapper
-    
-    def get_policy(self) -> LeRobotModelClient:
-        """Get or create the policy model client."""
-        if self.model_client is None:
-            self.model_client = LeRobotModelClient(
-                checkpoint_path=self.cfg.checkpoint_path,
-                policy_type=self.cfg.policy_type,
-                device=self.cfg.device,
-                host=self.cfg.inference_host,
-                port=self.cfg.inference_port,
-                timeout=self.cfg.inference_timeout,
-            )
-            self.model_client.load_model()
-            
-            if self.cfg.use_async_inference:
-                self.model_client.start()
-        
-        return self.model_client
-    
-    def load_dataset(self, dataset_path: str = None) -> None:
-        """Load evaluation dataset if needed."""
-        pass
-    
-    def run_infer(self, observation: Dict[str, Any]) -> np.ndarray:
-        """
-        Run single inference step.
-        
-        Args:
-            observation: Current observation
-            
-        Returns:
-            Action array
-        """
-        policy = self.get_policy()
-        response = policy.infer_sync(observation)
-        
-        if not response.success:
-            print(f"Inference failed: {response.error_message}")
-            return np.zeros(10)  # Return dummy action
-        
-        return response.action
-    
-    def run_eval(
-        self,
-        num_episodes: int = None,
-        max_steps: int = None,
-        save_videos: bool = None,
-    ) -> EvaluationMetrics:
-        """
-        Run full evaluation loop.
-        
-        Args:
-            num_episodes: Number of episodes to evaluate
-            max_steps: Maximum steps per episode
-            save_videos: Whether to save evaluation videos
-            
-        Returns:
-            EvaluationMetrics object
-        """
-        if num_episodes is None:
-            num_episodes = self.cfg.num_episodes
-        if max_steps is None:
-            max_steps = self.cfg.max_steps_per_episode
-        if save_videos is None:
-            save_videos = self.cfg.save_videos
-        
-        self.metrics_calculator.reset()
-        
-        for episode_idx in range(num_episodes):
-            print(f"Evaluating episode {episode_idx + 1}/{num_episodes}")
-            
-            episode_metrics = self._run_episode(
-                episode_idx=episode_idx,
-                max_steps=max_steps,
-                save_video=save_videos,
-            )
-            
-            print(f"  Episode {episode_idx + 1}: Success={episode_metrics.get('success', False)}")
-        
-        # Compute aggregate metrics
-        metrics = self.metrics_calculator.compute_metrics()
-        
-        # Save results
-        self._save_results(metrics)
-        
-        return metrics
-    
-    def _run_episode(
-        self,
-        episode_idx: int,
-        max_steps: int,
-        save_video: bool = False,
-    ) -> Dict[str, float]:
-        """Run a single evaluation episode."""
-        if self.env is None:
-            print("Environment not set up")
-            return {"success": False}
-        
-        # Reset environment
-        observation = self._reset_environment()
-        
-        pred_trajectory = []
-        gt_trajectory = []
-        pred_positions = []
-        gt_positions = []
-        pred_orientations = []
-        gt_orientations = []
-        inference_times = []
-        
-        goal_position = None  # Would be set from task
-        
-        for step in range(max_steps):
-            # Get action from policy
-            start_time = time.time()
-            action = self.run_infer(observation)
-            inference_time = time.time() - start_time
-            inference_times.append(inference_time)
-            
-            # Store trajectory data
-            if "joint_positions" in observation and observation["joint_positions"] is not None:
-                pred_trajectory.append(action)
-                gt_trajectory.append(observation["joint_positions"])
-            
-            if "eef_position" in observation and observation["eef_position"] is not None:
-                pred_positions.append(observation["eef_position"])
-            
-            if "eef_orientation" in observation and observation["eef_orientation"] is not None:
-                pred_orientations.append(observation["eef_orientation"])
-            
-            # Execute action in environment
-            observation, done = self._step_environment(action)
-            
-            if done:
-                break
-        
-        # Compute episode metrics
-        episode_metrics = {}
-        
-        if pred_trajectory and gt_trajectory:
-            pred_traj_np = np.array(pred_trajectory)
-            gt_traj_np = np.array(gt_trajectory)
-            
-            episode_metrics = self.metrics_calculator.add_episode(
-                pred_trajectory=pred_traj_np,
-                gt_trajectory=gt_traj_np,
-                pred_positions=np.array(pred_positions) if pred_positions else None,
-                gt_positions=np.array(gt_positions) if gt_positions else None,
-                pred_orientations=np.array(pred_orientations) if pred_orientations else None,
-                gt_orientations=np.array(gt_orientations) if gt_orientations else None,
-                goal_position=goal_position,
-                inference_time=np.mean(inference_times) if inference_times else None,
-                completed=True,
-            )
-        
-        return episode_metrics
-    
-    def _reset_environment(self) -> Dict[str, Any]:
-        """Reset the environment and return initial observation."""
-        if self.env is not None and hasattr(self.env, "reset"):
-            return self.env.reset()
-        return {}
-    
-    def _step_environment(self, action: np.ndarray) -> Tuple[Dict[str, Any], bool]:
-        """Step the environment with action."""
-        if self.env is not None and hasattr(self.env, "step"):
-            obs, reward, done, info = self.env.step(action)
-            return obs, done
-        return {}, True
-    
-    def _save_results(self, metrics: EvaluationMetrics) -> None:
-        """Save evaluation results."""
-        import json
-        
-        os.makedirs(self.cfg.output_dir, exist_ok=True)
-        
-        results_path = os.path.join(self.cfg.output_dir, "eval_results.json")
-        with open(results_path, "w") as f:
-            json.dump(metrics.to_dict(), f, indent=2)
-        
-        logger.info(f"Results saved to {results_path}")
-        logger.info(f"Success rate: {metrics.success_rate:.2%}")
-        logger.info(f"Position error: {metrics.position_error_mean:.4f} +/- {metrics.position_error_std:.4f}")
-    
-    def cleanup(self) -> None:
-        """Cleanup resources."""
-        if self.model_client is not None:
-            self.model_client.stop()
-
 
 def get_model(
     checkpoint_path: str,

@@ -1,8 +1,0 @@
-*.git
-*_build
-*build
-**/__pycache__
-**/*.pyc
-**/*.pyo
-**/*.pyd
-**/*.so

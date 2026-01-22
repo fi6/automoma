@@ -436,6 +436,7 @@ class BaseTask(ABC):
     # =========================================================================
     # Helper Methods (can be used by subclasses)
     # =========================================================================
+        
     
     def get_test_initial_states(self, initial_state_path: str) -> List[torch.Tensor]:
         """
@@ -464,23 +465,16 @@ class BaseTask(ABC):
         logger.info(f"Found {len(ik_files)} IK files in {initial_state_path}")
         
         for ik_file in ik_files:
-            try:
-                ik_data = torch.load(ik_file, weights_only=True)
-                if isinstance(ik_data, dict) and "iks" in ik_data:
-                    iks = ik_data["iks"]
-                elif hasattr(ik_data, "iks"):
-                    iks = ik_data.iks
-                else:
-                    iks = ik_data
+            ik_data = torch.load(ik_file, weights_only=True)
+            if isinstance(ik_data, dict) and "iks" in ik_data:
+                iks = ik_data["iks"]
+            elif hasattr(ik_data, "iks"):
+                iks = ik_data.iks
+            else:
+                iks = ik_data
 
-                # Take first IK as initial state
-                if hasattr(iks, "__len__") and len(iks) > 0:
-                    initial_states.append(iks[0])
-                elif iks is not None:
-                    initial_states.append(iks)
-                    
-            except Exception as e:
-                logger.warning(f"Error loading {ik_file}: {e}")
+            # Take first IK as initial state
+            initial_states.extend(iks)
         
         logger.info(f"Loaded {len(initial_states)} initial states")
         return initial_states
