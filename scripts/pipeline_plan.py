@@ -69,12 +69,12 @@ from cuakr.utils.math import pose_multiply
 # Default object ID (can be overridden via --object_id argument)
 OBJECT_ID = "7221"
 
-# GRASP_IDS = [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 18]
+GRASP_IDS = [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 18]
 # GRASP_IDS = [4, 5, 6, 9, 12, 13, 18]
 
-GRASP_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+# GRASP_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
 # GRASP_IDS = [0, 1, 2, 4, 5, 9, 11, 12, 13]
-SCENE_IDS = [f"scene_{i}_seed_{i}" for i in range(0, 2)]
+SCENE_IDS = [f"scene_{i}_seed_{i}" for i in range(0, 1)]
 # SCENE_IDS = [f"scene_{i}_seed_{i}" for i in range(33, 70) if i not in [36, 39]]
 # SCENE_IDS = [f"scene_{i}_seed_{i}" for i in range(0, 33) if i not in [5, 27]]  # scenes 0 to 31
 # SCENE_IDS = [f"scene_{i}_seed_{i+101}" for i in range(0, 10)]  # scenes 0 to 31
@@ -452,7 +452,7 @@ def run_pipeline_for_scene(
         # if robot_name == "summit_franka_fixed_base":
         #     task.goal["angle"] *= 4
         if robot_name == "summit_franka":
-            task.goal["angle"] *= 4
+            task.goal["angle"] *= 1
         print("###################### Task created successfully ######################")
 
         # Create trajectory pipeline with custom output directory
