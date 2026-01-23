@@ -405,6 +405,38 @@ class Replayer:
                 if not np.isnan(s.position[0]):
                     spheres[si].set_world_pose(position=np.ravel(s.position))
                     spheres[si].set_radius(float(s.radius))
+                    
+    def replay_single_ik(self, iks, robot_name):
+        """Replay IK solutions."""
+        self._init_motion_gen()
+        
+        pose_duration = 1.0
+        joint_names = self.robot_cfg["kinematics"]["cspace"]["joint_names"]
+        robot = self.robot
+        idx_list = [robot.get_dof_index(name) for name in joint_names]
+    
+        self._isaacsim_step(duration=5, render=True)
+        
+        print("Starting IK visualization...")
+        print("iks shape:", iks.shape)
+        
+        spheres = []
+        # Visualize IK solutions
+        for i, pose in enumerate(iks):
+            print(f"IK {i}:: {pose.tolist()}")
+            robot_pose, handle_pose = pose.split([pose.shape[0] - 1, 1], dim=-1)
+            joint_state = JointState.from_position(self.tensor_args.to_device(robot_pose))
+
+            robot_pose = self._adjust_pose_for_robot(robot_pose, robot_name)
+            self.vis_spheres(joint_state=joint_state, spheres=spheres)
+
+            robot.set_joint_positions(robot_pose.tolist(), idx_list)
+            robot._articulation_view.set_max_efforts(
+                values=np.array([5000] * len(idx_list)), joint_indices=idx_list,
+            )
+
+            self.set_handle_pose(handle_pose.item())
+            self._isaacsim_step(duration=pose_duration, render=True)
 
     def replay_ik(self, start_iks, goal_iks, robot_name):
         """Replay IK solutions."""
