@@ -12,9 +12,15 @@
 mkdir -p $(pwd)/output/automoma-docker-$1
 mkdir -p $(pwd)/logs/automoma-docker-$1
 
+GPU_ID=$1
+if [ -z "$GPU_ID" ]; then
+    echo "Error: GPU_ID is required. Usage: ./start_docker.sh <suffix> <gpu_id>"
+    exit 1
+fi
 
 docker run --name automoma_$1 --entrypoint bash -it --rm \
-    --gpus all \
+    --shm-size=24g \
+    --gpus "device=$GPU_ID" \
     --mount type=bind,source=$(pwd)/scripts,target=/pkgs/automoma-docker/scripts,readonly=true \
     --mount type=bind,source=$(pwd)/assets,target=/pkgs/automoma-docker/assets,readonly=true \
     --volume $(pwd)/output/automoma-docker-$1:/pkgs/automoma-docker/output:rw \

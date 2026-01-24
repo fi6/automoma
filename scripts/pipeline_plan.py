@@ -41,7 +41,7 @@ Supported objects:
     - 7221: Microwave
     - 11622: Dishwasher
     - 103634: TrashCan
-    - 46197: StorageFurniture (Cabinet)
+    - 46197: Cabinet (Cabinet)
     - 10944: Refrigerator
     - 101773: Oven
 """
@@ -50,6 +50,7 @@ import os
 import sys
 import json
 import argparse
+import gc
 from pathlib import Path
 import torch
 import numpy as np
@@ -66,6 +67,28 @@ from automoma.pipeline import ScenePipeline, TrajectoryPipeline, InfinigenSceneP
 from automoma.utils.transform import single_axis_self_rotation, matrix_to_pose
 from cuakr.utils.math import pose_multiply
 
+
+def cleanup_cuda_memory():
+    """Best-effort CUDA/CPU memory cleanup without changing pipeline logic."""
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        try:
+            torch.cuda.ipc_collect()
+        except Exception:
+            pass
+
+
+def get_grasp_dir(plan_dir: str, robot_name: str, scene_name: str, object_id: str, grasp_id: int) -> Path:
+    """Return the grasp output directory for a given grasp id."""
+    grasp_name = f"grasp_{grasp_id:04d}"
+    return Path(plan_dir) / robot_name / scene_name / object_id / grasp_name
+
+
+def get_scene_marker_path(plan_dir: str, robot_name: str, scene_name: str) -> Path:
+    """Return the scene-level marker path used to skip completed scenes."""
+    return Path(plan_dir) / robot_name / scene_name / ".planned"
+
 # Default object ID (can be overridden via --object_id argument)
 OBJECT_ID = "7221"
 
@@ -74,7 +97,7 @@ OBJECT_ID = "7221"
 
 GRASP_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
 # GRASP_IDS = [0, 1, 2, 4, 5, 9, 11, 12, 13]
-SCENE_IDS = [f"scene_{i}_seed_{i}" for i in range(0, 2)]
+SCENE_IDS = [f"scene_{i}_seed_{i}" for i in range(0, 41)]
 # SCENE_IDS = [f"scene_{i}_seed_{i}" for i in range(33, 70) if i not in [36, 39]]
 # SCENE_IDS = [f"scene_{i}_seed_{i}" for i in range(0, 33) if i not in [5, 27]]  # scenes 0 to 31
 # SCENE_IDS = [f"scene_{i}_seed_{i+101}" for i in range(0, 10)]  # scenes 0 to 31
@@ -115,12 +138,12 @@ OBJECT_CONFIG_MAP = {
         "akr_path_template": "assets/object/TrashCan/{object_id}/{robot_name}_{object_id}_0_grasp_{grasp_id:04d}.yml",
     },
     "46197": {
-        "asset_type": "StorageFurniture",
+        "asset_type": "Cabinet",
         "asset_id": "46197",
         "scale": 0.5113198146209817,
-        "urdf_path": "assets/object/StorageFurniture/46197/46197_0_scaling.urdf",
+        "urdf_path": "assets/object/Cabinet/46197/46197_0_scaling.urdf",
         "handle_link": "link_0",
-        "akr_path_template": "assets/object/StorageFurniture/{object_id}/{robot_name}_{object_id}_0_grasp_{grasp_id:04d}.yml",
+        "akr_path_template": "assets/object/Cabinet/{object_id}/{robot_name}_{object_id}_0_grasp_{grasp_id:04d}.yml",
     },
     "10944": {
         "asset_type": "Refrigerator",
@@ -423,6 +446,11 @@ def run_pipeline_for_scene(
     print("######################")
 
     try:
+        scene_marker = get_scene_marker_path(plan_dir, robot_name, scene_name)
+        if scene_marker.exists():
+            print(f"###################### Scene already planned, skipping: {scene_name} ######################")
+            return True
+
         # Create object
         print(f"###################### Creating {object_id} object ######################")
         object = create_object(object_id)
@@ -452,7 +480,16 @@ def run_pipeline_for_scene(
         # if robot_name == "summit_franka_fixed_base":
         #     task.goal["angle"] *= 4
         if robot_name == "summit_franka":
-            task.goal["angle"] *= 4
+            if object_id == "7221":
+                task.goal["angle"] *= 1
+            elif object_id == "11622":
+                task.goal["angle"] *= 1
+            elif object_id == "103634":
+                task.goal["angle"] *= 1
+            elif object_id == "46197":
+                task.goal["angle"] *= 1
+            elif object_id == "101773":
+                task.goal["angle"] *= 1
         print("###################### Task created successfully ######################")
 
         # Create trajectory pipeline with custom output directory
@@ -469,6 +506,12 @@ def run_pipeline_for_scene(
             print(f"######################")
             if grasp_id not in GRASP_IDS:
                 print(f"Skipping grasp {grasp_id} as it's not in the specified GRASP_IDS")
+                continue
+
+            grasp_dir = get_grasp_dir(plan_dir, robot_name, scene_name, object_id, grasp_id)
+            grasp_marker = grasp_dir / ".planned"
+            if grasp_marker.exists():
+                print(f"###################### Grasp {grasp_id} already planned, skipping... ######################")
                 continue
 
             # Update task with current grasp
@@ -511,6 +554,9 @@ def run_pipeline_for_scene(
                 trajectory_pipeline.save_results(grasp_id=grasp_id)
                 print("###################### Results saved ######################")
 
+                grasp_dir.mkdir(parents=True, exist_ok=True)
+                grasp_marker.touch()
+
                 # Update statistics if stats_plan is provided
                 if stats_plan:
                     grasp_name = f"grasp_{grasp_id:04d}"
@@ -524,16 +570,23 @@ def run_pipeline_for_scene(
             except Exception as e:
                 print(f"###################### Error processing grasp {grasp_id}: {e} ######################")
                 continue
+            finally:
+                cleanup_cuda_memory()
 
         print("######################")
         print(f"#### Completed Scene: {scene_name} ####")
         print("######################")
+
+        scene_marker.parent.mkdir(parents=True, exist_ok=True)
+        scene_marker.touch()
 
         return True
 
     except Exception as e:
         print(f"###################### Error processing scene {scene_name}: {e} ######################")
         return False
+    finally:
+        cleanup_cuda_memory()
 
 
 import re

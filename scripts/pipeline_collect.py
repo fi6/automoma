@@ -96,7 +96,7 @@ def get_deactivate_prims_for_object(object_id: str) -> List[str]:
     if object_id in OBJECT_CONFIG_MAP:
         obj_config = OBJECT_CONFIG_MAP[object_id]
         asset_type = obj_config["asset_type"]
-        if asset_type == "StorageFurniture":
+        if asset_type == "Cabinet":
             asset_type = "Cabinet"  # Adjust naming inconsistency
         factory_prim = f"StaticCategoryFactory_{asset_type}_{object_id}"
         deactivate_list.append(factory_prim)
@@ -127,10 +127,10 @@ OBJECT_CONFIG_MAP = {
         "handle_link": "link_0",
     },
     "46197": {
-        "asset_type": "StorageFurniture",
+        "asset_type": "Cabinet",
         "asset_id": "46197",
         "scale": 0.5113198146209817,
-        "urdf_path": "assets/object/StorageFurniture/46197/46197_0_scaling.urdf",
+        "urdf_path": "assets/object/Cabinet/46197/46197_0_scaling.urdf",
         "handle_link": "link_0",
     },
     "10944": {
