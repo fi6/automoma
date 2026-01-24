@@ -115,3 +115,27 @@ def ao_grasp_task_generator(object_grasp_folder: str):
     open_angles = sorted(open_angles, reverse=True)
     print(f"Available open angles: {open_angles}")
     return [*[open_angles[x] for x in range(0, 5)]]
+
+
+def ao_grasp_task_generator(object_grasp_folder: str):
+    import os
+
+    # object_grasp_folder: assets/grasp/7221
+    # 7221: [1.333, 1.23, 1.074, 0.997]
+    # 11622: [0.772, 0.699, 0.571, 0.515]
+    # 103634: [1.241, 0.888, 0.761, 0.685]
+    # 46197: [1.718, 1.376, 0.946, 0.628]
+    # 101773: [1.015, 0.81, 0.697, 0.497]
+    
+    object_id = os.path.basename(object_grasp_folder)
+    task_data_map = {
+        "7221": [1.333, 1.23, 1.074, 0.997],
+        "11622": [0.772, 0.699, 0.571, 0.515],
+        "103634": [1.241, 0.888, 0.761, 0.685],
+        "46197": [1.718, 1.376, 0.946, 0.628],
+        "101773": [1.015, 0.81, 0.697, 0.497]
+    }
+    
+    return task_data_map.get(object_id, [])
+    
+    

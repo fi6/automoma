@@ -21,7 +21,7 @@
         {
             "asset_type": "Cabinet",
             "asset_id": "46197",
-            "urdf_path": "assets/object/StorageFurniture/46197/mobility.urdf",
+            "urdf_path": "assets/object/Cabinet/46197/mobility.urdf",
             "scale": 0.5113198146209817
         },
         {

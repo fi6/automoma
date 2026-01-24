@@ -131,7 +131,7 @@ class InfinigenScenePipeline(ScenePipeline):
             if obj_desc.asset_id in generated_ids:
                 valid_objects.append(obj_desc)
 
-        save_json(requirement, requirement_path)
+        # save_json(requirement, requirement_path)
 
         num_valid = len(valid_objects)
         if num_valid == 0:
