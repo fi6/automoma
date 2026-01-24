@@ -211,7 +211,36 @@ class ConfigLoader:
         self.configs_dir = self.project_root / "configs"
         self.exps_dir = self.configs_dir / "exps"
         self.default_config_path = self.configs_dir / "config.yaml"
-    
+        # Optional additional defaults to reduce repetition in experiment YAMLs
+        self.default_env_cfg_path = self.configs_dir / "default_env_cfg.yaml"
+        self.default_plan_cfg_path = self.configs_dir / "default_plan_cfg.yaml"
+
+    def _load_base_defaults(self) -> Dict[str, Any]:
+        """Load base defaults in the intended override order.
+
+        Order (later overrides earlier):
+            1) configs/config.yaml
+            2) configs/default_env_cfg.yaml
+            3) configs/default_plan_cfg.yaml
+        """
+        # Load config.yaml
+        if self.default_config_path.exists():
+            merged = load_yaml(self.default_config_path)
+        else:
+            merged = {}
+
+        # Normalize section names early (planning->plan_cfg, etc.)
+        merged = _map_default_to_cfg_keys(merged)
+
+        # Load optional env/plan defaults
+        for default_path in [self.default_env_cfg_path, self.default_plan_cfg_path]:
+            if default_path.exists():
+                default_cfg = load_yaml(default_path)
+                default_cfg = _map_default_to_cfg_keys(default_cfg)
+                merged = deep_merge(merged, default_cfg)
+
+        return merged
+
     def load(self, exp_name: str) -> Config:
         """
         Load experiment configuration.
@@ -242,6 +271,7 @@ class ConfigLoader:
             config_path = exp_dir / config_file
             if config_path.exists():
                 exp_config = load_yaml(config_path)
+                exp_config = _map_default_to_cfg_keys(exp_config)
                 merged_config = deep_merge(merged_config, exp_config)
 
         # Map default section names to cfg section names
@@ -339,18 +369,16 @@ class ConfigLoader:
 
     def _load_single_config(self, exp_name: str, config_file: str) -> Config:
         """Load a single config file with defaults merged."""
-        # Load default config
-        if self.default_config_path.exists():
-            default_config = load_yaml(self.default_config_path)
-        else:
-            default_config = {}
-        
+        # Load base defaults (config.yaml + optional default_env_cfg/default_plan_cfg)
+        default_config = self._load_base_defaults()
+
         # Load specific config
         config_path = self.exps_dir / exp_name / config_file
         if not config_path.exists():
             raise ValueError(f"Config file not found: {config_path}")
 
         exp_config = load_yaml(config_path)
+        exp_config = _map_default_to_cfg_keys(exp_config)
         merged_config = deep_merge(default_config, exp_config)
 
         merged_config["_exp_name"] = exp_name
@@ -386,11 +414,11 @@ def get_loader(project_root: Optional[Union[str, Path]] = None) -> ConfigLoader:
 def load_config(exp_name: str, project_root: Optional[Union[str, Path]] = None) -> Config:
     """
     Load experiment configuration.
-    
+
     Args:
         exp_name: Experiment name (e.g., "multi_object_open")
         project_root: Optional project root directory
-        
+
     Returns:
         Config object with merged configuration
     """

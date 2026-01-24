@@ -59,29 +59,6 @@ record_cfg:
 # Environment Configuration (for Isaac Sim)
 # =============================================================================
 env_cfg:
-  # Simulation Configuration
-  sim_cfg:
-    headless: false
-    width: 1920
-    height: 1080
-    lighting_mode: 2
-    physics_dt: 0.01666666666
-    rendering_dt: 0.01666666666
-    collision_free_prim_paths:
-      - "/World/summit_panda/panda_leftfinger/collisions"
-      - "/World/summit_panda/panda_rightfinger/collisions"
-      - "/World/summit_panda/grasp_frame/collisions"
-      - "/World/summit_panda/panda_hand/collisions"
-  
-  # Robot Configuration
-  robot_cfg:
-    robot_type: "summit_franka"
-    path: "assets/robot/summit_franka/summit_franka.yml"
-    mobile_base_dof: 3
-    arm_dof: 7
-    gripper_dof: 2
-    total_dof: 12
-  
   # Object Configuration
   object_cfg:
     "7221":
@@ -92,75 +69,3 @@ env_cfg:
       scale: 0.3563
       start_angles: [0]  # Object stays closed during reach
       goal_angles: [0]
-
-  # Camera Configuration
-  camera_cfg:
-    names:
-      - ego_topdown
-      - ego_wrist
-      - fix_local
-    width: 320
-    height: 240
-    pointcloud:
-      num_points: 4096
-      random_drop_points: 8192
-      use_fps: true
-    cameras:
-      ego_topdown:
-        prim_path: "/World/summit_panda/base_link_y/ego_topdown"
-        resolution: [320, 240]
-        frequency: 30
-        pose:
-          translate: [0, 0, 10]
-          orient: [0, 0, -90]
-        pose_type: local
-        depth: true
-        pointcloud:
-          num_points: 4096
-          random_drop_points: 8192
-          use_fps: true
-      ego_wrist:
-        prim_path: "/World/summit_panda/panda_hand/ego_wrist"
-        resolution: [320, 240]
-        frequency: 30
-        focal_length: 1.5
-        pose:
-          translate: [-0.6, 0, -0.9]
-          orient: [180, -28, 90]
-        pose_type: local
-        depth: true
-      fix_local:
-        prim_path: "/World/Object/fix_local"
-        resolution: [320, 240]
-        frequency: 30
-        pose:
-          translate: [-4.3, 4.7, 6.2]
-          orient: [-34.0, -26.0, -140.0]
-        mirror_pose:
-          translate: [-4.3, -4.7, 6.2]
-          orient: [34.0, -26.0, -20.0]
-        pose_type: local
-        depth: true
-
-  # Scene Configuration
-  scene_cfg:
-    scene_0_seed_0:
-      path: 'assets/scene/infinigen/kitchen_1130/scene_0_seed_0/export/export_scene.blend/export_scene.usdc'
-      pose: [0, 0, -0.13, 1, 0, 0, 0]
-      metadata_path: 'assets/scene/infinigen/kitchen_1130/scene_0_seed_0/info/metadata.json'
-    scene_1_seed_1:
-      path: 'assets/scene/infinigen/kitchen_1130/scene_1_seed_1/export/export_scene.blend/export_scene.usdc'
-      pose: [0, 0, -0.13, 1, 0, 0, 0]
-      metadata_path: 'assets/scene/infinigen/kitchen_1130/scene_1_seed_1/info/metadata.json'
-    scene_3_seed_3:
-      path: 'assets/scene/infinigen/kitchen_1130/scene_3_seed_3/export/export_scene.blend/export_scene.usdc'
-      pose: [0, 0, -0.13, 1, 0, 0, 0]
-      metadata_path: 'assets/scene/infinigen/kitchen_1130/scene_3_seed_3/info/metadata.json'
-    scene_7_seed_7:
-      path: 'assets/scene/infinigen/kitchen_1130/scene_7_seed_7/export/export_scene.blend/export_scene.usdc'
-      pose: [0, 0, -0.13, 1, 0, 0, 0]
-      metadata_path: 'assets/scene/infinigen/kitchen_1130/scene_7_seed_7/info/metadata.json'
-    scene_8_seed_8:
-      path: 'assets/scene/infinigen/kitchen_1130/scene_8_seed_8/export/export_scene.blend/export_scene.usdc'
-      pose: [0, 0, -0.13, 1, 0, 0, 0]
-      metadata_path: 'assets/scene/infinigen/kitchen_1130/scene_8_seed_8/info/metadata.json'

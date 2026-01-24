@@ -28,26 +28,6 @@ plan_cfg:
   # Output directory for this experiment
   output_dir: 'data/single_object_pickkkk'
 
-  # Number of grasp poses to use
-  num_grasps: 20
-
-  # Collision world parameters
-  voxel_dims: [5.0, 5.0, 5.0]
-  voxel_size: 0.02
-  expand_dims: [1.0, 0.2, 0.2]
-  collision_checker_type: 'VOXEL'
-
-  # Motion planning seeds
-  num_trajopt_seeds: 12
-  num_graph_seeds: 12
-  interpolation_dt: 0.05
-
-  # IK clustering parameters
-  cluster:
-    ap_fallback_clusters: 30
-    ap_clusters_upperbound: 80
-    ap_cluster_lowerbound: 10
-
   # IK planning limits [start_limit, goal_limit]
   # For reach task: start = collision-free random positions, goal = grasp position
   plan_ik:
@@ -73,22 +53,10 @@ plan_cfg:
     max_base_rotation: 6.28  # One full circle
     rotation_limit: 3.14  # Half circle
 
-  # Resume support - skip already completed planning tasks
-  resume: true
-
 # =============================================================================
 # Environment Configuration (No sim_cfg needed for planning)
 # =============================================================================
 env_cfg:
-  # Robot Configuration
-  robot_cfg:
-    robot_type: 'summit_franka'
-    path: 'assets/robot/summit_franka/summit_franka.yml'
-    mobile_base_dof: 3
-    arm_dof: 7
-    gripper_dof: 2
-    total_dof: 12
-
   # Object Configuration (single object: 7221)
   object_cfg:
     '7221':
@@ -97,26 +65,3 @@ env_cfg:
       asset_type: 'Mug'
       asset_id: '1000'
       scale: 0.0002682458
-
-  # Scene Configuration
-  scene_cfg:
-    scene_0_seed_0:
-      path: 'assets/scene/infinigen/kitchen_1130/scene_0_seed_0/export/export_scene.blend/export_scene.usdc'
-      pose: [0, 0, -0.13, 1, 0, 0, 0]
-      metadata_path: 'assets/scene/infinigen/kitchen_1130/scene_0_seed_0/info/metadata.json'
-    scene_1_seed_1:
-      path: 'assets/scene/infinigen/kitchen_1130/scene_1_seed_1/export/export_scene.blend/export_scene.usdc'
-      pose: [0, 0, -0.13, 1, 0, 0, 0]
-      metadata_path: 'assets/scene/infinigen/kitchen_1130/scene_1_seed_1/info/metadata.json'
-    scene_3_seed_3:
-      path: 'assets/scene/infinigen/kitchen_1130/scene_3_seed_3/export/export_scene.blend/export_scene.usdc'
-      pose: [0, 0, -0.13, 1, 0, 0, 0]
-      metadata_path: 'assets/scene/infinigen/kitchen_1130/scene_3_seed_3/info/metadata.json'
-    scene_7_seed_7:
-      path: 'assets/scene/infinigen/kitchen_1130/scene_7_seed_7/export/export_scene.blend/export_scene.usdc'
-      pose: [0, 0, -0.13, 1, 0, 0, 0]
-      metadata_path: 'assets/scene/infinigen/kitchen_1130/scene_7_seed_7/info/metadata.json'
-    scene_8_seed_8:
-      path: 'assets/scene/infinigen/kitchen_1130/scene_8_seed_8/export/export_scene.blend/export_scene.usdc'
-      pose: [0, 0, -0.13, 1, 0, 0, 0]
-      metadata_path: 'assets/scene/infinigen/kitchen_1130/scene_8_seed_8/info/metadata.json'

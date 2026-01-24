@@ -1,0 +1,40 @@
+# Default planning config (merged first, experiment overrides later)
+# Note: keep this focused on truly common fields.
+
+plan_cfg:
+  # Number of grasp poses to use
+  num_grasps: 20
+
+  # Collision world parameters
+  voxel_dims: [5.0, 5.0, 5.0]
+  voxel_size: 0.02
+  expand_dims: [1.0, 0.2, 0.2]
+  collision_checker_type: "VOXEL"
+
+  # Motion planning seeds
+  num_trajopt_seeds: 12
+  num_graph_seeds: 12
+  interpolation_dt: 0.05
+
+  # IK clustering parameters
+  cluster:
+    ap_fallback_clusters: 30
+    ap_clusters_upperbound: 80
+    ap_cluster_lowerbound: 10
+
+  # IK planning limits [start_limit, goal_limit]
+  plan_ik:
+    limit: [100, 100]
+
+  # Trajectory planning parameters
+  plan_traj:
+    batch_size: 10
+    expand_to_pairs: true
+
+  # Trajectory filtering thresholds
+  filter:
+    position_tolerance: 0.01
+    rotation_tolerance: 0.05
+
+  # Resume support - skip already completed planning tasks
+  resume: true
