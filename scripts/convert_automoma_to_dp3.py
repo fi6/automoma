@@ -408,19 +408,42 @@ def clean_mode(stat_path):
                 if entry.get("state") != "converted":
                     continue
 
+                zarr_path = entry.get("zarr_path")
+                if not zarr_path or not os.path.exists(zarr_path):
+                    print(f"Skip clean: zarr missing for entry: {entry}")
+                    continue
+
+                try:
+                    zarr_root = zarr.open(zarr_path, mode="r")
+                    data_group = zarr_root.get("data")
+                    meta_group = zarr_root.get("meta")
+                    if data_group is None or meta_group is None:
+                        raise ValueError("Invalid zarr structure")
+                    if data_group["point_cloud"].shape[0] == 0:
+                        raise ValueError("No data in zarr")
+                    if "episode_ends" not in meta_group:
+                        raise ValueError("No episode_ends in zarr meta")
+                except Exception as e:
+                    print(f"Skip clean: zarr check failed for {zarr_path}: {e}")
+                    continue
+
                 source_paths = entry.get("source_paths", [])
                 removed_count = 0
                 for path in source_paths:
                     if not os.path.exists(path):
                         continue
+                    removed_in_path = 0
                     for f in os.listdir(path):
                         if f.endswith(".hdf5"):
                             file_path = os.path.join(path, f)
                             try:
                                 os.remove(file_path)
                                 removed_count += 1
+                                removed_in_path += 1
                             except Exception as e:
                                 print(f"Failed to remove {file_path}: {e}")
+                    if removed_in_path > 0:
+                        print(f"Removed {removed_in_path} hdf5 files from {path}")
 
                 if removed_count > 0:
                     entry["state"] = "cleaned"
