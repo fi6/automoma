@@ -1,3 +1,15 @@
+## 01.24
+OUTPUT_DIR=output/collect_0123
+OUTPUT_DIR=output/automoma-docker-1/collect_0123
+OUTPUT_DIR=output/automoma-docker-2/collect_0123
+OUTPUT_DIR=output/automoma-docker-3/collect_0123
+OUTPUT_DIR=output/automoma-docker-4/collect_0123
+OUTPUT_DIR=output/automoma-docker-5/collect_0123
+
+python scripts/pick_data_automoma.py --mode collect --output_dir ${OUTPUT_DIR}/traj
+python scripts/pick_data_automoma.py --mode pick --output_dir ${OUTPUT_DIR}/traj --link
+
+
 python scripts/pipeline_plan.py --scene_dir output/collect/infinigen_scene_100 \
      --plan_dir output/collect/traj --robot_name summit_franka
 
