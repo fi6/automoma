@@ -355,34 +355,45 @@ def convert_mode(stat_path, zarr_dir, mobile_base_mode="relative", batch_size=10
     print(f"Conversion done. Updated {stat_path}")
 
 
-def check_mode(stat_path):
+def check_mode(stat_path, zarr_dir=None):
     stat = ensure_stat_structure(load_json(stat_path))
 
-    for robot_data in stat["statics"].values():
-        for scene_data in robot_data.values():
-            for entry in scene_data.values():
+    for robot_name, robot_data in stat["statics"].items():
+        for scene_name, scene_data in robot_data.items():
+            for object_id, entry in scene_data.items():
                 if entry.get("state") not in {"collected", "converted"}:
                     continue
 
                 zarr_path = entry.get("zarr_path")
+                if not zarr_path and zarr_dir:
+                    num = entry.get("num")
+                    if num is None:
+                        hdf5_files = get_all_hdf5_files(entry.get("source_paths", []))
+                        num = len(hdf5_files)
+                        entry["num"] = num
+                    zarr_name = build_zarr_name(robot_name, scene_name, object_id, num)
+                    zarr_path = os.path.join(zarr_dir, zarr_name)
+                    entry["zarr_path"] = zarr_path
+
                 if not zarr_path or not os.path.exists(zarr_path):
-                    continue
+                    print(f"Zarr file missing for entry: {entry}")
+                    raise FileNotFoundError(f"Zarr file not found: {zarr_path}")
 
                 try:
                     zarr_root = zarr.open(zarr_path, mode="r")
                     data_group = zarr_root.get("data")
                     meta_group = zarr_root.get("meta")
                     if data_group is None or meta_group is None:
-                        continue
+                        raise ValueError(f"Invalid zarr structure in: {zarr_path}")
                     if data_group["point_cloud"].shape[0] == 0:
-                        continue
+                        raise ValueError(f"No data in zarr file: {zarr_path}")
                     if "episode_ends" not in meta_group:
-                        continue
+                        raise ValueError(f"No episode_ends in zarr meta: {zarr_path}")
 
                     entry["state"] = "converted"
                     entry["updated_at"] = datetime.now().isoformat()
                 except Exception:
-                    continue
+                    raise RuntimeError(f"Failed to validate zarr file: {zarr_path}")
 
     save_json(stat_path, stat)
     print(f"Check done. Updated {stat_path}")
@@ -474,7 +485,7 @@ def main():
             batch_size=args.batch_size,
         )
     elif args.mode == "check":
-        check_mode(args.stat_path)
+        check_mode(args.stat_path, zarr_dir=args.zarr_dir)
     elif args.mode == "clean":
         clean_mode(args.stat_path)
 

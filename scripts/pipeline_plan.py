@@ -98,6 +98,8 @@ OBJECT_ID = "7221"
 GRASP_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
 # GRASP_IDS = [0, 1, 2, 4, 5, 9, 11, 12, 13]
 SCENE_IDS = [f"scene_{i}_seed_{i}" for i in range(0, 41)]
+# SCENE_IDS = [f"scene_{i}_seed_{i}" for i in range(21, 30)]
+
 # SCENE_IDS = [f"scene_{i}_seed_{i}" for i in range(33, 70) if i not in [36, 39]]
 # SCENE_IDS = [f"scene_{i}_seed_{i}" for i in range(0, 33) if i not in [5, 27]]  # scenes 0 to 31
 # SCENE_IDS = [f"scene_{i}_seed_{i+101}" for i in range(0, 10)]  # scenes 0 to 31
@@ -482,6 +484,7 @@ def run_pipeline_for_scene(
         if robot_name == "summit_franka":
             if object_id == "7221":
                 task.goal["angle"] *= 1
+                task.goal["angle"] = task.goal["angle"][:2] # only first two 
             elif object_id == "11622":
                 task.goal["angle"] *= 1
             elif object_id == "103634":
@@ -489,7 +492,7 @@ def run_pipeline_for_scene(
             elif object_id == "46197":
                 task.goal["angle"] *= 1
             elif object_id == "101773":
-                task.goal["angle"] *= 1
+                task.goal["angle"] *= 2
         print("###################### Task created successfully ######################")
 
         # Create trajectory pipeline with custom output directory

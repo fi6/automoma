@@ -5,47 +5,83 @@
       "scene_13_seed_13": {
         "103634": {
           "num": 260,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
             "/home/xinhai/projects/automoma/output/automoma-docker-3/collect_0123/traj/summit_franka/scene_13_seed_13/103634/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.472842"
+          "updated_at": "2026-01-25T10:16:42.864637"
         },
         "101773": {
           "num": 218,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
-            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_13_seed_13/101773/camera_data"
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_13_seed_13/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_13_seed_13/101773/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.478469"
+          "updated_at": "2026-01-25T10:16:42.871418"
+        },
+        "11622": {
+          "num": 738,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-2/collect_0123/traj/summit_franka/scene_13_seed_13/11622/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.858580"
         }
       },
       "scene_20_seed_20": {
         "103634": {
           "num": 494,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
             "/home/xinhai/projects/automoma/output/automoma-docker-3/collect_0123/traj/summit_franka/scene_20_seed_20/103634/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.473327"
+          "updated_at": "2026-01-25T10:16:42.864847"
+        },
+        "101773": {
+          "num": 261,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_20_seed_20/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_20_seed_20/101773/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.871665"
+        },
+        "11622": {
+          "num": 27,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-2/collect_0123/traj/summit_franka/scene_20_seed_20/11622/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:28:42.325556",
+          "zarr_path": "/home/xinhai/projects/automoma/baseline/RoboTwin/policy/DP3/data/automoma_manip_summit_franka-task_11622_scene_20_seed_20-27.zarr"
         }
       },
       "scene_12_seed_12": {
         "103634": {
           "num": 61,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
             "/home/xinhai/projects/automoma/output/automoma-docker-3/collect_0123/traj/summit_franka/scene_12_seed_12/103634/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.473489"
+          "updated_at": "2026-01-25T10:16:42.864964"
         },
         "101773": {
           "num": 244,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
-            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_12_seed_12/101773/camera_data"
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_12_seed_12/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_12_seed_12/101773/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.478733"
+          "updated_at": "2026-01-25T10:16:42.872090"
+        },
+        "11622": {
+          "num": 589,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-2/collect_0123/traj/summit_franka/scene_12_seed_12/11622/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.859025"
         }
       },
       "scene_0_seed_0": {
@@ -55,229 +91,534 @@
           "source_paths": [
             "/home/xinhai/projects/automoma/output/automoma-docker-1/collect_0123/traj/summit_franka/scene_0_seed_0/7221/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.471224"
+          "updated_at": "2026-01-25T10:16:42.857069"
         },
         "11622": {
-          "num": 720,
-          "state": "collecting",
+          "num": 745,
+          "state": "cleaned",
           "source_paths": [
             "/home/xinhai/projects/automoma/output/automoma-docker-2/collect_0123/traj/summit_franka/scene_0_seed_0/11622/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.472087"
+          "updated_at": "2026-01-25T10:16:42.859223"
         },
         "103634": {
           "num": 673,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
             "/home/xinhai/projects/automoma/output/automoma-docker-3/collect_0123/traj/summit_franka/scene_0_seed_0/103634/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.474070"
+          "updated_at": "2026-01-25T10:16:42.865160"
         },
         "46197": {
-          "num": 502,
-          "state": "collecting",
+          "num": 858,
+          "state": "cleaned",
           "source_paths": [
             "/home/xinhai/projects/automoma/output/automoma-docker-4/collect_0123/traj/summit_franka/scene_0_seed_0/46197/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.477826"
+          "updated_at": "2026-01-25T10:28:44.466576",
+          "zarr_path": "/home/xinhai/projects/automoma/baseline/RoboTwin/policy/DP3/data/automoma_manip_summit_franka-task_46197_scene_0_seed_0-858.zarr"
         },
         "101773": {
           "num": 295,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
-            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_0_seed_0/101773/camera_data"
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_0_seed_0/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_0_seed_0/101773/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.478967"
+          "updated_at": "2026-01-25T10:16:42.872223"
         }
       },
       "scene_1_seed_1": {
         "103634": {
           "num": 317,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
             "/home/xinhai/projects/automoma/output/automoma-docker-3/collect_0123/traj/summit_franka/scene_1_seed_1/103634/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.474415"
+          "updated_at": "2026-01-25T10:16:42.865351"
         },
         "101773": {
           "num": 159,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
-            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_1_seed_1/101773/camera_data"
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_1_seed_1/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_1_seed_1/101773/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.479147"
+          "updated_at": "2026-01-25T10:16:42.872479"
+        },
+        "11622": {
+          "num": 272,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-2/collect_0123/traj/summit_franka/scene_1_seed_1/11622/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.859418"
+        },
+        "46197": {
+          "num": 952,
+          "state": "collecting",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-4/collect_0123/traj/summit_franka/scene_1_seed_1/46197/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.869829"
         }
       },
       "scene_3_seed_3": {
         "103634": {
           "num": 472,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
             "/home/xinhai/projects/automoma/output/automoma-docker-3/collect_0123/traj/summit_franka/scene_3_seed_3/103634/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.474855"
+          "updated_at": "2026-01-25T10:16:42.865509"
         },
         "101773": {
           "num": 200,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
-            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_3_seed_3/101773/camera_data"
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_3_seed_3/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_3_seed_3/101773/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.479323"
+          "updated_at": "2026-01-25T10:16:42.872600"
+        },
+        "11622": {
+          "num": 314,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-2/collect_0123/traj/summit_franka/scene_3_seed_3/11622/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.859569"
         }
       },
       "scene_16_seed_16": {
         "103634": {
           "num": 1000,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
             "/home/xinhai/projects/automoma/output/automoma-docker-3/collect_0123/traj/summit_franka/scene_16_seed_16/103634/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.475512"
+          "updated_at": "2026-01-25T10:16:42.865774"
         },
         "101773": {
           "num": 178,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
-            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_16_seed_16/101773/camera_data"
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_16_seed_16/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_16_seed_16/101773/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.479509"
+          "updated_at": "2026-01-25T10:16:42.872831"
+        },
+        "11622": {
+          "num": 387,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-2/collect_0123/traj/summit_franka/scene_16_seed_16/11622/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.859948"
         }
       },
       "scene_18_seed_18": {
         "103634": {
           "num": 1000,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
             "/home/xinhai/projects/automoma/output/automoma-docker-3/collect_0123/traj/summit_franka/scene_18_seed_18/103634/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.476176"
+          "updated_at": "2026-01-25T10:16:42.866102"
         },
         "101773": {
-          "num": 376,
-          "state": "collecting",
+          "num": 405,
+          "state": "cleaned",
           "source_paths": [
-            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_18_seed_18/101773/camera_data"
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_18_seed_18/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_18_seed_18/101773/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.479774"
+          "updated_at": "2026-01-25T10:16:42.873230"
+        },
+        "11622": {
+          "num": 927,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-2/collect_0123/traj/summit_franka/scene_18_seed_18/11622/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:28:49.081612",
+          "zarr_path": "/home/xinhai/projects/automoma/baseline/RoboTwin/policy/DP3/data/automoma_manip_summit_franka-task_11622_scene_18_seed_18-927.zarr"
         }
       },
       "scene_17_seed_17": {
         "103634": {
           "num": 216,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
             "/home/xinhai/projects/automoma/output/automoma-docker-3/collect_0123/traj/summit_franka/scene_17_seed_17/103634/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.476404"
+          "updated_at": "2026-01-25T10:16:42.866411"
         },
         "101773": {
           "num": 128,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
-            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_17_seed_17/101773/camera_data"
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_17_seed_17/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_17_seed_17/101773/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.479933"
+          "updated_at": "2026-01-25T10:16:42.873458"
+        },
+        "11622": {
+          "num": 778,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-2/collect_0123/traj/summit_franka/scene_17_seed_17/11622/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:28:52.029112",
+          "zarr_path": "/home/xinhai/projects/automoma/baseline/RoboTwin/policy/DP3/data/automoma_manip_summit_franka-task_11622_scene_17_seed_17-778.zarr"
         }
       },
       "scene_10_seed_10": {
         "103634": {
           "num": 400,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
             "/home/xinhai/projects/automoma/output/automoma-docker-3/collect_0123/traj/summit_franka/scene_10_seed_10/103634/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.476712"
+          "updated_at": "2026-01-25T10:16:42.866682"
         },
         "101773": {
           "num": 162,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
-            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_10_seed_10/101773/camera_data"
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_10_seed_10/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_10_seed_10/101773/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.480112"
+          "updated_at": "2026-01-25T10:16:42.873683"
+        },
+        "11622": {
+          "num": 661,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-2/collect_0123/traj/summit_franka/scene_10_seed_10/11622/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.862931"
         }
       },
       "scene_9_seed_9": {
         "103634": {
           "num": 205,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
             "/home/xinhai/projects/automoma/output/automoma-docker-3/collect_0123/traj/summit_franka/scene_9_seed_9/103634/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.476895"
+          "updated_at": "2026-01-25T10:16:42.866905"
         },
         "101773": {
           "num": 77,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
-            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_9_seed_9/101773/camera_data"
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_9_seed_9/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_9_seed_9/101773/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.480303"
+          "updated_at": "2026-01-25T10:16:42.874256"
+        },
+        "11622": {
+          "num": 340,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-2/collect_0123/traj/summit_franka/scene_9_seed_9/11622/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.863254"
         }
       },
       "scene_7_seed_7": {
         "103634": {
           "num": 202,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
             "/home/xinhai/projects/automoma/output/automoma-docker-3/collect_0123/traj/summit_franka/scene_7_seed_7/103634/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.477193"
+          "updated_at": "2026-01-25T10:16:42.867033"
         },
         "101773": {
           "num": 118,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
-            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_7_seed_7/101773/camera_data"
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_7_seed_7/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_7_seed_7/101773/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.480436"
+          "updated_at": "2026-01-25T10:16:42.874364"
+        },
+        "11622": {
+          "num": 488,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-2/collect_0123/traj/summit_franka/scene_7_seed_7/11622/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.863420"
         }
       },
       "scene_8_seed_8": {
         "103634": {
           "num": 38,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
             "/home/xinhai/projects/automoma/output/automoma-docker-3/collect_0123/traj/summit_franka/scene_8_seed_8/103634/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.477289"
+          "updated_at": "2026-01-25T10:16:42.867188"
         },
         "101773": {
           "num": 121,
-          "state": "collected",
+          "state": "cleaned",
           "source_paths": [
-            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_8_seed_8/101773/camera_data"
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_8_seed_8/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_8_seed_8/101773/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.480593"
+          "updated_at": "2026-01-25T10:16:42.874577"
+        },
+        "11622": {
+          "num": 228,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-2/collect_0123/traj/summit_franka/scene_8_seed_8/11622/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.863607"
         }
       },
       "scene_21_seed_21": {
         "103634": {
-          "num": 154,
-          "state": "collecting",
+          "num": 1000,
+          "state": "cleaned",
           "source_paths": [
             "/home/xinhai/projects/automoma/output/automoma-docker-3/collect_0123/traj/summit_franka/scene_21_seed_21/103634/camera_data"
           ],
-          "updated_at": "2026-01-24T14:20:17.477412"
+          "updated_at": "2026-01-25T10:16:42.867440"
+        },
+        "101773": {
+          "num": 180,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_21_seed_21/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_21_seed_21/101773/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.874829"
+        },
+        "11622": {
+          "num": 629,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-2/collect_0123/traj/summit_franka/scene_21_seed_21/11622/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:28:59.392610",
+          "zarr_path": "/home/xinhai/projects/automoma/baseline/RoboTwin/policy/DP3/data/automoma_manip_summit_franka-task_11622_scene_21_seed_21-629.zarr"
         }
       },
-      "scene_28_seed_28": {},
-      "scene_32_seed_32": {},
-      "scene_34_seed_34": {},
-      "scene_25_seed_25": {},
-      "scene_33_seed_33": {},
-      "scene_30_seed_30": {},
-      "scene_35_seed_35": {},
-      "scene_24_seed_24": {},
-      "scene_23_seed_23": {},
-      "scene_27_seed_27": {},
-      "scene_29_seed_29": {},
-      "scene_31_seed_31": {},
-      "scene_40_seed_40": {},
-      "scene_38_seed_38": {},
-      "scene_39_seed_39": {},
-      "scene_36_seed_36": {}
+      "scene_28_seed_28": {
+        "101773": {
+          "num": 189,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_28_seed_28/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_28_seed_28/101773/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.871178"
+        }
+      },
+      "scene_32_seed_32": {
+        "101773": {
+          "num": 120,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_32_seed_32/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_32_seed_32/101773/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.871294"
+        }
+      },
+      "scene_34_seed_34": {
+        "101773": {
+          "num": 136,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_34_seed_34/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_34_seed_34/101773/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.871531"
+        }
+      },
+      "scene_25_seed_25": {
+        "101773": {
+          "num": 384,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_25_seed_25/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_25_seed_25/101773/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.872360"
+        }
+      },
+      "scene_33_seed_33": {
+        "101773": {
+          "num": 100,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_33_seed_33/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_33_seed_33/101773/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.872714"
+        }
+      },
+      "scene_30_seed_30": {
+        "101773": {
+          "num": 187,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_30_seed_30/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_30_seed_30/101773/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.872955"
+        }
+      },
+      "scene_35_seed_35": {
+        "101773": {
+          "num": 269,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_35_seed_35/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_35_seed_35/101773/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.873089"
+        }
+      },
+      "scene_24_seed_24": {
+        "101773": {
+          "num": 162,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_24_seed_24/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_24_seed_24/101773/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.873348"
+        },
+        "103634": {
+          "num": 498,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-3/collect_0123/traj/summit_franka/scene_24_seed_24/103634/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.866276"
+        },
+        "11622": {
+          "num": 36,
+          "state": "collecting",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-2/collect_0123/traj/summit_franka/scene_24_seed_24/11622/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.861325"
+        }
+      },
+      "scene_23_seed_23": {
+        "103634": {
+          "num": 124,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-3/collect_0123/traj/summit_franka/scene_23_seed_23/103634/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.866532"
+        },
+        "101773": {
+          "num": 131,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_23_seed_23/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_23_seed_23/101773/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.873569"
+        },
+        "11622": {
+          "num": 330,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-2/collect_0123/traj/summit_franka/scene_23_seed_23/11622/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:29:04.228411",
+          "zarr_path": "/home/xinhai/projects/automoma/baseline/RoboTwin/policy/DP3/data/automoma_manip_summit_franka-task_11622_scene_23_seed_23-330.zarr"
+        }
+      },
+      "scene_27_seed_27": {
+        "101773": {
+          "num": 254,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_27_seed_27/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_27_seed_27/101773/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.873803"
+        }
+      },
+      "scene_29_seed_29": {
+        "101773": {
+          "num": 165,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_29_seed_29/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_29_seed_29/101773/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.874041"
+        }
+      },
+      "scene_31_seed_31": {
+        "101773": {
+          "num": 110,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_31_seed_31/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_31_seed_31/101773/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.874470"
+        }
+      },
+      "scene_40_seed_40": {
+        "101773": {
+          "num": 207,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_40_seed_40/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_40_seed_40/101773/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:29:05.581868",
+          "zarr_path": "/home/xinhai/projects/automoma/baseline/RoboTwin/policy/DP3/data/automoma_manip_summit_franka-task_101773_scene_40_seed_40-207.zarr"
+        }
+      },
+      "scene_38_seed_38": {
+        "101773": {
+          "num": 252,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_38_seed_38/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_38_seed_38/101773/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.873928"
+        }
+      },
+      "scene_39_seed_39": {
+        "101773": {
+          "num": 120,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_39_seed_39/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_39_seed_39/101773/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.874150"
+        }
+      },
+      "scene_36_seed_36": {
+        "101773": {
+          "num": 305,
+          "state": "cleaned",
+          "source_paths": [
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123/traj/summit_franka/scene_36_seed_36/101773/camera_data",
+            "/home/xinhai/projects/automoma/output/automoma-docker-5/collect_0123_try1/traj/summit_franka/scene_36_seed_36/101773/camera_data"
+          ],
+          "updated_at": "2026-01-25T10:16:42.874710"
+        }
+      }
     }
   }
 }
