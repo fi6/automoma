@@ -1,0 +1,1 @@
+docker build -f auto_worker.dockerfile -t auto-worker .
