@@ -15,20 +15,20 @@ python scripts/pipeline_plan.py --scene_dir output/collect/infinigen_scene_100 \
 
 for object_id in 7221 11622 103634 46197 101773; do
     python scripts/pipeline_plan.py --scene_dir assets/scene/infinigen/kitchen_1130 \
-         --plan_dir output/collect_1205/traj --robot_name summit_franka --object_id ${object_id}
+         --plan_dir output/collect_0123/traj --robot_name summit_franka --object_id ${object_id}
 done
 
 python scripts/pipeline_plan.py --scene_dir assets/scene/infinigen/kitchen_1130 \
-     --plan_dir output/collect_1205/traj --robot_name summit_franka --object_id 7221
-
+     --plan_dir output/collect_0123/traj --robot_name summit_franka --object_id 7221
+     
 python scripts/pipeline_plan.py --scene_dir output/collect/infinigen_scene_100 \
      --plan_dir output/collect/traj --robot_name summit_franka_fixed_base
 
 python scripts/pipeline_plan.py --scene_dir output/collect/infinigen_scene_100 \
      --plan_dir output/collect/traj --robot_name summit_franka --stats_only
 
-python scripts/pipeline_collect.py --scene_dir output/collect/infinigen_scene_100 \
-     --plan_dir output/collect/traj --robot_name summit_franka --num_episodes 6400
+python scripts/pipeline_collect.py --scene_dir assets/scene/infinigen/kitchen_1130 \
+     --plan_dir output/collect_0123/traj --robot_name summit_franka --num_episodes 1000
 
 
 python scripts/pipeline_plan.py \

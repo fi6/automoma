@@ -97,24 +97,24 @@ class TaskDescription:
 #     return [1.57, *[open_angles[x] for x in [1, 4]]]
 
 
-def ao_grasp_task_generator(object_grasp_folder: str):
-    import os
+# def ao_grasp_task_generator(object_grasp_folder: str):
+#     import os
 
-    # object_grasp_folder: assets/grasp/7221
-    open_angles = []
-    for subdir in os.listdir(object_grasp_folder):
-        # subdir: assets/grasp/7221/0
-        object_init_state = os.path.join(object_grasp_folder, subdir, "init_state.npz")
-        # print(object_init_state)
-        if not os.path.exists(object_init_state):
-            continue
-        with np.load(object_init_state, allow_pickle=True) as data:
-            # print(data['data'].item()['object']['qpos'])
-            open_angles.append(data["data"].item()["object"]["qpos"][1])
-        # select open angles
-    open_angles = sorted(open_angles, reverse=True)
-    print(f"Available open angles: {open_angles}")
-    return [*[open_angles[x] for x in range(0, 5)]]
+#     # object_grasp_folder: assets/grasp/7221
+#     open_angles = []
+#     for subdir in os.listdir(object_grasp_folder):
+#         # subdir: assets/grasp/7221/0
+#         object_init_state = os.path.join(object_grasp_folder, subdir, "init_state.npz")
+#         # print(object_init_state)
+#         if not os.path.exists(object_init_state):
+#             continue
+#         with np.load(object_init_state, allow_pickle=True) as data:
+#             # print(data['data'].item()['object']['qpos'])
+#             open_angles.append(data["data"].item()["object"]["qpos"][1])
+#         # select open angles
+#     open_angles = sorted(open_angles, reverse=True)
+#     print(f"Available open angles: {open_angles}")
+#     return [*[open_angles[x] for x in range(0, 5)]]
 
 
 def ao_grasp_task_generator(object_grasp_folder: str):

@@ -92,10 +92,10 @@ def get_scene_marker_path(plan_dir: str, robot_name: str, scene_name: str) -> Pa
 # Default object ID (can be overridden via --object_id argument)
 OBJECT_ID = "7221"
 
-# GRASP_IDS = [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 18]
+GRASP_IDS = [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 18]
 # GRASP_IDS = [4, 5, 6, 9, 12, 13, 18]
 
-GRASP_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+# GRASP_IDS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
 # GRASP_IDS = [0, 1, 2, 4, 5, 9, 11, 12, 13]
 SCENE_IDS = [f"scene_{i}_seed_{i}" for i in range(0, 41)]
 # SCENE_IDS = [f"scene_{i}_seed_{i}" for i in range(21, 30)]
