@@ -9,6 +9,18 @@ OUTPUT_DIR=output/automoma-docker-5/collect_0123
 python scripts/pick_data_automoma.py --mode collect --output_dir ${OUTPUT_DIR}/traj
 python scripts/pick_data_automoma.py --mode pick --output_dir ${OUTPUT_DIR}/traj --link
 
+python scripts/pipeline_plan.py \
+     --scene_dir assets/scene/infinigen/kitchen_0913 \
+     --plan_dir output/collect_0123/traj \
+     --robot_name summit_franka \
+     --object_id 7221
+
+python scripts/pipeline_collect.py \
+     --scene_dir assets/scene/infinigen/kitchen_0913 \
+     --plan_dir output/collect_0123/traj \
+     --robot_name summit_franka \
+     --num_episodes 1000 \
+     --object_id 7221
 
 python scripts/pipeline_plan.py --scene_dir output/collect/infinigen_scene_100 \
      --plan_dir output/collect/traj --robot_name summit_franka

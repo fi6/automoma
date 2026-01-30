@@ -15,6 +15,7 @@ class TrajectoryPipeline:
         self.ik_result = None
         self.traj_result = None
         self.filtered_traj_result = None
+        self.selected_traj_result = None
         self._init_planner()
         
     def _init_planner(self):
@@ -61,7 +62,11 @@ class TrajectoryPipeline:
             goal_angle=self.task.goal["angle"][0],
             robot_cfg=self.task.robot.robot_cfg,
             handle_link=getattr(self.task.object, 'handle_link', 'link_0'),
-            # record_clustering_stats=self.record_clustering_stats
+            record_clustering_stats=self.record_clustering_stats,
+            selection_strategy="similar",
+            target_count=200,
+            num_retries=20,
+            num_seeds=20000
         )
         
         # Handle multiple goal angles
@@ -76,16 +81,16 @@ class TrajectoryPipeline:
                     goal_angle=goal_angle,
                     robot_cfg=self.task.robot.robot_cfg,
                     handle_link=getattr(self.task.object, 'handle_link', 'link_0'),
-                    # record_clustering_stats=False  # Only record stats for first angle
+                    record_clustering_stats=False,
+                    selection_strategy="similar",
+                    target_count=100,
+                    num_retries=20,
+                    num_seeds=20000
                 )
                 all_start_iks.append(additional_ik.start_ik)
                 all_goal_iks.append(additional_ik.goal_ik)
             
             start_iks = torch.cat(all_start_iks, dim=0)
-            # Randomly select 50 indices
-            if start_iks.shape[0] > 50:
-                idx = torch.randperm(start_iks.shape[0])[:50]
-                start_iks = start_iks[idx]
             goal_iks = torch.cat(all_goal_iks, dim=0)
             # Keep clustering stats from first angle if available
             new_ik_result = IKResult(start_ik=start_iks, goal_ik=goal_iks)
@@ -108,9 +113,32 @@ class TrajectoryPipeline:
     def filter_traj(self):
         """Apply filtering to trajectories."""
         print("Filtering trajectories...")
-        self.filtered_traj_result = self.planner.traj_filter(self.traj_result, self.akr_robot_cfg)
-        print(f"Filtering completed: {self.filtered_traj_result.success.sum().item()}/{len(self.filtered_traj_result.success)} passed")
-        return self.filtered_traj_result
+        self.filtered_traj_result = self.planner.traj_filter(
+            self.traj_result,
+            self.akr_robot_cfg,
+            target_count=None
+        )
+        print(
+            f"Filtering completed: {self.filtered_traj_result.success.sum().item()}/{len(self.filtered_traj_result.success)} passed"
+        )
+
+        selected_indices = self.planner._select_unique_similar_traj_indices(
+            self.filtered_traj_result.trajectories,
+            target_count=1000
+        )
+        if selected_indices.shape[0] == 0:
+            self.selected_traj_result = self.planner.traj_fallback()
+        else:
+            self.selected_traj_result = TrajResult(
+                start_states=self.filtered_traj_result.start_states[selected_indices],
+                goal_states=self.filtered_traj_result.goal_states[selected_indices],
+                trajectories=self.filtered_traj_result.trajectories[selected_indices],
+                success=self.filtered_traj_result.success[selected_indices]
+            )
+        print(
+            f"Selected trajectories: {self.selected_traj_result.success.sum().item()}/{len(self.selected_traj_result.success)} kept"
+        )
+        return self.selected_traj_result
     
     def save_results(self, grasp_id: int):
         """Save results to organized directory."""
@@ -130,6 +158,11 @@ class TrajectoryPipeline:
             filtered_path = os.path.join(output_dir, "filtered_traj_data.pt")
             self.planner.save_traj(self.filtered_traj_result, filtered_path)
             print(f"Saved filtered trajectory results to: {filtered_path}")
+
+        if self.selected_traj_result is not None:
+            selected_path = os.path.join(output_dir, "selected_traj_data.pt")
+            self.planner.save_traj(self.selected_traj_result, selected_path)
+            print(f"Saved selected trajectory results to: {selected_path}")
         
         return output_dir
     
@@ -139,5 +172,6 @@ class TrajectoryPipeline:
         ik_path = os.path.join(output_dir, "ik_data.pt")
         traj_path = os.path.join(output_dir, "traj_data.pt")
         filtered_path = os.path.join(output_dir, "filtered_traj_data.pt")
+        selected_path = os.path.join(output_dir, "selected_traj_data.pt")
         
-        return all(os.path.exists(p) for p in [ik_path, traj_path, filtered_path])
+        return all(os.path.exists(p) for p in [ik_path, traj_path, filtered_path, selected_path])
