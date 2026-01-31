@@ -134,6 +134,13 @@ OBJECT_CONFIG_MAP = {
         "urdf_path": "assets/object/Oven/101773/101773_0_scaling.urdf",
         "handle_link": "link_0",
     },
+    "10000": {
+        "asset_type": "Refrigerator",
+        "asset_id": "10000",
+        "scale": 1.0,
+        "urdf_path": "assets/object/Refrigerator/10000/10000_0_scaling.urdf",
+        "handle_link": "top_door",
+    }
 }
 
 OBJECT_PRIM_MAP = {
@@ -143,11 +150,13 @@ OBJECT_PRIM_MAP = {
     "46197": "StaticCategoryFactory_Cabinet_46197",
     "10944": "StaticCategoryFactory_Refrigerator_10944",
     "101773": "StaticCategoryFactory_Oven_101773",
+    "10000": "StaticCategoryFactory_Refrigerator_10000",
 }
 
 ROBOT_CONFIG_MAP = {
     "summit_franka": "assets/robot/summit_franka/summit_franka.yml",
     "summit_franka_fixed_base": "assets/robot/summit_franka/summit_franka_fixed_base.yml",
+    "fetch": "assets/robot/fetch/fetch.yml",
 }
 
 # ============================================================================
@@ -179,13 +188,13 @@ def load_scene(scene_path: str, objects: List, InfinigenScenePipeline,
     scene_result = scene_pipeline.load_scene(scene_path, objects)
     
     # Set scene pose
-    scene_pose = [0, 0, -0.13, 1, 0, 0, 0]
+    scene_pose = [0, 0, 0, 1, 0, 0, 0]
     scene_result.scene.set_pose(scene_pose)
     
     # Set object poses
     for obj in scene_result.valid_objects:
         obj_pose = scene_result.scene.get_object_matrix(obj)
-        obj_pose = single_axis_self_rotation(obj_pose, 'z', np.pi)
+        # obj_pose = single_axis_self_rotation(obj_pose, 'z', np.pi)
         obj_pose = matrix_to_pose(obj_pose)
         obj.set_pose(obj_pose)
         print(f"Set pose for object {obj.asset_id}: {obj_pose}")
@@ -279,9 +288,11 @@ def replay_ik(replayer, plan_dir: str, robot_name: str, scene_name: str,
         print("=== REACH STAGE IK ===")
         ik_data_reach = load_ik_data(plan_dir, robot_name, scene_name, 
                                      object_id, grasp_id, "reach")
-        initial_iks = ik_data_reach["initial_iks"]
-        print(f"Initial IKs: {initial_iks.shape}")
-        replayer.replay_ik(initial_iks, initial_iks, robot_name)
+        initial_iks = ik_data["initial_iks"]
+        start_iks = ik_data["start_iks"]
+        print(f"Initial IKs: {initial_iks.shape}, Start IKs: {start_iks.shape}")
+        # For reach stage, replay initial poses (no goal, just show poses)
+        replayer.replay_ik(initial_iks, start_iks, robot_name)
         
         print("\n=== OPEN STAGE IK ===")
         ik_data_open = load_ik_data(plan_dir, robot_name, scene_name,
@@ -295,9 +306,10 @@ def replay_ik(replayer, plan_dir: str, robot_name: str, scene_name: str,
         ik_data = load_ik_data(plan_dir, robot_name, scene_name,
                               object_id, grasp_id, stage)
         initial_iks = ik_data["initial_iks"]
-        print(f"Initial IKs: {initial_iks.shape}")
+        start_iks = ik_data["start_iks"]
+        print(f"Initial IKs: {initial_iks.shape}, Start IKs: {start_iks.shape}")
         # For reach stage, replay initial poses (no goal, just show poses)
-        replayer.replay_ik(initial_iks, initial_iks, robot_name)
+        replayer.replay_ik(initial_iks, start_iks, robot_name)
     
     elif stage == "open":
         ik_data = load_ik_data(plan_dir, robot_name, scene_name,
@@ -351,7 +363,7 @@ def replay_traj(replayer, plan_dir: str, robot_name: str, scene_name: str,
         trajectories = traj_data["reach_traj"]
         success = traj_data["reach_success"]
         print(f"Trajectories: {trajectories.shape}, Success: {success.sum()}/{len(success)}")
-        replayer.replay_traj(start_states, goal_states, trajectories, success, robot_name)
+        replayer.replay_traj_only(start_states, goal_states, trajectories, success, robot_name)
     
     elif stage == "open":
         traj_data = load_traj_data(plan_dir, robot_name, scene_name,
@@ -622,6 +634,151 @@ def record_traj(replayer, plan_dir: str, robot_name: str, scene_name: str,
 # ============================================================================
 
 def main():
+    parser = argparse.ArgumentParser(
+        description="Replay and record two-stage (reach + open) motion planning results",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Replay reach stage IK
+  python examples/example_replay_reach.py --scene-dir assets/scene/mshab/kitchen_0130/scene_0_seed_0 \
+      --plan-dir output/collect_0130/traj --robot-name fetch --object-id 10000 \
+      --grasp-id 0 --mode replay_ik --stage reach
+
+  # Replay open stage filtered trajectories  
+  python examples/example_replay_reach.py --scene-dir assets/scene/mshab/kitchen_0130/scene_0_seed_0 \\
+      --plan-dir output/collect_1211/traj --robot-name summit_franka --object-id 10000 \\
+      --grasp-id 0 --mode replay_filtered_traj --stage open
+
+  # Record combined (all stages) camera data
+  python examples/example_replay_reach.py --scene-dir assets/scene/infinigen/kitchen_1130/scene_0_seed_0 \\
+      --plan-dir output/collect_1211/traj --robot-name summit_franka --object-id 7221 \\
+      --grasp-id 0 --mode record --stage all --num-episodes 10
+        """
+    )
+    
+    # Required arguments
+    parser.add_argument("--scene-dir", type=str, required=True,
+                       help="Path to scene directory")
+    parser.add_argument("--plan-dir", type=str, required=True,
+                       help="Base directory containing planning results")
+    parser.add_argument("--robot-name", type=str, required=True,
+                       choices=list(ROBOT_CONFIG_MAP.keys()),
+                       help="Robot name")
+    parser.add_argument("--object-id", type=str, required=True,
+                       choices=list(OBJECT_CONFIG_MAP.keys()),
+                       help="Object ID")
+    parser.add_argument("--grasp-id", type=int, required=True,
+                       help="Grasp ID to replay")
+    
+    # Mode and stage
+    parser.add_argument("--mode", type=str, required=True,
+                       choices=["replay_ik", "replay_traj", "replay_filtered_traj", "record"],
+                       help="Operation mode")
+    parser.add_argument("--stage", type=str, required=True,
+                       choices=["reach", "open", "all"],
+                       help="Planning stage to replay/record")
+    
+    # Optional arguments
+    parser.add_argument("--num-episodes", type=int, default=10,
+                       help="Number of episodes to record (for record mode)")
+    parser.add_argument("--headless", action="store_true",
+                       help="Run in headless mode (no GUI)")
+    
+    args = parser.parse_args()
+    
+    # Extract scene name from scene directory
+    scene_name = Path(args.scene_dir).name
+    
+    try:
+        # Initialize Isaac Sim
+        print("Initializing Isaac Sim...")
+        global simulation_app
+        simulation_app = initialize_isaac_sim(headless=args.headless)
+        
+        # Import modules
+        print("Importing modules...")
+        (ObjectDescription, RobotDescription, TaskDescription, TaskType,
+         InfinigenScenePipeline, Replayer, single_axis_self_rotation,
+         matrix_to_pose, pose_multiply, action_registry_module) = import_modules()
+        
+        # Create object and load scene
+        print(f"Creating object: {args.object_id}")
+        obj = create_object(args.object_id, ObjectDescription)
+        
+        print(f"Loading scene: {args.scene_dir}")
+        scene_result = load_scene(args.scene_dir, [obj], InfinigenScenePipeline,
+                                 single_axis_self_rotation, matrix_to_pose)
+        
+        # Create task
+        robot_cfg_path = ROBOT_CONFIG_MAP[args.robot_name]
+        robot = RobotDescription(args.robot_name, robot_cfg_path)
+        task = TaskDescription(
+            robot=robot,
+            object=obj,
+            scene=scene_result.scene,
+            task_type=TaskType.ARTICULATE,
+        )
+        
+        # Create replayer
+        print("Creating replayer...")
+        robot_cfg = robot.robot_cfg  # Use the robot_cfg from RobotDescription
+        scene_cfg = {
+            "path": scene_result.scene.scene_usd_path,
+            "pose": scene_result.scene.pose,
+        }
+        object_cfg = {
+            "path": obj.urdf_path,
+            "asset_type": obj.asset_type,
+            "asset_id": obj.asset_id,
+            "pose": obj.pose,
+            "joint_id": 0,
+        }
+        
+        replayer = Replayer(simulation_app, robot_cfg, scene_cfg, object_cfg)
+        
+        # Setup visualization
+        print("Setting up visualization...")
+        action_registry = action_registry_module.get_action_registry()
+        setup_visualization(action_registry)
+        deactivate_scene_prims(replayer, args.object_id)
+        
+        # Execute requested mode
+        print(f"\nExecuting mode: {args.mode} for stage: {args.stage}")
+        
+        if args.mode == "replay_ik":
+            replay_ik(replayer, args.plan_dir, args.robot_name, scene_name,
+                     args.object_id, args.grasp_id, args.stage)
+        
+        elif args.mode == "replay_traj":
+            replay_traj(replayer, args.plan_dir, args.robot_name, scene_name,
+                       args.object_id, args.grasp_id, args.stage, filtered=False)
+        
+        elif args.mode == "replay_filtered_traj":
+            replay_traj(replayer, args.plan_dir, args.robot_name, scene_name,
+                       args.object_id, args.grasp_id, args.stage, filtered=True)
+        
+        elif args.mode == "record":
+            record_traj(replayer, args.plan_dir, args.robot_name, scene_name,
+                       args.object_id, args.stage, args.num_episodes)
+        
+        # Keep simulation running
+        print("\nReplay complete. Close the window to exit.")
+        replayer.isaacsim_step(step=-1, render=True)
+        
+    except Exception as e:
+        print(f"\nError: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+    
+    finally:
+        if simulation_app:
+            simulation_app.close()
+    
+    return 0
+
+
+def main_infinigen():
     parser = argparse.ArgumentParser(
         description="Replay and record two-stage (reach + open) motion planning results",
         formatter_class=argparse.RawDescriptionHelpFormatter,

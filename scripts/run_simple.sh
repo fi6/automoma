@@ -1,3 +1,51 @@
+## 01.30
+python scripts/compute_urdf_metadata.py \
+     --urdf assets/object/Refrigerator/10000/10000_0_scaling.urdf \
+     --pose 0.5361366205337185 -4.457830299261277 1.01643887334675 1.0 0.0 0.0 0.0 \
+     --metadata assets/scene/mshab/kitchen_0130/scene_0_seed_0/info/metadata.json \
+     --object-key "StaticCategoryFactory(Refrigerator_10000_0_scaling_mobility)"
+
+python scripts/compute_urdf_metadata.py \
+     --urdf assets/object/Refrigerator/10000/10000_0_scaling.urdf \
+     --pose -2.21290059087744 1.0421154010510683 1.0348518115086407 1.0 0.0 0.0 0.0 \
+     --metadata assets/scene/mshab/kitchen_0130/scene_1_seed_1/info/metadata.json \
+     --object-key "StaticCategoryFactory(Refrigerator_10000_0_scaling_mobility)"
+
+python scripts/compute_urdf_metadata.py \
+     --urdf assets/object/Refrigerator/10000/10000_0_scaling.urdf \
+     --pose -2.21290059087744 1.0421154010510683 1.0348518115086407 1.0 0.0 0.0 0.0 \
+     --metadata assets/scene/mshab/kitchen_0130/scene_2_seed_2/info/metadata.json \
+     --object-key "StaticCategoryFactory(Refrigerator_10000_0_scaling_mobility)"
+
+# (-2.172428681511452, 0.24012306028506913, 1.0348)
+python scripts/compute_urdf_metadata.py \
+     --urdf assets/object/Refrigerator/10000/10000_0_scaling.urdf \
+     --pose -2.172428681511452 0.24012306028506913 1.0348 1.0 0.0 0.0 0.0 \
+     --metadata assets/scene/mshab/kitchen_0130/scene_3_seed_3/info/metadata.json \
+     --object-key "StaticCategoryFactory(Refrigerator_10000_0_scaling_mobility)"
+
+python third_party/cuakr/src/cuakr/planner/planner_reach.py
+
+python examples/example_replay_reach.py \
+     --scene-dir assets/scene/mshab/kitchen_0130/scene_0_seed_0  \
+     --plan-dir output/collect_0130/traj \
+     --robot-name fetch \
+     --object-id 10000  \
+     --grasp-id 0 \
+     --mode replay_ik \
+     --stage reach
+
+python examples/example_replay_reach.py \
+     --scene-dir assets/scene/mshab/kitchen_0130/scene_0_seed_0  \
+     --plan-dir output/collect_0130/traj \
+     --robot-name fetch \
+     --object-id 10000  \
+     --grasp-id 0 \
+     --mode replay_traj \
+     --stage reach
+
+rm -rf /home/xinhai/projects/automoma/output/collect_0130
+
 ## 01.24
 OUTPUT_DIR=output/collect_0123
 OUTPUT_DIR=output/automoma-docker-1/collect_0123

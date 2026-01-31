@@ -64,7 +64,7 @@ def attach_object_to_robot(
 
 def inverse_object(urdf: URDFAsset, root_link: str, tip_link: str):
 
-    base_object = BaseObject.from_robot(urdf._model.robot, create_world_joint=True)
+    base_object = BaseObject.from_robot(urdf._model.robot, create_world_joint=False)
     base_object.inverse_root_tip(root_link, tip_link)
     # create temp file
     new_urdf_asset = None

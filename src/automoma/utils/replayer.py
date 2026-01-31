@@ -498,7 +498,7 @@ class Replayer:
         robot = self.robot
         idx_list = [robot.get_dof_index(name) for name in joint_names]
     
-        indices = self._get_indices(successes, all=False)
+        indices = self._get_indices(successes, all=True)
         self._isaacsim_step(duration=5, render=True)
         
         for idx in indices:
@@ -513,6 +513,7 @@ class Replayer:
             robot_pose = start_state[:-1]
             handle_pose = start_state[-1:]
             robot_pose = self._adjust_pose_for_robot(robot_pose, robot_name)
+            
             robot.set_joint_positions(robot_pose.tolist(), idx_list)
             robot._articulation_view.set_max_efforts(
                 values=np.array([5000] * len(idx_list)), joint_indices=idx_list,
@@ -532,6 +533,57 @@ class Replayer:
                 while time.time() - start_time < pose_duration:
                     robot.set_joint_positions(robot_pose.tolist(), idx_list)
                     self.set_handle_pose(handle_pose.item())
+                    self._isaacsim_step(step=1, render=True)
+                
+            # Set to goal state
+            # robot_pose = goal_state[:-1]
+            # handle_pose = goal_state[-1:]
+            # robot_pose = self._adjust_pose_for_robot(robot_pose, robot_name)
+            # robot.set_joint_positions(robot_pose.tolist(), idx_list)
+            # self.set_handle_pose(handle_pose.item())
+            self._isaacsim_step(duration=stop_duration, render=True)
+            
+    def replay_traj_only(self, start_states, goal_states, trajs, successes, robot_name):
+        """Replay trajectory solutions."""
+        self._init_motion_gen()
+            
+        pose_duration = 0.1
+        stop_duration = 1.0
+        
+        joint_names = self.robot_cfg["kinematics"]["cspace"]["joint_names"]
+        robot = self.robot
+        idx_list = [robot.get_dof_index(name) for name in joint_names]
+    
+        indices = self._get_indices(successes, all=True)
+        print("indices to replay:", indices)
+        self._isaacsim_step(duration=5, render=True)
+        
+        for idx in indices:
+            start_state = start_states[idx]
+            goal_state = goal_states[idx]
+            traj = trajs[idx]
+            success = successes[idx]
+            
+            print(f"Replaying {idx} with {len(traj)} steps, success: {success}")
+            
+            # Set to start state
+            robot_pose = self._adjust_pose_for_robot(start_state, robot_name)
+            
+            robot.set_joint_positions(robot_pose.tolist(), idx_list)
+            robot._articulation_view.set_max_efforts(
+                values=np.array([5000] * len(idx_list)), joint_indices=idx_list,
+            )
+            start_time = time.time()
+            while time.time() - start_time < pose_duration:
+                robot.set_joint_positions(robot_pose.tolist(), idx_list)
+                self._isaacsim_step(step=1, render=True)
+            
+            # Step through trajectory
+            for step_idx, pose in enumerate(traj):
+                robot_pose = self._adjust_pose_for_robot(pose, robot_name)
+                start_time = time.time()
+                while time.time() - start_time < pose_duration:
+                    robot.set_joint_positions(robot_pose.tolist(), idx_list)
                     self._isaacsim_step(step=1, render=True)
                 
             # Set to goal state
@@ -1311,10 +1363,10 @@ class Replayer:
             ).GetCollisionEnabledAttr().Set(False)
 
         for prim_path in [
-            "/World/summit_panda/panda_leftfinger/collisions",
-            "/World/summit_panda/panda_rightfinger/collisions",
-            "/World/summit_panda/grasp_frame/collisions",
-            "/World/summit_panda/panda_hand/collisions",
+            # "/World/summit_panda/panda_leftfinger/collisions",
+            # "/World/summit_panda/panda_rightfinger/collisions",
+            # "/World/summit_panda/grasp_frame/collisions",
+            # "/World/summit_panda/panda_hand/collisions",
             # "/World/object/partnet_5b2633d960419bb2e5bf1ab8e7d0b/link_0/collisions",
             # "/World/object/partnet_5b2633d960419bb2e5bf1ab8e7d0b/link_1/collisions"
         ]:

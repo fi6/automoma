@@ -203,6 +203,9 @@ class BaseObject(Robot):
         if create_world_link and not self.link_map.get("world"):
             world_link = Link("world")
             self.add_links(world_link)
+        if not self.link_map.get("corpus"):
+            corpus_link = Link("corpus")
+            self.add_links(corpus_link)
 
     def inverse_root_tip(self, root_link: str, tip_link: str):
         """
