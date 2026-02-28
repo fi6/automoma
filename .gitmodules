@@ -12,3 +12,9 @@
 [submodule "baseline/RoboTwin"]
 	path = baseline/RoboTwin
 	url = https://github.com/chang-xinhai/RoboTwin.git
+[submodule "lerobot"]
+	path = lerobot
+	url = https://github.com/chang-xinhai/lerobot.git
+[submodule "IsaacLab-Arena"]
+	path = IsaacLab-Arena
+	url = https://github.com/chang-xinhai/IsaacLab-Arena.git
