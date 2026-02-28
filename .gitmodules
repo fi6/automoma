@@ -4,3 +4,4 @@
 [submodule "IsaacLab-Arena"]
 	path = IsaacLab-Arena
 	url = https://github.com/chang-xinhai/IsaacLab-Arena.git
+	branch = develop
