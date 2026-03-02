@@ -1,7 +1,10 @@
-[submodule "lerobot"]
-	path = lerobot
+[submodule "third_party/curobo"]
+	path = third_party/curobo
+	url = https://github.com/fi6/curobo.git
+[submodule "third_party/lerobot"]
+	path = third_party/lerobot
 	url = https://github.com/chang-xinhai/lerobot.git
-[submodule "IsaacLab-Arena"]
-	path = IsaacLab-Arena
+[submodule "third_party/IsaacLab-Arena"]
+	path = third_party/IsaacLab-Arena
 	url = https://github.com/chang-xinhai/IsaacLab-Arena.git
 	branch = develop

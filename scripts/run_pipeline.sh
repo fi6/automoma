@@ -36,7 +36,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-ISAACLAB_ARENA="$REPO_ROOT/IsaacLab-Arena"
+ISAACLAB_ARENA="$REPO_ROOT/third_party/IsaacLab-Arena"
 
 # ---------------------------------------------------------------------------
 # Export env vars so IsaacLab-Arena resolves assets from lerobot-arena

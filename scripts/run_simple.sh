@@ -1,6 +1,7 @@
 python scripts/prepare_object.py --object_type Microwave --object_id 7221
 bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 30
-bash scripts/run_pipeline.sh record microwave_7221 scene_1_seed_1 30 --setstate
+bash scripts/run_pipeline.sh record microwave_7221 scene_1_seed_1 30 --interpolated 2
+bash scripts/run_pipeline.sh convert microwave_7221 scene_1_seed_1 30
 
 
 
