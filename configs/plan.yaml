@@ -1,0 +1,94 @@
+# =============================================================================
+# AutoMoMa Planning Configuration
+# =============================================================================
+# All hyper-parameters for the planning pipeline live here.
+# Override any value from the CLI using Hydra syntax:
+#   python scripts/plan.py scene_name=scene_1_seed_1 object_id=11622
+# =============================================================================
+
+# --- Run settings ---
+scene_dir: output/infinigen_scene_100
+scene_name: scene_0_seed_0
+object_id: "7221"
+output_dir: data/trajs
+robot_name: summit_franka
+mode: train          # train / test
+resume: true         # skip already-completed steps
+
+# --- Scene configurations ---
+scene:
+  infinigen:
+    pose: [0, 0, -0.13, 1, 0, 0, 0]
+    usd_subpath: export/export_scene.blend/export_scene.usdc
+    metadata_subpath: info/metadata.json
+
+# --- Robot configurations ---
+robot:
+  summit_franka:
+    config_path: assets/robot/summit_franka/summit_franka.yml
+    mobile_base_dof: 3
+    arm_dof: 7
+    gripper_dof: 2
+    total_dof: 12
+
+# --- Planner settings ---
+planner:
+  # Collision world
+  collision_checker_type: VOXEL
+  voxel_dims: [5.0, 5.0, 5.0]
+  voxel_size: 0.02
+  expanded_dims: [1.0, 0.2, 0.2]
+  disable_collision: false
+
+  # IK solver
+  ik_seeds: 20000
+
+  # IK clustering
+  clustering:
+    kmeans_clusters: 500
+    ap_fallback_clusters: 30
+    ap_clusters_upperbound: 80
+    ap_clusters_lowerbound: 10
+
+  # Trajectory optimisation
+  traj:
+    batch_size: 20
+    num_trajopt_seeds: 12
+    num_graph_seeds: 12
+    interpolation_dt: 0.05
+    trajopt_tsteps: 32
+
+  # Trajectory filtering
+  filter:
+    position_tolerance: 0.01
+    rotation_tolerance: 0.05
+    base_rotation_limit: 6.2832   # 2π
+
+  # Output format (11D→12D conversion for IsaacLab-Arena)
+  output:
+    gripper_open: 0.04
+    gripper_closed: 0.0
+    prepend_grasp_steps: 4
+    lift_joint_offset: -1.5
+
+# --- Object configurations ---
+objects:
+  "7221":
+    asset_type: Microwave
+    scale: 0.3562990018302636
+    urdf_path: assets/object/Microwave/7221/7221_0_scaling.urdf
+    handle_link: link_0
+    joint_name: joint_0
+    akr_template: "assets/object/Microwave/{object_id}/{robot_name}_{object_id}_0_grasp_{grasp_id:04d}.yml"
+    grasp_ids: [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 18]
+    goal_angle: [1.57]
+
+  "11622":
+    asset_type: Dishwasher
+    scale: 0.6446
+    urdf_path: assets/object/Dishwasher/11622/11622_0_scaling.urdf
+    handle_link: link_0
+    joint_name: joint_0
+    akr_template: "assets/object/Dishwasher/{object_id}/{robot_name}_{object_id}_0_grasp_{grasp_id:04d}.yml"
+    grasp_ids: [0, 1, 2, 3, 4, 5]
+    goal_angle: [1.57]

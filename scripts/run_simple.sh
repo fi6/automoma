@@ -1,3 +1,22 @@
+# =============================================================================
+# 1. PLAN — generate trajectories
+# =============================================================================
+# Default: Microwave 7221, scene_0_seed_0
+python scripts/plan.py
+
+# Override scene / object from CLI
+python scripts/plan.py scene_name=scene_1_seed_1 object_id=7221
+
+# Dishwasher, different scene
+python scripts/plan.py object_id=11622 scene_name=scene_0_seed_0
+
+# Custom config file
+# python scripts/plan.py --config configs/my_plan.yaml
+
+
+# =============================================================================
+# 2. RECORD — replay trajectories in IsaacLab-Arena
+# =============================================================================
 python scripts/prepare_object.py --object_type Microwave --object_id 7221
 bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 30
 bash scripts/run_pipeline.sh record microwave_7221 scene_1_seed_1 30 --interpolated 2
