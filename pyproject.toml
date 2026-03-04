@@ -32,7 +32,9 @@ dependencies = [
     "PyYAML",
     "scene-synthesizer[recommend]",
     "h5py",
-    "ipywidgets"
+    "ipywidgets",
+    "omegaconf",
+    "yourdfpy"
 ]
 dynamic = ["version"]
 
@@ -121,7 +123,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["src"]
+source = ["automoma"]
 branch = true
 omit = [
     "*/tests/*",
