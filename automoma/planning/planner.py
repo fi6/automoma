@@ -496,75 +496,95 @@ class CuroboPlanner:
         filter_cfg: Optional[Dict[str, Any]] = None,
         motion_gen: Optional[MotionGen] = None,
     ) -> TrajResult:
-        """Filter trajectories: mark failures in ``success`` mask (preserves all rows).
-
-        Applies:
-        1. Base-rotation limit
-        2. FK validation against goal pose (position/rotation tolerance)
-        """
+        """Filter trajectories using cuAKR-style success + waypoint FK checks."""
         if traj_result.num_samples == 0:
-            return traj_result
+            return TrajResult.fallback(
+                robot_dof=traj_result.start_states.shape[-1] if traj_result.start_states.ndim == 2 else 0
+            )
 
         cfg = filter_cfg or self.cfg.get("filter", {})
         pos_tol = cfg.get("position_tolerance", 0.01)
         rot_tol = cfg.get("rotation_tolerance", 0.05)
-        rot_limit = cfg.get("base_rotation_limit", 2 * np.pi)
 
         robot_cfg = load_robot_cfg(robot_cfg)
         if motion_gen is None:
             motion_gen = self.init_motion_gen(robot_cfg, fixed_base=True)
 
-        success = traj_result.success.clone()
+        start_state = traj_result.start_states
+        goal_state = traj_result.goal_states
+        trajectories = traj_result.trajectories
+        success = traj_result.success
 
-        # --- Stage 1: base rotation limit ---
-        base_z_idx = 2
-        for i in range(traj_result.num_samples):
-            if not success[i]:
-                continue
-            rot_diff = abs(
-                traj_result.trajectories[i, -1, base_z_idx].item()
-                - traj_result.trajectories[i, 0, base_z_idx].item()
-            )
-            if rot_diff > rot_limit:
-                success[i] = False
-        n_pass1 = success.sum().item()
-        print(f"Base rotation filter: {n_pass1}/{traj_result.num_samples} passed")
+        indices_count = goal_state.shape[0]
+        print(f"Loaded {indices_count} trajectories")
 
-        # --- Stage 2: FK validation ---
+        # Step 1: keep only trajopt-successful trajectories.
+        filtered_indices = success.nonzero(as_tuple=True)[0]
+        if filtered_indices.shape[0] == 0:
+            print("Step 1: No successful trajectories to filter, returning empty result")
+            return TrajResult.fallback(robot_dof=start_state.shape[-1])
+
+        goal_state = goal_state[filtered_indices]
+        start_state = start_state[filtered_indices]
+        trajectories = trajectories[filtered_indices]
+        success = success[filtered_indices]
+
+        step_1_count = goal_state.shape[0]
+        print(f"Step 1: Filtered from {indices_count} to {step_1_count} trajectories based on success.")
+
+        # Step 2: waypoint-level FK validation against the goal EE pose.
         pos_diffs, rot_diffs = [], []
-        for i in tqdm(range(traj_result.num_samples), desc="FK filter"):
-            if not success[i]:
-                continue
+        fk_succ_indices = []
+        for i in tqdm(range(goal_state.shape[0]), desc="FK filter"):
             goal_js = JointState.from_position(
-                self.tensor_args.to_device(traj_result.goal_states[i : i + 1])
+                self.tensor_args.to_device(goal_state[i : i + 1])
             )
             goal_ee = motion_gen.ik_solver.fk(goal_js.position).ee_pose
-            valid = True
-            wp_js = JointState.from_position(
-                self.tensor_args.to_device(traj_result.trajectories[i : i + 1, -1])
-            )
-            fk = motion_gen.ik_solver.fk(wp_js.position).ee_pose
-            pd = np.linalg.norm(
-                goal_ee.position.cpu().numpy().flatten()
-                - fk.position.cpu().numpy().flatten()
-            )
-            rd = quaternion_distance(
-                goal_ee.quaternion.cpu().numpy().flatten(),
-                fk.quaternion.cpu().numpy().flatten(),
-            )
-            pos_diffs.append(pd)
-            rot_diffs.append(rd)
-            if pd >= pos_tol or rd >= rot_tol:
-                valid = False
+            trajectory_valid = True
+            for j in range(trajectories.shape[1]):
+                wp_js = JointState.from_position(
+                    self.tensor_args.to_device(trajectories[i : i + 1, j])
+                )
+                fk = motion_gen.ik_solver.fk(wp_js.position).ee_pose
+                pd = np.linalg.norm(
+                    goal_ee.position.cpu().numpy().flatten()
+                    - fk.position.cpu().numpy().flatten()
+                )
+                rd = quaternion_distance(
+                    goal_ee.quaternion.cpu().numpy().flatten(),
+                    fk.quaternion.cpu().numpy().flatten(),
+                )
+                pos_diffs.append(pd)
+                rot_diffs.append(rd)
+                if pd >= pos_tol or rd >= rot_tol:
+                    trajectory_valid = False
+                    break
 
-            if not valid:
-                success[i] = False
+            if trajectory_valid:
+                fk_succ_indices.append(i)
 
-        traj_result.success = success
-        n_pass2 = success.sum().item()
         if pos_diffs:
             print(f"Position diff — mean: {np.mean(pos_diffs):.4f}, max: {np.max(pos_diffs):.4f}")
         if rot_diffs:
             print(f"Rotation diff — mean: {np.mean(rot_diffs):.4f}, max: {np.max(rot_diffs):.4f}")
-        print(f"FK filter: {n_pass2}/{traj_result.num_samples} passed")
-        return traj_result
+        print(f"FK success indices: {len(fk_succ_indices)}")
+
+        filtered_indices = torch.tensor(fk_succ_indices, device=goal_state.device, dtype=torch.long)
+        if filtered_indices.shape[0] == 0:
+            print("Step 2: No successful trajectories to filter, returning empty result")
+            return TrajResult.fallback(robot_dof=start_state.shape[-1])
+
+        goal_state = goal_state[filtered_indices]
+        start_state = start_state[filtered_indices]
+        trajectories = trajectories[filtered_indices]
+        success = success[filtered_indices]
+
+        step_2_count = goal_state.shape[0]
+        print(f"Step 2: Filtered from {step_1_count} to {step_2_count} trajectories based on FK filtering.")
+
+        return TrajResult(
+            start_states=start_state,
+            goal_states=goal_state,
+            trajectories=trajectories,
+            success=success,
+        )
