@@ -7,18 +7,18 @@
 # =============================================================================
 
 # --- Run settings ---
-scene_dir: output/infinigen_scene_100
+scene_dir: assets/scene/infinigen/kitchen_1130
 scene_name: scene_0_seed_0
 object_id: "7221"
 output_dir: data/trajs
 robot_name: summit_franka
 mode: train          # train / test
-resume: true         # skip already-completed steps
+resume: false         # skip already-completed steps
 
 # --- Scene configurations ---
 scene:
   infinigen:
-    pose: [0, 0, -0.13, 1, 0, 0, 0]
+    pose: [0, 0, 0, 1, 0, 0, 0]
     usd_subpath: export/export_scene.blend/export_scene.usdc
     metadata_subpath: info/metadata.json
 
@@ -69,7 +69,7 @@ planner:
     gripper_open: 0.04
     gripper_closed: 0.0
     prepend_grasp_steps: 4
-    lift_joint_offset: -1.5
+    lift_joint_offset: 0.0
 
 # --- Object configurations ---
 objects:
@@ -80,7 +80,7 @@ objects:
     handle_link: link_0
     joint_name: joint_0
     akr_template: "assets/object/Microwave/{object_id}/{robot_name}_{object_id}_0_grasp_{grasp_id:04d}.yml"
-    grasp_ids: [0, 1, 2, 3, 4, 5, 6, 9, 12, 13, 18]
+    grasp_ids: [0, 1]
     goal_angle: [1.57]
 
   "11622":

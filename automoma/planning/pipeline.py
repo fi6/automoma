@@ -196,15 +196,16 @@ class PlanningPipeline:
                 print(f"  Clustered: start={start_clustered.shape[0]}, goal={goal_clustered.shape[0]}")
 
                 # Add object joint angle column
+                # The articulated joint should be recorded as a negative value per AKR mechanical convention
                 start_with_angle = stack_iks_angle(start_clustered, 0.0)
-                goal_with_angle = stack_iks_angle(goal_clustered, goal_angle)
+                goal_with_angle = stack_iks_angle(goal_clustered, -abs(goal_angle))
 
                 # --- Trajectory planning ---
                 traj_cfg_plan = {
                     "expand_to_pairs": True,
                     "batch_size": self.cfg.get("planner", {}).get("traj", {}).get("batch_size", 20),
                     "joint_cfg": {joint_name: goal_angle},
-                    "enable_collision": True,
+                    "enable_collision": False,
                 }
                 traj_result = self.planner.plan_traj(
                     start_with_angle, goal_with_angle,
@@ -247,19 +248,21 @@ class PlanningPipeline:
         Operation per-trajectory:
             robot_joints = trajectory[..., :10]
             obj_state    = trajectory[..., 10:]    (negated)
-            robot_joints[..., 1] -= lift_offset
+            optional robot-joint offset applied if explicitly configured
             gripper columns appended (2 DOF)
             Grasp phase prepended (gripper closing from open → closed)
         """
         gripper_open = self.output_cfg.get("gripper_open", 0.04)
         gripper_closed = self.output_cfg.get("gripper_closed", 0.0)
         prepend_steps = self.output_cfg.get("prepend_grasp_steps", 4)
-        lift_offset = self.output_cfg.get("lift_joint_offset", -1.5)
+        lift_offset = self.output_cfg.get("lift_joint_offset", 0.0)
 
         def _split(t: torch.Tensor):
             arm = t[..., :10].clone()
             obj = t[..., 10:].clone()
-            arm[..., 1] += lift_offset  # adjust lift joint for IsaacLab
+            # Summit-Franka trajectories use base DOFs first, so no offset
+            # should be applied unless explicitly configured for another layout.
+            arm[..., 1] += lift_offset
             obj = -obj
             return arm, obj
 
@@ -311,7 +314,7 @@ class PlanningPipeline:
         metadata_subpath = scene_defaults.get("metadata_subpath", "info/metadata.json")
         return {
             "path": os.path.join(scene_dir, scene_name, usd_subpath),
-            "pose": scene_defaults.get("pose", [0, 0, -0.13, 1, 0, 0, 0]),
+            "pose": scene_defaults.get("pose", [0, 0, 0, 1, 0, 0, 0]),
             "metadata_path": os.path.join(scene_dir, scene_name, metadata_subpath),
         }
 

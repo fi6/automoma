@@ -34,7 +34,8 @@ dependencies = [
     "h5py",
     "ipywidgets",
     "omegaconf",
-    "yourdfpy"
+    "yourdfpy",
+    "scikit-learn"
 ]
 dynamic = ["version"]
 

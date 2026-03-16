@@ -5,10 +5,46 @@
 python scripts/plan.py
 
 # Override scene / object from CLI
-python scripts/plan.py scene_name=scene_1_seed_1 object_id=7221
+python scripts/plan.py scene_name=scene_0_seed_0 object_id=7221 planner.visualize_collision=true
+
+# 输出同时在terminal和logs/plan_test.log下
+python scripts/plan.py scene_name=scene_0_seed_0 object_id=7221 planner.visualize_collision=true | tee logs/plan_test.log
 
 # Dishwasher, different scene
 python scripts/plan.py object_id=11622 scene_name=scene_0_seed_0
+
+# Debug
+python scripts/plan.py scene_name=scene_0_seed_0 object_id=7221 planner.visualize_collision=true
+
+# Convert all grasps in a scene
+python scripts/debug/convert_traj_backup.py --input_dir data/trajs/summit_franka/microwave_7221/scene_0_seed_0
+
+# Or convert a specific grasp
+python scripts/debug/convert_traj_backup.py --input_dir data/trajs/summit_franka/microwave_7221/scene_0_seed_0/grasp_0001
+
+# Debug IK solutions for a specific grasp
+bash scripts/run_pipeline.sh debug microwave_7221 scene_0_seed_0 \
+  --debug_file data/trajs/summit_franka/microwave_7221/scene_0_seed_0/grasp_0001/ik_data.pt \
+  --num_episodes 1000 \
+  --set_state
+
+# Debug a specific per-grasp trajectory
+bash scripts/run_pipeline.sh debug microwave_7221 scene_0_seed_0 \
+  --debug_file data/trajs/summit_franka/microwave_7221/scene_0_seed_0/grasp_0001/traj_data.pt
+
+# Debug the final merged 12D training trajectory
+# (exam the code, this is the gt trajectory)
+bash scripts/run_pipeline.sh debug microwave_7221 scene_0_seed_0 \
+  --debug_file .idea/data/trajs/summit_franka/microwave_7221/scene_0_seed_0/traj_data_train.pt \
+  --num_episodes 1000 \
+  --set_state
+
+bash scripts/run_pipeline.sh debug microwave_7221 scene_0_seed_0 \
+  --debug_file data/trajs/summit_franka/microwave_7221/scene_0_seed_0/traj_data_train.pt \
+  --num_episodes 1000 \
+  --set_state
+
+
 
 # Custom config file
 # python scripts/plan.py --config configs/my_plan.yaml

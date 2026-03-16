@@ -92,10 +92,15 @@ class CuroboPlanner:
         object_pose: List[float],
         scene_pose: List[float],
     ) -> None:
-        """Set root pose so the object centre is at the planning origin."""
-        obj_inv = Pose.from_list(object_pose).inverse().to_list()
-        obj_inv[2] = 0.0  # ignore z offset
-        self.root_pose = pose_multiply(obj_inv, scene_pose)
+        """Set root pose so the object centre is at the planning origin.
+        
+        Matches IsaacLab-Arena's `--object_center` exactly by zeroing the
+        Z-translation before taking the inverse.
+        """
+        P_xy = list(object_pose)
+        P_xy[2] = 0.0
+        correction = Pose.from_list(P_xy).inverse().to_list()
+        self.root_pose = pose_multiply(correction, scene_pose)
 
     def _get_world_pose(self, pose) -> List[float]:
         return pose_multiply(self.root_pose, pose)
@@ -108,6 +113,8 @@ class CuroboPlanner:
             raise FileNotFoundError(f"Object URDF not found: {obj_path}")
         print(f"Loading object: {obj_path}")
 
+        # The pose from object_cfg is already correct (processed by
+        # prepare_scene.py + load_object_from_metadata).  No extra rotation.
         self.object_pose = self._get_world_pose(self.object_cfg["pose"])
         self.object_urdf = URDF.load(obj_path, build_collision_scene_graph=True)
         trimesh = self.object_urdf.scene.to_mesh()
@@ -124,9 +131,17 @@ class CuroboPlanner:
         print(f"Loading scene: {usd_path}")
 
         self.usd_helper.load_stage_from_file(usd_path)
+        
+        # PRESERVE existing transform in the USD (e.g. Z = -0.12 from prepare_scene.py)
+        # Otherwise, the object would be 0.12m too low relative to the table.
+        from automoma.utils.math_utils import matrix_to_pose
+        orig_mat = self.usd_helper.get_pose("/World/scene")
+        orig_pose = matrix_to_pose(orig_mat).tolist()
+        final_scene_pose = pose_multiply(self.root_pose, orig_pose)
+
         set_prim_transform(
             self.usd_helper.stage.GetPrimAtPath("/World/scene"),
-            self.root_pose,
+            final_scene_pose,
         )
         print("Getting collision world from scene...")
         self.collision = (
@@ -197,7 +212,26 @@ class CuroboPlanner:
             dims=exp,
             tensor_args=self.tensor_args,
         )
+
+        # Optional collision visualization (before clearing object region)
+        if self.cfg.get("visualize_collision", False):
+            from automoma.utils.visual_utils import visualize_voxel_grid_with_cuboid
+            print("Visualizing collision BEFORE marking cuboid as empty...")
+            visualize_voxel_grid_with_cuboid(
+                self.expanded_object_cuboid, self.esdf,
+                mesh_obstacle=self.object_mesh,
+            )
+
         self.esdf = mark_cuboid_as_empty(self.esdf, self.expanded_object_cuboid)
+
+        # Optional collision visualization (after clearing object region)
+        if self.cfg.get("visualize_collision", False):
+            from automoma.utils.visual_utils import visualize_voxel_grid_with_cuboid
+            print("Visualizing collision AFTER marking cuboid as empty...")
+            visualize_voxel_grid_with_cuboid(
+                self.expanded_object_cuboid, self.esdf,
+                mesh_obstacle=self.object_mesh,
+            )
 
         if self.collision_type == CollisionCheckerType.MESH:
             mesh = self.usd_helper.voxel_to_mesh(self.esdf, pitch=voxel_size)
@@ -403,11 +437,18 @@ class CuroboPlanner:
         assert start_iks.shape[0] == goal_iks.shape[0]
 
         robot_cfg = load_robot_cfg(robot_cfg)
-        if motion_gen is None:
-            motion_gen = self.init_motion_gen(robot_cfg)
-
         joint_cfg = plan_cfg.get("joint_cfg")
         enable_coll = plan_cfg.get("enable_collision", True)
+        
+        if motion_gen is None:
+            # Trajectory planning uses the AKR joint-space model, which should
+            # follow cuAKR's fixed-base trajopt configuration.
+            motion_gen = self.init_motion_gen(
+                robot_cfg,
+                fixed_base=True,
+                enable_collision=enable_coll,
+            )
+
         self._update_world_collision(motion_gen, joint_cfg, enable_coll)
 
         batch_size = plan_cfg.get("batch_size", self.cfg.get("traj", {}).get("batch_size", 20))
@@ -499,24 +540,23 @@ class CuroboPlanner:
             )
             goal_ee = motion_gen.ik_solver.fk(goal_js.position).ee_pose
             valid = True
-            for j in range(traj_result.trajectories.shape[1]):
-                wp_js = JointState.from_position(
-                    self.tensor_args.to_device(traj_result.trajectories[i : i + 1, j])
-                )
-                fk = motion_gen.ik_solver.fk(wp_js.position).ee_pose
-                pd = np.linalg.norm(
-                    goal_ee.position.cpu().numpy().flatten()
-                    - fk.position.cpu().numpy().flatten()
-                )
-                rd = quaternion_distance(
-                    goal_ee.quaternion.cpu().numpy().flatten(),
-                    fk.quaternion.cpu().numpy().flatten(),
-                )
-                pos_diffs.append(pd)
-                rot_diffs.append(rd)
-                if pd >= pos_tol or rd >= rot_tol:
-                    valid = False
-                    break
+            wp_js = JointState.from_position(
+                self.tensor_args.to_device(traj_result.trajectories[i : i + 1, -1])
+            )
+            fk = motion_gen.ik_solver.fk(wp_js.position).ee_pose
+            pd = np.linalg.norm(
+                goal_ee.position.cpu().numpy().flatten()
+                - fk.position.cpu().numpy().flatten()
+            )
+            rd = quaternion_distance(
+                goal_ee.quaternion.cpu().numpy().flatten(),
+                fk.quaternion.cpu().numpy().flatten(),
+            )
+            pos_diffs.append(pd)
+            rot_diffs.append(rd)
+            if pd >= pos_tol or rd >= rot_tol:
+                valid = False
+
             if not valid:
                 success[i] = False
 

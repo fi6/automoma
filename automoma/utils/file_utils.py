@@ -14,7 +14,7 @@ import torch
 from curobo.util_file import load_yaml
 
 from automoma.core.types import IKResult, TrajResult
-from automoma.utils.math_utils import matrix_to_pose, single_axis_self_rotation
+from scipy.spatial.transform import Rotation as R
 
 
 # ============================================================================
@@ -130,8 +130,9 @@ def load_object_from_metadata(
 ) -> Dict[str, Any]:
     """Populate *object_cfg* with pose/dimensions from scene metadata JSON.
 
-    Applies the π-rotation about Z that aligns Infinigen coordinates with
-    cuRobo conventions (same as V1's ``_process_object_pose``).
+    Reads the ``position`` and ``rotation`` (euler) fields directly from the
+    pre-processed metadata (already rotated by ``prepare_scene.py``), matching
+    the approach used by IsaacLab-Arena's ``get_object_pose_from_metadata()``.
     """
     with open(metadata_path) as f:
         metadata = json.load(f)
@@ -150,9 +151,14 @@ def load_object_from_metadata(
             f"Object {target_type}/{target_id} not found in {metadata_path}"
         )
 
-    mat = np.array(obj_info["matrix"])
-    mat = single_axis_self_rotation(mat, axis="z", angle=np.pi)
-    pose_7d = matrix_to_pose(mat).tolist()
+    # Use position + rotation (euler) directly from metadata — same as
+    # IsaacLab-Arena's get_object_pose_from_metadata().  The metadata has
+    # already been processed by prepare_scene.py (180° Z rotation applied).
+    pos = obj_info["position"]
+    rot_euler = obj_info["rotation"]  # [roll, pitch, yaw] in radians
+    quat_xyzw = R.from_euler("xyz", rot_euler).as_quat()  # scipy xyzw
+    quat_wxyz = [quat_xyzw[3], quat_xyzw[0], quat_xyzw[1], quat_xyzw[2]]
+    pose_7d = list(pos) + list(quat_wxyz)
 
     object_cfg.update(
         {

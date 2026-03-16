@@ -2,7 +2,7 @@
 # =============================================================================
 # run_pipeline.sh — Unified pipeline for the lerobot-arena project.
 #
-# Supports: record, convert, train, eval
+# Supports: record, convert, train, eval, debug
 #
 # Usage:
 #   bash scripts/run_pipeline.sh <mode> [mode-specific args] [overrides...]
@@ -22,6 +22,10 @@
 #   eval:
 #     bash scripts/run_pipeline.sh eval <policy> <object_name> <scene_name> <num_episodes> [overrides...]
 #     e.g.  bash scripts/run_pipeline.sh eval act microwave_7221 scene_0_seed_0 30 --eval.n_episodes=50
+#
+#   debug:
+#     bash scripts/run_pipeline.sh debug <object_name> <scene_name> [overrides...]
+#     e.g.  bash scripts/run_pipeline.sh debug microwave_7221 scene_0_seed_0 --debug_file data/trajs/summit_franka/microwave_7221/scene_0_seed_0/grasp_0001/traj_data.pt
 #
 # Override mechanism:
 #   Extra flags after the positional arguments are appended to the underlying
@@ -55,12 +59,14 @@ Usage:
   bash scripts/run_pipeline.sh convert <object_name> <scene_name> <num_ep>  [overrides...]
   bash scripts/run_pipeline.sh train   <policy> <object_name> <scene_name> <num_ep> [overrides...]
   bash scripts/run_pipeline.sh eval    <policy> <object_name> <scene_name> <num_ep> [overrides...]
+  bash scripts/run_pipeline.sh debug   <object_name> <scene_name> [overrides...]
 
 Examples:
   bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 30
   bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 30 --interpolated 2
   bash scripts/run_pipeline.sh train act microwave_7221 scene_0_seed_0 30 --steps=20000
   bash scripts/run_pipeline.sh eval  act microwave_7221 scene_0_seed_0 30 --eval.n_episodes=50
+  bash scripts/run_pipeline.sh debug microwave_7221 scene_0_seed_0 --debug_file path/to/traj_data.pt
 EOF
     exit 1
 }
@@ -129,6 +135,73 @@ do_record() {
 
     pushd "$ISAACLAB_ARENA" > /dev/null
     run_logged "${cmd[@]}"
+    popd > /dev/null
+}
+
+# ---------------------------------------------------------------------------
+# Mode: debug
+# ---------------------------------------------------------------------------
+do_debug() {
+    local object_name="$1"; shift
+    local scene_name="$1"; shift
+    # $@ = overrides (should include --debug_file)
+
+    # Normalize --debug_file to an absolute path from repo root so it still
+    # resolves correctly after we pushd into IsaacLab-Arena.
+    local -a overrides=("$@")
+    local debug_file=""
+    local i
+    for ((i = 0; i < ${#overrides[@]}; i++)); do
+        if [[ "${overrides[$i]}" == "--debug_file" ]]; then
+            if (( i + 1 < ${#overrides[@]} )); then
+                debug_file="${overrides[$((i + 1))]}"
+                if [[ "$debug_file" != /* ]]; then
+                    debug_file="$REPO_ROOT/$debug_file"
+                    overrides[$((i + 1))]="$debug_file"
+                fi
+            fi
+            break
+        elif [[ "${overrides[$i]}" == --debug_file=* ]]; then
+            debug_file="${overrides[$i]#--debug_file=}"
+            if [[ "$debug_file" != /* ]]; then
+                debug_file="$REPO_ROOT/$debug_file"
+                overrides[$i]="--debug_file=$debug_file"
+            fi
+            break
+        fi
+    done
+
+    if [[ -z "$debug_file" ]]; then
+        echo "Error: debug mode requires --debug_file <path/to/*.pt>." >&2
+        echo "Example:" >&2
+        echo "  bash scripts/run_pipeline.sh debug $object_name $scene_name --debug_file data/trajs/summit_franka/$object_name/$scene_name/grasp_0001/traj_data.pt" >&2
+        exit 1
+    fi
+
+    if [[ ! -f "$debug_file" ]]; then
+        echo "Error: debug file not found: $debug_file" >&2
+        local candidate_root="$REPO_ROOT/data/trajs/summit_franka/$object_name/$scene_name"
+        if [[ -d "$candidate_root" ]]; then
+            echo "Available .pt files under $candidate_root:" >&2
+            find "$candidate_root" -maxdepth 3 -type f -name "*.pt" | sort >&2
+        fi
+        exit 1
+    fi
+
+    local -a cmd=(
+        python isaaclab_arena/scripts/debug_automoma_demos.py
+        "${overrides[@]}"                 # ← overrides (before subcommand)
+        summit_franka_open_door           # subcommand
+        --object_name "$object_name"
+        --scene_name "$scene_name"
+        --object_center
+    )
+
+    echo "Command: ${cmd[*]}"
+    echo ""
+
+    pushd "$ISAACLAB_ARENA" > /dev/null
+    "${cmd[@]}"
     popd > /dev/null
 }
 
@@ -310,6 +383,12 @@ case "$MODE" in
         require_arg "${4:-}" "num_episodes"
         POL="$1"; OBJ="$2"; SCN="$3"; NEP="$4"; shift 4
         do_eval "$POL" "$OBJ" "$SCN" "$NEP" "$@"
+        ;;
+    debug)
+        require_arg "${1:-}" "object_name"
+        require_arg "${2:-}" "scene_name"
+        OBJ="$1"; SCN="$2"; shift 2
+        do_debug "$OBJ" "$SCN" "$@"
         ;;
     *)
         echo "Error: Unknown mode '$MODE'" >&2

@@ -131,12 +131,17 @@ class TrajResult:
     def cat(cls, results: List[TrajResult]) -> TrajResult:
         non_empty = [r for r in results if r.trajectories.shape[0] > 0]
         if not non_empty:
-            dof = results[0].trajectories.shape[2] if results and results[0].trajectories.ndim > 2 else 0
-            steps = results[0].trajectories.shape[1] if results and results[0].trajectories.ndim > 1 else 1
+            # Fallback when all are empty 
+            if results:
+                # Need to be robust to [N, D] or [N, T, D] empty shapes
+                traj_shape = results[0].trajectories.shape
+                dof = traj_shape[-1] if len(traj_shape) > 0 else 0
+            else:
+                dof = 0
             return cls(
                 start_states=torch.empty(0, dof),
                 goal_states=torch.empty(0, dof),
-                trajectories=torch.empty(0, steps, dof),
+                trajectories=torch.empty(0, 1, dof),
                 success=torch.empty(0, dtype=torch.bool),
             )
         dev = non_empty[0].trajectories.device
