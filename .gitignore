@@ -1,6 +1,6 @@
 # Specific to this project
 assets/
-output/
+outputs/
 tests/
 data/
 

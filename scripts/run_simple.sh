@@ -8,7 +8,7 @@ python scripts/plan.py
 python scripts/plan.py scene_name=scene_0_seed_0 object_id=7221 planner.visualize_collision=true
 
 # 输出同时在terminal和logs/plan_test.log下
-python scripts/plan.py scene_name=scene_0_seed_0 object_id=7221 planner.visualize_collision=true | tee logs/plan_test.log
+python scripts/plan.py scene_name=scene_0_seed_0 object_id=7221 | tee logs/plan_test.log
 
 # Dishwasher, different scene
 python scripts/plan.py object_id=11622 scene_name=scene_0_seed_0
