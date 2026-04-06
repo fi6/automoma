@@ -467,12 +467,20 @@ class CuroboPlanner:
                 torch.cuda.synchronize()
 
                 result = motion_gen.trajopt_solver.solve_batch(goal)
+                trajectories = result.solution.position.detach().clone().cpu()
+                success = result.success.detach().clone().cpu()
+
+                # cuRobo may squeeze the batch axis for single-sample solves.
+                if trajectories.ndim == 2:
+                    trajectories = trajectories.unsqueeze(0)
+                if success.ndim == 0:
+                    success = success.unsqueeze(0)
 
                 batch_res = TrajResult(
                     start_states=js_s.position.detach().clone().cpu(),
                     goal_states=js_g.position.detach().clone().cpu(),
-                    trajectories=result.solution.position.detach().clone().cpu(),
-                    success=result.success.detach().clone().cpu(),
+                    trajectories=trajectories,
+                    success=success,
                 )
                 all_results.append(batch_res)
                 torch.cuda.synchronize()

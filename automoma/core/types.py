@@ -116,6 +116,29 @@ class TrajResult:
     trajectories: torch.Tensor
     success: torch.Tensor
 
+    def normalized(self) -> TrajResult:
+        """Return a copy with consistent batched tensor shapes."""
+        start_states = self.start_states
+        goal_states = self.goal_states
+        trajectories = self.trajectories
+        success = self.success
+
+        if start_states.ndim == 1:
+            start_states = start_states.unsqueeze(0)
+        if goal_states.ndim == 1:
+            goal_states = goal_states.unsqueeze(0)
+        if trajectories.ndim == 2:
+            trajectories = trajectories.unsqueeze(0)
+        if success.ndim == 0:
+            success = success.unsqueeze(0)
+
+        return TrajResult(
+            start_states=start_states,
+            goal_states=goal_states,
+            trajectories=trajectories,
+            success=success,
+        )
+
     # -- Factory helpers -----------------------------------------------------
 
     @classmethod
@@ -129,12 +152,13 @@ class TrajResult:
 
     @classmethod
     def cat(cls, results: List[TrajResult]) -> TrajResult:
-        non_empty = [r for r in results if r.trajectories.shape[0] > 0]
+        normalized = [r.normalized() for r in results]
+        non_empty = [r for r in normalized if r.trajectories.shape[0] > 0]
         if not non_empty:
             # Fallback when all are empty 
-            if results:
+            if normalized:
                 # Need to be robust to [N, D] or [N, T, D] empty shapes
-                traj_shape = results[0].trajectories.shape
+                traj_shape = normalized[0].trajectories.shape
                 dof = traj_shape[-1] if len(traj_shape) > 0 else 0
             else:
                 dof = 0
