@@ -44,6 +44,33 @@ bash scripts/run_pipeline.sh debug microwave_7221 scene_0_seed_0 \
   --num_episodes 1000 \
   --set_state
 
+# =============================================================================
+# DEBUG — GUI recording (with display)
+# =============================================================================
+export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+export AUTOMOMA_SCENE_ROOT=/home/xinhai/projects/lerobot-arena/assets/scene/infinigen/kitchen_1130
+export AUTOMOMA_OBJECT_ROOT=/home/xinhai/projects/lerobot-arena/assets/object
+export AUTOMOMA_ROBOT_ROOT=/home/xinhai/projects/lerobot-arena/assets/robot
+
+cd third_party/IsaacLab-Arena
+python isaaclab_arena/scripts/record_automoma_demos.py \
+  --enable_cameras \
+  --mobile_base_relative \
+  --traj_file /home/xinhai/projects/lerobot-arena/data/trajs/summit_franka/microwave_7221/scene_1_seed_1/traj_data_train.pt \
+  --dataset_file /home/xinhai/projects/lerobot-arena/data/automoma/test_gui.hdf5 \
+  --num_episodes 1 \
+  summit_franka_open_door \
+  --object_name microwave_7221 \
+  --scene_name scene_1_seed_1 \
+  --object_center
+
+# Convert to LeRobot
+python isaaclab_arena_gr00t/data_utils/convert_hdf5_to_lerobot_v30.py \
+  --yaml_file isaaclab_arena_gr00t/config/summit_franka_manip_config.yaml \
+  --data_root /home/xinhai/projects/lerobot-arena/data/automoma \
+  --hdf5_name test_gui.hdf5 \
+  --repo_id automoma/test_gui \
+  --output_dir /home/xinhai/projects/lerobot-arena/data/lerobot/automoma/test_gui
 
 
 # Custom config file
