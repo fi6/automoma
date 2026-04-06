@@ -24,6 +24,31 @@ Current architecture:
 - `scripts/run_simple.sh`: example commands and quick workflow reference.
 - `configs/plan.yaml`: planning configuration source of truth.
 
+## Data Directory Structure
+
+```
+data/
+├── trajs/summit_franka/<object_name>/<scene_name>/
+│   ├── grasp_XXXX/
+│   │   ├── traj_data.pt       # Per-grasp trajectory from cuRobo (11D)
+│   │   └── ik_data.pt         # IK solutions for the grasp
+│   ├── traj_data_train.pt     # Merged 12D training trajectory
+│   └── traj_data_test.pt      # Merged 12D test trajectory
+│
+├── automoma/
+│   └── summit_franka_open-<object>-<scene>-<N>.hdf5   # Raw recordings from IsaacLab-Arena
+│
+└── lerobot/automoma/<experiment_name>/
+    ├── data/chunk-XXX/        # Parquet-formatted dataset chunks
+    ├── images/observation.images.*/  # Camera image files
+    ├── videos/                # Rendered episode videos
+    └── meta/episodes/         # Episode metadata
+
+outputs/
+└── train/<policy>_<experiment_name>/
+    └── checkpoints/last/pretrained_model  # Trained policy checkpoints
+```
+
 ## Core Invariants
 - Planner logic currently uses cuRobo, while record and eval use `third_party/IsaacLab-Arena`.
 - Any change affecting assets, object pose, scene pose, robot config, joint conventions, trajectory format, output keys, or naming must preserve planner/IsaacLab-Arena alignment.
