@@ -37,11 +37,9 @@
     </a>
 </p>
 
-<!--
 <p align="center">
-    <img src='.idea/paper/AutoMoMa.png' width=100%>
+    <img src='images/AutoMoMa.png' width=100%>
 </p>
--->
 
 <br>
 
