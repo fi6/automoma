@@ -135,7 +135,7 @@ Then install IsaacLab and IsaacLab-Arena:
 pip install -e ./third_party/IsaacLab-Arena
 ```
 
-Set up environment variables by sourcing the setup script:
+Environment variables (PYTHONPATH, LD_LIBRARY_PATH, etc.) are automatically set when you activate the conda environment. If needed, you can manually source the setup script:
 ```bash
 source scripts/setup_sim_env.sh
 ```
