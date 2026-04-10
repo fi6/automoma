@@ -25,7 +25,7 @@
 #
 #   debug:
 #     bash scripts/run_pipeline.sh debug <object_name> <scene_name> [overrides...]
-#     e.g.  bash scripts/run_pipeline.sh debug microwave_7221 scene_0_seed_0 --debug_file data/trajs/summit_franka/microwave_7221/scene_0_seed_0/grasp_0001/traj_data.pt
+#     e.g.  bash scripts/run_pipeline.sh debug microwave_7221 scene_0_seed_0 --debug_file data/trajs/summit_franka/microwave_7221/scene_0_seed_0/train/grasp_0001/traj_data.pt
 #
 # Override mechanism:
 #   Extra flags after the positional arguments are appended to the underlying
@@ -109,7 +109,7 @@ do_record() {
     # $@ = overrides
 
     local name; name="$(mk_exp_name "$object_name" "$scene_name" "$num_episodes")"
-    local traj_file="$REPO_ROOT/data/trajs/summit_franka/${object_name}/${scene_name}/traj_data_train.pt"
+    local traj_file="$REPO_ROOT/data/trajs/summit_franka/${object_name}/${scene_name}/train/traj_data_train.pt"
     local dataset_file="$REPO_ROOT/data/automoma/${name}.hdf5"
 
     setup_log record "$object_name" "$scene_name"
@@ -174,13 +174,13 @@ do_debug() {
     if [[ -z "$debug_file" ]]; then
         echo "Error: debug mode requires --debug_file <path/to/*.pt>." >&2
         echo "Example:" >&2
-        echo "  bash scripts/run_pipeline.sh debug $object_name $scene_name --debug_file data/trajs/summit_franka/$object_name/$scene_name/grasp_0001/traj_data.pt" >&2
+        echo "  bash scripts/run_pipeline.sh debug $object_name $scene_name --debug_file data/trajs/summit_franka/$object_name/$scene_name/train/grasp_0001/traj_data.pt" >&2
         exit 1
     fi
 
     if [[ ! -f "$debug_file" ]]; then
         echo "Error: debug file not found: $debug_file" >&2
-        local candidate_root="$REPO_ROOT/data/trajs/summit_franka/$object_name/$scene_name"
+        local candidate_root="$REPO_ROOT/data/trajs/summit_franka/$object_name/$scene_name/train"
         if [[ -d "$candidate_root" ]]; then
             echo "Available .pt files under $candidate_root:" >&2
             find "$candidate_root" -maxdepth 3 -type f -name "*.pt" | sort >&2
@@ -304,7 +304,7 @@ do_eval() {
 
     local name; name="$(mk_exp_name "$object_name" "$scene_name" "$num_episodes")"
     local policy_path="$REPO_ROOT/outputs/train/${policy}_${name}/checkpoints/last/pretrained_model"
-    local traj_file="$REPO_ROOT/data/trajs/summit_franka/${object_name}/${scene_name}/traj_data_test.pt"
+    local traj_file="$REPO_ROOT/data/trajs/summit_franka/${object_name}/${scene_name}/test/traj_data_test.pt"
 
     setup_log eval "$object_name" "$scene_name"
 

@@ -79,6 +79,7 @@ class PlanningPipeline:
                 cfg.get("robot_name", "summit_franka"),
                 obj_name,
                 scene_name,
+                mode,  # train/test subdirectory for full isolation
             )
         os.makedirs(output_dir, exist_ok=True)
 

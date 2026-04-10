@@ -76,8 +76,8 @@ split_to_array() {
 run_normal_pipeline() {
     local scene="$1"
 
-    TRAIN_TRAJ_FILE="$REPO_ROOT/data/trajs/summit_franka/${OBJECT_NAME}/${scene}/traj_data_train.pt"
-    TEST_TRAJ_FILE="$REPO_ROOT/data/trajs/summit_franka/${OBJECT_NAME}/${scene}/traj_data_test.pt"
+    TRAIN_TRAJ_FILE="$REPO_ROOT/data/trajs/summit_franka/${OBJECT_NAME}/${scene}/train/traj_data_train.pt"
+    TEST_TRAJ_FILE="$REPO_ROOT/data/trajs/summit_franka/${OBJECT_NAME}/${scene}/test/traj_data_test.pt"
     TRAIN_HDF5="$REPO_ROOT/data/automoma/summit_franka_open-${OBJECT_NAME}-${scene}-${TRAIN_EPISODES}.hdf5"
     TRAIN_DATASET_DIR="$REPO_ROOT/data/lerobot/automoma/summit_franka_open-${OBJECT_NAME}-${scene}-${TRAIN_EPISODES}"
     TRAIN_OUTPUT_DIR="$REPO_ROOT/outputs/train/${POLICY}_summit_franka_open-${OBJECT_NAME}-${scene}-${TRAIN_EPISODES}"
@@ -124,7 +124,7 @@ run_ood_pipeline() {
     local eval_scene="$2"
 
     # Use test traj from eval_scene
-    TEST_TRAJ_FILE="$REPO_ROOT/data/trajs/summit_franka/${OBJECT_NAME}/${eval_scene}/traj_data_test.pt"
+    TEST_TRAJ_FILE="$REPO_ROOT/data/trajs/summit_franka/${OBJECT_NAME}/${eval_scene}/test/traj_data_test.pt"
 
     # Model from trained_scene
     TRAIN_OUTPUT_DIR="$REPO_ROOT/outputs/train/${POLICY}_summit_franka_open-${OBJECT_NAME}-${trained_scene}-${TRAIN_EPISODES}"

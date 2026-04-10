@@ -17,30 +17,30 @@ python scripts/plan.py object_id=11622 scene_name=scene_0_seed_0
 python scripts/plan.py scene_name=scene_0_seed_0 object_id=7221 planner.visualize_collision=true
 
 # Convert all grasps in a scene
-python scripts/debug/convert_traj_backup.py --input_dir data/trajs/summit_franka/microwave_7221/scene_0_seed_0
+python scripts/debug/convert_traj_backup.py --input_dir data/trajs/summit_franka/microwave_7221/scene_0_seed_0/train
 
 # Or convert a specific grasp
-python scripts/debug/convert_traj_backup.py --input_dir data/trajs/summit_franka/microwave_7221/scene_0_seed_0/grasp_0001
+python scripts/debug/convert_traj_backup.py --input_dir data/trajs/summit_franka/microwave_7221/scene_0_seed_0/train/grasp_0001
 
 # Debug IK solutions for a specific grasp
 bash scripts/run_pipeline.sh debug microwave_7221 scene_0_seed_0 \
-  --debug_file data/trajs/summit_franka/microwave_7221/scene_0_seed_0/grasp_0001/ik_data.pt \
+  --debug_file data/trajs/summit_franka/microwave_7221/scene_0_seed_0/train/grasp_0001/ik_data.pt \
   --num_episodes 1000 \
   --set_state
 
 # Debug a specific per-grasp trajectory
 bash scripts/run_pipeline.sh debug microwave_7221 scene_0_seed_0 \
-  --debug_file data/trajs/summit_franka/microwave_7221/scene_0_seed_0/grasp_0001/traj_data.pt
+  --debug_file data/trajs/summit_franka/microwave_7221/scene_0_seed_0/train/grasp_0001/traj_data.pt
 
 # Debug the final merged 12D training trajectory
 # (exam the code, this is the gt trajectory)
 bash scripts/run_pipeline.sh debug microwave_7221 scene_0_seed_0 \
-  --debug_file .idea/data/trajs/summit_franka/microwave_7221/scene_0_seed_0/traj_data_train.pt \
+  --debug_file .idea/data/trajs/summit_franka/microwave_7221/scene_0_seed_0/train/traj_data_train.pt \
   --num_episodes 1000 \
   --set_state
 
 bash scripts/run_pipeline.sh debug microwave_7221 scene_0_seed_0 \
-  --debug_file data/trajs/summit_franka/microwave_7221/scene_0_seed_0/traj_data_train.pt \
+  --debug_file data/trajs/summit_franka/microwave_7221/scene_0_seed_0/train/traj_data_train.pt \
   --num_episodes 1000 \
   --set_state
 
@@ -56,7 +56,7 @@ cd third_party/IsaacLab-Arena
 python isaaclab_arena/scripts/record_automoma_demos.py \
   --enable_cameras \
   --mobile_base_relative \
-  --traj_file /home/xinhai/projects/lerobot-arena/data/trajs/summit_franka/microwave_7221/scene_1_seed_1/traj_data_train.pt \
+  --traj_file /home/xinhai/projects/lerobot-arena/data/trajs/summit_franka/microwave_7221/scene_1_seed_1/train/traj_data_train.pt \
   --dataset_file /home/xinhai/projects/lerobot-arena/data/automoma/test_gui.hdf5 \
   --num_episodes 1 \
   summit_franka_open_door \

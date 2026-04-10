@@ -250,7 +250,7 @@ def main():
         print(f"{'=' * 60}")
 
         obj_traj_dir = scene_dir / obj_id
-        output_dir = OUTPUT_TRAJ_ROOT / obj_name_full / scene_dir.name
+        output_dir = OUTPUT_TRAJ_ROOT / obj_name_full / scene_dir.name / args.mode
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Step 1: Merge
