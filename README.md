@@ -151,6 +151,29 @@ python third_party/IsaacLab-Arena/isaaclab_arena/scripts/record_automoma_demos.p
     --scene_name scene_0_seed_0
 ```
 
+### TRAIN Mode Setup (LeRobot + Policy Training)
+
+TRAIN mode includes all SIM mode dependencies plus LeRobot for policy training.
+
+**Available Policies:** ACT, Diffusion, DP3, GR00T, Pi0, Pi0-Fast, Pi0.5, SMOLVLA, TDMPC, VQBeT, X-VLA, SAC, and more.
+
+**Training Example:**
+```bash
+# Set up environment for train mode
+source scripts/setup_sim_env.sh
+
+# Train a policy (e.g., ACT)
+lerobot-train \
+    --policy.type=act \
+    --dataset.repo_id=automoma/summit_franka_open-microwave_7221-scene_0_seed_0-30 \
+    --dataset.root=/path/to/data/lerobot \
+    --batch_size=128 \
+    --steps=10000 \
+    --output_dir=/path/to/outputs/train/act_example
+```
+
+**For more policies:** Refer to the [LeRobot documentation](https://huggingface.co/docs/lerobot/index) for additional model support.
+
 **Note:** If you encounter `ValueError: mutable default` errors when importing curobo, you may need to patch the curobo source code. Apply the following fix in `third_party/curobo/src/curobo/rollout/rollout_base.py`:
 ```python
 # Change: from dataclasses import dataclass
