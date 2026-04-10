@@ -10,7 +10,7 @@ authors = [
 description = "A Python package for robot trajectory generation using curobo as planner"
 readme = "README.md"
 license = {file = "LICENSE"}
-requires-python = ">=3.8"
+requires-python = ">=3.11"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -18,29 +18,75 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Physics",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "numpy",
-    "torch",
-    "scipy",
-    "PyYAML",
-    "scene-synthesizer[recommend]",
-    "h5py",
-    "ipywidgets",
-    "omegaconf",
-    "yourdfpy",
-    "scikit-learn"
+    "numpy>=1.26.0",
+    "torch>=2.2.1",
+    "scipy>=1.10.0",
+    "PyYAML>=6.0",
+    "h5py>=3.10",
+    "ipywidgets>=8.0",
+    "omegaconf>=2.3.0",
+    "yourdfpy>=0.0.53",
+    "scikit-learn>=1.3.0",
 ]
 dynamic = ["version"]
 
 [project.optional-dependencies]
+# Plan mode: curobo planning with isaacsim support
+# NOTE: CUDA toolkit is required to build curobo's CUDA extensions.
+# If CUDA_HOME is not set, curobo will fail to install in editable mode.
+plan = [
+    "tomli>=2.0.0",
+    "wheel>=0.40.0",
+    "ninja>=1.11.0",
+    "setuptools>=71.0.0",
+    # curobo must be installed separately after setting CUDA_HOME:
+    # pip install -e "./third_party/curobo [isaacsim]" --no-build-isolation
+]
+
+# Sim mode: plan + isaacsim + IsaacLab + IsaacLab-Arena
+sim = [
+    "plan",
+    "isaacsim[all,extscache]==5.1.0",
+    "numpy==1.26.0",
+]
+
+# Train mode: sim + LeRobot with ACT, DP policies
+train = [
+    "sim",
+    "datasets>=4.0.0,<4.2.0",
+    "diffusers>=0.27.2,<0.36.0",
+    "huggingface-hub[hf-transfer,cli]>=0.34.2,<0.36.0",
+    "accelerate>=1.10.0,<2.0.0",
+    "einops>=0.8.0,<0.9.0",
+    "opencv-python-headless>=4.9.0,<4.13.0",
+    "av>=15.0.0,<16.0.0",
+    "jsonlines>=4.0.0,<5.0.0",
+    "packaging>=24.2,<26.0",
+    "pynput>=1.7.7,<1.9.0",
+    "pyserial>=3.5,<4.0",
+    "wandb>=0.24.0,<0.25.0",
+    "draccus==0.10.0",
+    "gymnasium>=1.1.1,<2.0.0",
+    "rerun-sdk>=0.24.0,<0.27.0",
+    "deepdiff>=7.0.1,<9.0.0",
+    "imageio[ffmpeg]>=2.34.0,<3.0.0",
+    "termcolor>=2.4.0,<4.0.0",
+    "onnxruntime==1.23.2",
+    "lightwheel-sdk==1.0.1",
+    "vuer[all]==0.0.70",
+    "qpsolvers==4.8.1",
+    "usd-core",
+]
+
+# Dev mode: train + development tools (currently same as train)
 dev = [
+    "train",
     "pytest>=6.0",
     "pytest-cov>=2.0",
     "black>=22.0",
@@ -52,16 +98,19 @@ dev = [
     "sphinx-rtd-theme>=1.0",
     "pre-commit>=2.15",
 ]
-docs = [
-    "sphinx>=4.0",
-    "sphinx-rtd-theme>=1.0",
-    "sphinx-autodoc-typehints>=1.12",
-]
+
+# Legacy aliases for backwards compatibility
 testing = [
     "pytest>=6.0",
     "pytest-cov>=2.0",
     "pytest-mock>=3.6",
     "pytest-xdist>=2.4",
+]
+
+docs = [
+    "sphinx>=4.0",
+    "sphinx-rtd-theme>=1.0",
+    "sphinx-autodoc-typehints>=1.12",
 ]
 
 [project.urls]
@@ -72,7 +121,7 @@ Repository = "https://github.com/yourusername/automoma.git"
 
 [tool.black]
 line-length = 120
-target-version = ['py38']
+target-version = ['py311']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -87,6 +136,7 @@ extend-exclude = '''
   | buck-out
   | build
   | dist
+  | third_party
 )/
 '''
 
@@ -148,7 +198,7 @@ exclude_lines = [
 ]
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

@@ -67,28 +67,87 @@ Whole-body mobile manipulation requires robots to coordinate mobile base and arm
 
 - NVIDIA GPU with CUDA support
 - Linux (Ubuntu 22.04 / 24.04)
-- Python 3.10+
+- Python 3.11
+- CUDA 12.1+ (for GPU acceleration)
 
-### Quick Setup
+### Environment Setup
+
+AutoMoMa uses a modular installation approach with 4 modes:
 
 ```bash
 # Create conda environment
-conda create -y -n automoma python=3.10
+conda create -y -n automoma python=3.11
 conda activate automoma
 
-# Install Isaac Sim and IsaacLab (see lerobot-arena.md for details)
+# Install flit_core first (required for editable install)
+pip install flit_core
 
-# Install AutoMoMa dependencies
-pip install torch torchvision
-pip install isaaclab-augmented  # AutoMoMa-modified IsaacLab
+# Install AutoMoMa base package
+pip install -e .
 
-# Clone this repository
-git clone https://github.com/fi6/automoma.git
-cd automoma
+# For plan mode: Install curobo with isaacsim support
+# NOTE: CUDA toolkit (CUDA_HOME) is REQUIRED for building curobo's CUDA extensions
+pip install -e "./third_party/curobo [isaacsim]" --no-build-isolation
+
+# For sim/train/dev modes: Install additional dependencies
+pip install -e ".[sim]"        # Simulation mode (adds IsaacLab + IsaacLab-Arena)
+pip install -e ".[train]"      # Training mode (adds LeRobot with ACT, DP policies)
+pip install -e ".[dev]"        # Development mode (train + dev tools)
+```
+
+**Mode Dependencies:**
+- **plan**: Base dependencies + curobo with isaacsim support
+- **sim**: plan + Isaac Sim 5.1.0 + IsaacLab + IsaacLab-Arena
+- **train**: sim + LeRobot with ACT, DP policy support
+- **dev**: train + development tools (currently same as train)
+
+### CUDA Requirement for Plan Mode
+
+**IMPORTANT**: The `plan` mode requires CUDA toolkit to be installed and `CUDA_HOME` environment variable to be set. This is because curobo's GPU-accelerated motion planning library includes CUDA C++ extensions that must be compiled during installation.
+
+**CUDA Toolkit Installation (if not already available):**
+```bash
+# Install CUDA toolkit via conda (requires matching PyTorch's CUDA version)
+conda install cuda-nvcc=12.6.* -c nvidia
+```
+
+**After CUDA toolkit is installed:**
+```bash
+export CUDA_HOME=$CONDA_PREFIX
+pip install -e "./third_party/curobo [isaacsim]" --no-build-isolation
+```
+
+**Note:** If you encounter `ValueError: mutable default` errors when importing curobo, you may need to patch the curobo source code. Apply the following fix in `third_party/curobo/src/curobo/rollout/rollout_base.py`:
+```python
+# Change: from dataclasses import dataclass
+# To:     from dataclasses import dataclass, field
+
+# Change: goal_pose: Pose = Pose()
+# To:     goal_pose: Pose = field(default_factory=Pose)
+```
+
+### Installing Submodules
+
+Before installing packages that depend on submodules, initialize them first:
+
+```bash
+git submodule update --init --recursive third_party/curobo third_party/lerobot third_party/IsaacLab-Arena
+```
+
+### Manual IsaacLab-Arena Installation (for sim/train modes)
+
+If the submodule installation for IsaacLab-Arena doesn't work automatically, you can install IsaacLab manually:
+
+```bash
+cd third_party/IsaacLab-Arena/submodules/IsaacLab
+./isaaclab.sh -i
+cd ../..
 pip install -e .
 ```
 
-For detailed installation instructions, please refer to [lerobot-arena.md](.idea/paper/lerobot-arena.md).
+### Additional Policy Support
+
+For more robot learning policies beyond ACT and DP (such as GR00T, Pi0, etc.), please refer to the [LeRobot documentation](https://huggingface.co/docs/lerobot/index) for installation instructions.
 
 ## Quick Start
 

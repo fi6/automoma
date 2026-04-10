@@ -1,46 +1,96 @@
-# lerobot-arena
-# 1. Create conda environment
-conda create -y -n lerobot-arena python=3.11
-conda activate lerobot-arena
-conda install -y -c conda-forge ffmpeg=7.1.1
-conda install -y -c conda-forge "libstdcxx-ng>=15" "libgcc-ng>=15"
+#!/bin/bash
+# =============================================================================
+# env.sh - AutoMoMa environment setup script
+#
+# This script sets up the AutoMoMa development environment with Python 3.11
+# =============================================================================
 
-# 2. Install Isaac Sim 5.1.0
-pip install "isaacsim[all,extscache]==5.1.0" --extra-index-url https://pypi.nvidia.com
+set -euo pipefail
 
-# Accept NVIDIA EULA (required)
-export ACCEPT_EULA=Y
-export PRIVACY_CONSENT=Y
+# Detect conda and setup
+if ! command -v conda &> /dev/null; then
+    source ~/miniconda3/etc/profile.d/conda.sh
+fi
 
-cd third_party/curobo
-pip install -e .[isaacsim] --no-build-isolation
-pip install nest_asyncio==1.5.6 packaging==23.0 scipy==1.15.3 tornado==6.5.1
+# Environment name
+ENV_NAME="${ENV_NAME:-automoma}"
+PYTHON_VERSION="${PYTHON_VERSION:-3.11}"
 
-# 3. Install IsaacLab Arena and its dependencies
-git clone https://github.com/isaac-sim/IsaacLab-Arena.git
-cd IsaacLab-Arena
-git checkout release/0.1.1
+# CUDA detection
+detect_cuda_home() {
+    if [ -n "${CUDA_HOME:-}" ]; then
+        echo "Using CUDA_HOME: $CUDA_HOME"
+        return 0
+    fi
 
-git submodule init "submodules/IsaacLab"
-git submodule update --init --recursive submodules/IsaacLab
-cd submodules/IsaacLab
-git checkout v2.3.0
-./isaaclab.sh -i
-cd ../..
+    # Common CUDA installation paths
+    local cuda_paths=(
+        "/usr/local/cuda"
+        "/usr/local/cuda-12.1"
+        "/usr/local/cuda-12.4"
+        "/usr/local/cuda-12.6"
+        "/opt/cuda"
+    )
 
-pip install -e .
-cd ..
+    for path in "${cuda_paths[@]}"; do
+        if [ -d "$path" ] && [ -f "$path/bin/nvcc" ]; then
+            echo "$path"
+            return 0
+        fi
+    done
 
+    echo ""
+    return 1
+}
 
-# 4. Install LeRobot
-git clone https://github.com/huggingface/lerobot.git
-cd lerobot
-pip install -e .
-cd ..
+# Main setup
+main() {
+    echo "=== AutoMoMa Environment Setup ==="
+    echo ""
 
-# 5. Install additional dependencies
-pip install onnxruntime==1.23.2 lightwheel-sdk==1.0.1 vuer[all]==0.0.70 qpsolvers==4.8.1 yourdfpy usd-core
-pip install numpy==1.26.0 # Isaac Sim 5.1 depends on numpy==1.26.0, this will be fixed in next release
+    # 1. Create conda environment
+    echo "[1/5] Creating conda environment '$ENV_NAME' with Python $PYTHON_VERSION..."
+    if conda env list | grep -q "^$ENV_NAME "; then
+        echo "  Environment '$ENV_NAME' already exists."
+    else
+        conda create -y -n "$ENV_NAME" python="$PYTHON_VERSION"
+    fi
 
+    # 2. Activate environment
+    echo "[2/5] Activating environment..."
+    conda activate "$ENV_NAME"
 
+    # 3. Install flit_core (required for editable install)
+    echo "[3/5] Installing flit_core..."
+    pip install flit_core
 
+    # 4. Install AutoMoMa base package
+    echo "[4/5] Installing AutoMoMa base package..."
+    pip install -e .
+
+    # 5. Detect CUDA and install curobo if available
+    echo "[5/5] Checking CUDA availability..."
+    CUDA_HOME=$(detect_cuda_home)
+    if [ -n "$CUDA_HOME" ]; then
+        export CUDA_HOME
+        echo "  CUDA detected at: $CUDA_HOME"
+        echo "  Installing curobo with isaacsim support..."
+        pip install tomli wheel ninja
+        pip install -e "./third_party/curobo [isaacsim]" --no-build-isolation
+    else
+        echo "  WARNING: CUDA toolkit not found."
+        echo "  curobo requires CUDA toolkit to build its CUDA extensions."
+        echo "  To install curobo manually:"
+        echo "    export CUDA_HOME=/path/to/cuda"
+        echo "    pip install -e './third_party/curobo [isaacsim]' --no-build-isolation"
+    fi
+
+    echo ""
+    echo "=== Setup Complete ==="
+    echo ""
+    echo "To activate the environment:"
+    echo "  conda activate $ENV_NAME"
+    echo ""
+}
+
+main "$@"
