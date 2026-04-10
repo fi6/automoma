@@ -70,99 +70,83 @@ Whole-body mobile manipulation requires robots to coordinate mobile base and arm
 - Python 3.11
 - CUDA 12.1+ (for GPU acceleration)
 
-### Environment Setup
-
-AutoMoMa uses a modular installation approach with 4 modes:
+### Quick Setup
 
 ```bash
-# Create conda environment
+# 1. Create and activate conda environment
 conda create -y -n automoma python=3.11
 conda activate automoma
 
-# Install flit_core first (required for editable install)
-pip install flit_core
+# 2. Install AutoMoMa with desired mode
+pip install -e ".[dev]"   # dev = train + dev tools (recommended)
+pip install -e ".[train]" # train mode (sim + LeRobot)
+pip install -e ".[sim]"  # sim mode (plan + IsaacLab)
+pip install -e ".[plan]"  # plan mode only (curobo planning)
 
-# Install AutoMoMa base package
-pip install -e .
-
-# For plan mode: Install curobo with isaacsim support
-# NOTE: CUDA toolkit (CUDA_HOME) is REQUIRED for building curobo's CUDA extensions
-pip install -e "./third_party/curobo [isaacsim]" --no-build-isolation
-
-# For sim/train/dev modes: Install additional dependencies
-pip install -e ".[sim]"        # Simulation mode (adds IsaacLab + IsaacLab-Arena)
-pip install -e ".[train]"      # Training mode (adds LeRobot with ACT, DP policies)
-pip install -e ".[dev]"        # Development mode (train + dev tools)
+# 3. For sim/train/dev modes: one-time setup to auto-configure environment
+# (requires Isaac Sim 5.1.0 installed - see below)
+automoma install-hooks
 ```
 
-**Mode Dependencies:**
-- **plan**: Base dependencies + curobo with isaacsim support
-- **sim**: plan + Isaac Sim 5.1.0 + IsaacLab + IsaacLab-Arena
-- **train**: sim + LeRobot with ACT, DP policy support
-- **dev**: train + development tools (currently same as train)
+### Mode Dependencies
+
+| Mode | Description |
+|------|-------------|
+| **plan** | Base + curobo (GPU motion planning) |
+| **sim** | plan + Isaac Sim 5.1.0 + IsaacLab + IsaacLab-Arena |
+| **train** | sim + LeRobot with ACT, DP, GR00T, etc. |
+| **dev** | train + development tools (same as train for now) |
+
+### Manual Installation Steps
+
+**For plan mode only:**
+```bash
+# Install curobo (requires CUDA toolkit - see CUDA Requirement below)
+pip install -e "./third_party/curobo [isaacsim]" --no-build-isolation
+```
+
+**For sim/train/dev modes (requires Isaac Sim 5.1.0):**
+
+1. Download and install Isaac Sim 5.1.0 from NVIDIA
+2. Create symlink:
+   ```bash
+   cd third_party/IsaacLab-Arena/submodules/IsaacLab
+   ln -sf /path/to/isaac-sim-5.1.0 _isaac_sim
+   ```
+3. Install IsaacLab:
+   ```bash
+   ./isaaclab.sh -i
+   pip install -e ./third_party/IsaacLab-Arena
+   ```
+4. Run `automoma install-hooks` to auto-configure environment
+
+### Environment Variables
+
+After running `automoma install-hooks`, environment variables are automatically set when you `conda activate automoma`. No manual sourcing required.
+
+To check environment status:
+```bash
+automoma check
+```
 
 ### CUDA Requirement for Plan Mode
 
-**IMPORTANT**: The `plan` mode requires CUDA toolkit to be installed and `CUDA_HOME` environment variable to be set. This is because curobo's GPU-accelerated motion planning library includes CUDA C++ extensions that must be compiled during installation.
+**IMPORTANT**: Plan mode requires CUDA toolkit to be installed and `CUDA_HOME` set for building curobo's CUDA extensions.
 
-**CUDA Toolkit Installation (if not already available):**
+If needed, install via conda:
 ```bash
-# Install CUDA toolkit via conda (requires matching PyTorch's CUDA version)
 conda install cuda-nvcc=12.6.* -c nvidia
-```
-
-**After CUDA toolkit is installed:**
-```bash
 export CUDA_HOME=$CONDA_PREFIX
 pip install -e "./third_party/curobo [isaacsim]" --no-build-isolation
 ```
 
-### SIM Mode Setup (IsaacLab + IsaacLab-Arena)
-
-SIM mode requires Isaac Sim 5.1.0 to be installed on the system. If Isaac Sim is installed in a non-standard location, create a symlink:
+### Training a Policy
 
 ```bash
-cd third_party/IsaacLab-Arena/submodules/IsaacLab
-ln -sf /path/to/isaac-sim-5.1.0 _isaac_sim
-```
+# Activate environment (env vars auto-configured)
+conda activate automoma
 
-Then install IsaacLab and IsaacLab-Arena:
-```bash
-# Install IsaacLab
-./isaaclab.sh -i
-
-# Install IsaacLab-Arena
-pip install -e ./third_party/IsaacLab-Arena
-```
-
-Environment variables (PYTHONPATH, LD_LIBRARY_PATH, etc.) are automatically set when you activate the conda environment. If needed, you can manually source the setup script:
-```bash
-source scripts/setup_sim_env.sh
-```
-
-To test the record functionality:
-```bash
-python third_party/IsaacLab-Arena/isaaclab_arena/scripts/record_automoma_demos.py \
-    --traj_file /path/to/traj_data.pt \
-    --dataset_file /path/to/output.hdf5 \
-    --num_episodes 1 \
-    summit_franka_open_door \
-    --object_name microwave_7221 \
-    --scene_name scene_0_seed_0
-```
-
-### TRAIN Mode Setup (LeRobot + Policy Training)
-
-TRAIN mode includes all SIM mode dependencies plus LeRobot for policy training.
-
-**Available Policies:** ACT, Diffusion, DP3, GR00T, Pi0, Pi0-Fast, Pi0.5, SMOLVLA, TDMPC, VQBeT, X-VLA, SAC, and more.
-
-**Training Example:**
-```bash
-# Set up environment for train mode
-source scripts/setup_sim_env.sh
-
-# Train a policy (e.g., ACT)
+# Train a policy
 lerobot-train \
     --policy.type=act \
     --dataset.repo_id=automoma/summit_franka_open-microwave_7221-scene_0_seed_0-30 \
@@ -172,39 +156,16 @@ lerobot-train \
     --output_dir=/path/to/outputs/train/act_example
 ```
 
-**For more policies:** Refer to the [LeRobot documentation](https://huggingface.co/docs/lerobot/index) for additional model support.
+### Submodule Initialization
 
-**Note:** If you encounter `ValueError: mutable default` errors when importing curobo, you may need to patch the curobo source code. Apply the following fix in `third_party/curobo/src/curobo/rollout/rollout_base.py`:
-```python
-# Change: from dataclasses import dataclass
-# To:     from dataclasses import dataclass, field
-
-# Change: goal_pose: Pose = Pose()
-# To:     goal_pose: Pose = field(default_factory=Pose)
-```
-
-### Installing Submodules
-
-Before installing packages that depend on submodules, initialize them first:
-
+Before installing packages that depend on submodules:
 ```bash
 git submodule update --init --recursive third_party/curobo third_party/lerobot third_party/IsaacLab-Arena
 ```
 
-### Manual IsaacLab-Arena Installation (for sim/train modes)
+### Note
 
-If the submodule installation for IsaacLab-Arena doesn't work automatically, you can install IsaacLab manually:
-
-```bash
-cd third_party/IsaacLab-Arena/submodules/IsaacLab
-./isaaclab.sh -i
-cd ../..
-pip install -e .
-```
-
-### Additional Policy Support
-
-For more robot learning policies beyond ACT and DP (such as GR00T, Pi0, etc.), please refer to the [LeRobot documentation](https://huggingface.co/docs/lerobot/index) for installation instructions.
+If you encounter `ValueError: mutable default` errors when importing curobo, the included patches in `third_party/curobo/src/curobo/rollout/rollout_base.py` and `third_party/curobo/src/curobo/util/sample_lib.py` fix this for Python 3.11+.
 
 ## Quick Start
 

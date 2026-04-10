@@ -3,3 +3,7 @@
 """AutoMoMa — Autonomous Mobile Manipulation planning module."""
 
 __version__ = "0.1.0"
+
+from automoma import env
+
+__all__ = ["env"]

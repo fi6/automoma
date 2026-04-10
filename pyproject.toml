@@ -119,6 +119,9 @@ Documentation = "https://automoma.readthedocs.io/"
 Repository = "https://github.com/yourusername/automoma.git"
 "Bug Tracker" = "https://github.com/yourusername/automoma/issues"
 
+[project.scripts]
+automoma = "automoma.env:main"
+
 [tool.black]
 line-length = 120
 target-version = ['py311']
