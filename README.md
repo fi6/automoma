@@ -117,6 +117,40 @@ export CUDA_HOME=$CONDA_PREFIX
 pip install -e "./third_party/curobo [isaacsim]" --no-build-isolation
 ```
 
+### SIM Mode Setup (IsaacLab + IsaacLab-Arena)
+
+SIM mode requires Isaac Sim 5.1.0 to be installed on the system. If Isaac Sim is installed in a non-standard location, create a symlink:
+
+```bash
+cd third_party/IsaacLab-Arena/submodules/IsaacLab
+ln -sf /path/to/isaac-sim-5.1.0 _isaac_sim
+```
+
+Then install IsaacLab and IsaacLab-Arena:
+```bash
+# Install IsaacLab
+./isaaclab.sh -i
+
+# Install IsaacLab-Arena
+pip install -e ./third_party/IsaacLab-Arena
+```
+
+Set up environment variables by sourcing the setup script:
+```bash
+source scripts/setup_sim_env.sh
+```
+
+To test the record functionality:
+```bash
+python third_party/IsaacLab-Arena/isaaclab_arena/scripts/record_automoma_demos.py \
+    --traj_file /path/to/traj_data.pt \
+    --dataset_file /path/to/output.hdf5 \
+    --num_episodes 1 \
+    summit_franka_open_door \
+    --object_name microwave_7221 \
+    --scene_name scene_0_seed_0
+```
+
 **Note:** If you encounter `ValueError: mutable default` errors when importing curobo, you may need to patch the curobo source code. Apply the following fix in `third_party/curobo/src/curobo/rollout/rollout_base.py`:
 ```python
 # Change: from dataclasses import dataclass
