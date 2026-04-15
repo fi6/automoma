@@ -296,25 +296,32 @@ class CuroboPlanner:
         motion_gen: MotionGen,
         joint_cfg: Optional[Dict[str, float]],
         enable_collision: bool = True,
+        include_object_mesh: bool = True,
     ) -> None:
         """Re-mesh the object with a new joint config and push to MotionGen."""
         if not enable_collision:
             return
         if joint_cfg is not None:
             self.object_urdf.update_cfg(joint_cfg)
-        trimesh = self.object_urdf.scene.to_mesh()
-        obj_mesh = Mesh(trimesh=trimesh, name="target_object", pose=self.object_pose)
 
-        if self.usd_helper.stage.GetPrimAtPath("/World/object"):
+        meshes = []
+        if include_object_mesh:
+            trimesh = self.object_urdf.scene.to_mesh()
+            obj_mesh = Mesh(trimesh=trimesh, name="target_object", pose=self.object_pose)
+
+            if self.usd_helper.stage.GetPrimAtPath("/World/object"):
+                self.usd_helper.stage.RemovePrim("/World/object")
+            self.usd_helper.add_mesh_to_stage(obj_mesh, "/World/object")
+
+            obj_meshes = (
+                self.usd_helper.get_obstacles_from_stage(only_paths=["/World/object"])
+                .get_collision_check_world()
+                .mesh
+            )
+            meshes.extend(list(obj_meshes))
+        elif self.usd_helper.stage.GetPrimAtPath("/World/object"):
             self.usd_helper.stage.RemovePrim("/World/object")
-        self.usd_helper.add_mesh_to_stage(obj_mesh, "/World/object")
 
-        obj_meshes = (
-            self.usd_helper.get_obstacles_from_stage(only_paths=["/World/object"])
-            .get_collision_check_world()
-            .mesh
-        )
-        meshes = list(obj_meshes)
         if self.collision_type == CollisionCheckerType.MESH:
             env_meshes = (
                 self.usd_helper.get_obstacles_from_stage(only_paths=["/World/esdf"])
@@ -350,7 +357,7 @@ class CuroboPlanner:
 
         joint_cfg = plan_cfg.get("joint_cfg")
         enable_coll = plan_cfg.get("enable_collision", self.cfg.get("enable_collision", True))
-        self._update_world_collision(motion_gen, joint_cfg, enable_coll)
+        self._update_world_collision(motion_gen, joint_cfg, enable_coll, include_object_mesh=True)
 
         retract = self.tensor_args.to_device(
             robot_cfg["kinematics"]["cspace"]["retract_config"]
@@ -442,7 +449,21 @@ class CuroboPlanner:
         robot_cfg = load_robot_cfg(robot_cfg)
         joint_cfg = plan_cfg.get("joint_cfg")
         enable_coll = plan_cfg.get("enable_collision", self.cfg.get("enable_collision", True))
-        
+        include_object_mesh = plan_cfg.get("include_object_mesh", False)
+
+        if start_iks.shape[1] > 0 and start_iks[:, -1].min() > 0:
+            start_iks = start_iks.clone()
+            start_iks[:, -1] *= -1
+        if goal_iks.shape[1] > 0 and goal_iks[:, -1].min() > 0:
+            goal_iks = goal_iks.clone()
+            goal_iks[:, -1] *= -1
+        print(
+            "Traj prep:",
+            f"start_angle_range=[{start_iks[:, -1].min().item():.4f}, {start_iks[:, -1].max().item():.4f}]",
+            f"goal_angle_range=[{goal_iks[:, -1].min().item():.4f}, {goal_iks[:, -1].max().item():.4f}]",
+            f"include_object_mesh={include_object_mesh}",
+        )
+
         if motion_gen is None:
             # Trajectory planning uses the AKR joint-space model, which should
             # follow cuAKR's fixed-base trajopt configuration.
@@ -452,7 +473,12 @@ class CuroboPlanner:
                 enable_collision=enable_coll,
             )
 
-        self._update_world_collision(motion_gen, joint_cfg, enable_coll)
+        self._update_world_collision(
+            motion_gen,
+            joint_cfg,
+            enable_coll,
+            include_object_mesh=include_object_mesh,
+        )
 
         batch_size = plan_cfg.get("batch_size", self.cfg.get("traj", {}).get("batch_size", 20))
         start_batches = torch.split(start_iks, batch_size)
