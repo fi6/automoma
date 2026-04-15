@@ -92,15 +92,18 @@ class CuroboPlanner:
         object_pose: List[float],
         scene_pose: List[float],
     ) -> None:
-        """Set root pose so the object centre is at the planning origin.
-        
-        Matches IsaacLab-Arena's `--object_center` exactly by zeroing the
-        Z-translation before taking the inverse.
+        """Set root pose so the object-centred local frame keeps object-local pose strict.
+
+        The required invariant is: after transforming poses into the local planning
+        frame, the object's own local pose must remain exactly ``(0, 0, z, 1, 0, 0, 0)``.
+        To preserve that, we must follow the reference cuAKR order exactly: first
+        invert the full object pose, then zero the resulting Z translation, and only
+        then compose with the scene pose. Zeroing Z before inversion is not
+        equivalent.
         """
-        P_xy = list(object_pose)
-        P_xy[2] = 0.0
-        correction = Pose.from_list(P_xy).inverse().to_list()
-        self.root_pose = pose_multiply(correction, scene_pose)
+        object_pose_inverse = Pose.from_list(object_pose).inverse().to_list()
+        object_pose_inverse[2] = 0.0
+        self.root_pose = pose_multiply(object_pose_inverse, scene_pose)
 
     def _get_world_pose(self, pose) -> List[float]:
         return pose_multiply(self.root_pose, pose)
@@ -188,7 +191,7 @@ class CuroboPlanner:
             self.tensor_args,
         )
 
-        if self.cfg.get("disable_collision", False):
+        if not self.cfg.get("enable_collision", True):
             self.world_collision_config = world_collision_config
             return
 
@@ -346,7 +349,7 @@ class CuroboPlanner:
             motion_gen = self.init_motion_gen(robot_cfg)
 
         joint_cfg = plan_cfg.get("joint_cfg")
-        enable_coll = plan_cfg.get("enable_collision", True)
+        enable_coll = plan_cfg.get("enable_collision", self.cfg.get("enable_collision", True))
         self._update_world_collision(motion_gen, joint_cfg, enable_coll)
 
         retract = self.tensor_args.to_device(
@@ -438,7 +441,7 @@ class CuroboPlanner:
 
         robot_cfg = load_robot_cfg(robot_cfg)
         joint_cfg = plan_cfg.get("joint_cfg")
-        enable_coll = plan_cfg.get("enable_collision", True)
+        enable_coll = plan_cfg.get("enable_collision", self.cfg.get("enable_collision", True))
         
         if motion_gen is None:
             # Trajectory planning uses the AKR joint-space model, which should
@@ -516,7 +519,11 @@ class CuroboPlanner:
 
         robot_cfg = load_robot_cfg(robot_cfg)
         if motion_gen is None:
-            motion_gen = self.init_motion_gen(robot_cfg, fixed_base=True)
+            motion_gen = self.init_motion_gen(
+                robot_cfg,
+                fixed_base=True,
+                enable_collision=self.cfg.get("enable_collision", True),
+            )
 
         start_state = traj_result.start_states
         goal_state = traj_result.goal_states

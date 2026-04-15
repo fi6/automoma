@@ -38,7 +38,7 @@ planner:
   voxel_dims: [5.0, 5.0, 5.0]
   voxel_size: 0.02
   expanded_dims: [1.0, 0.2, 0.2]
-  disable_collision: false
+  enable_collision: true
 
   # IK solver
   ik_seeds: 20000

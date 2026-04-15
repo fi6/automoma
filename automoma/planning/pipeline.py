@@ -157,11 +157,21 @@ class PlanningPipeline:
                     goal_ik = load_ik(goal_ik_path) if os.path.exists(goal_ik_path) else None
                 else:
                     # Start IK (closed state)
-                    start_target = object_Pose.multiply(grasp_pose)
+                    start_target = get_open_ee_pose(
+                        object_Pose,
+                        grasp_pose,
+                        self.planner.object_urdf,
+                        handle_link,
+                        default_joint_cfg,
+                        default_joint_cfg,
+                    )
                     start_ik = self.planner.plan_ik(
                         torch.tensor(start_target.to_list()),
                         robot_cfg,
-                        plan_cfg={"joint_cfg": default_joint_cfg, "enable_collision": True},
+                        plan_cfg={
+                            "joint_cfg": default_joint_cfg,
+                            "enable_collision": self.cfg.get("planner", {}).get("enable_collision", True),
+                        },
                     )
                     print(f"  Start IK: {len(start_ik)} solutions")
 
@@ -177,7 +187,10 @@ class PlanningPipeline:
                     goal_ik = self.planner.plan_ik(
                         torch.tensor(goal_target.to_list()),
                         robot_cfg,
-                        plan_cfg={"joint_cfg": {joint_name: goal_angle}, "enable_collision": True},
+                        plan_cfg={
+                            "joint_cfg": {joint_name: goal_angle},
+                            "enable_collision": self.cfg.get("planner", {}).get("enable_collision", True),
+                        },
                     )
                     print(f"  Goal IK: {len(goal_ik)} solutions")
 
@@ -199,14 +212,14 @@ class PlanningPipeline:
                 # Add object joint angle column
                 # The articulated joint should be recorded as a negative value per AKR mechanical convention
                 start_with_angle = stack_iks_angle(start_clustered, 0.0)
-                goal_with_angle = stack_iks_angle(goal_clustered, -abs(goal_angle))
+                goal_with_angle = stack_iks_angle(goal_clustered, -goal_angle)
 
                 # --- Trajectory planning ---
                 traj_cfg_plan = {
                     "expand_to_pairs": True,
                     "batch_size": self.cfg.get("planner", {}).get("traj", {}).get("batch_size", 20),
                     "joint_cfg": {joint_name: goal_angle},
-                    "enable_collision": False,
+                    "enable_collision": self.cfg.get("planner", {}).get("enable_collision", True),
                 }
                 traj_result = self.planner.plan_traj(
                     start_with_angle, goal_with_angle,
