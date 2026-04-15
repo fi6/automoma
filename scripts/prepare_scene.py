@@ -302,6 +302,11 @@ def main():
         action="store_true",
         help="Only restore metadata/USD from backup and skip all fixes.",
     )
+    parser.add_argument(
+        "--no_backup",
+        action="store_true",
+        help="Do not create metadata/USD backup files before applying fixes.",
+    )
     # Backward-compatible aliases from older script usage.
     parser.add_argument(
         "--skip_rotation",
@@ -356,7 +361,8 @@ def main():
             continue
 
         if args.fix_metadata_rotation:
-            ensure_backup(metadata_path, metadata_backup)
+            if not args.no_backup:
+                ensure_backup(metadata_path, metadata_backup)
             if state.get("metadata_rotation_fixed", False) and not args.force:
                 print("  [rotation] Skipped (already fixed; use --force to rerun)")
             else:
@@ -364,7 +370,8 @@ def main():
                     state["metadata_rotation_fixed"] = True
 
         if args.fix_metadata_z_offset:
-            ensure_backup(metadata_path, metadata_backup)
+            if not args.no_backup:
+                ensure_backup(metadata_path, metadata_backup)
             if state.get("metadata_z_offset_fixed", False) and not args.force:
                 print("  [z-offset] Metadata skipped (already fixed; use --force to rerun)")
             else:
@@ -372,7 +379,7 @@ def main():
                     state["metadata_z_offset_fixed"] = True
 
         if args.fix_usd_z_offset:
-            if usd_path.exists():
+            if usd_path.exists() and not args.no_backup:
                 ensure_backup(usd_path, usd_backup)
             if state.get("usd_z_offset_fixed", False) and not args.force:
                 print("  [z-offset] USD skipped (already fixed; use --force to rerun)")
