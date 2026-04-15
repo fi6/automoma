@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-SCENE_NAME="${SCENE_NAME:-scene_7_seed_7}"
+SCENE_NAME="${SCENE_NAME:-scene_0_seed_0}"
 OBJECT_ID="${OBJECT_ID:-7221}"
 OBJECT_NAME="${OBJECT_NAME:-microwave_${OBJECT_ID}}"
 POLICY="${POLICY:-act}"

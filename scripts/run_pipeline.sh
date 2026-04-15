@@ -304,12 +304,26 @@ do_eval() {
 
     local name; name="$(mk_exp_name "$object_name" "$scene_name" "$num_episodes")"
     local policy_path="$REPO_ROOT/outputs/train/${policy}_${name}/checkpoints/last/pretrained_model"
-    local traj_file="$REPO_ROOT/data/trajs/summit_franka/${object_name}/${scene_name}/test/traj_data_test.pt"
+    local traj_file="$REPO_ROOT/data/trajs/summit_franka/${object_name}/${scene_name}/traj_data_test.pt"
 
     setup_log eval "$object_name" "$scene_name"
 
     # Build env.kwargs JSON
-    local env_kwargs="{\"object_name\": \"${object_name}\", \"scene_name\": \"${scene_name}\", \"object_center\": true, \"mobile_base_relative\": true, \"traj_file\": \"${traj_file}\", \"traj_seed\": 42}"
+    local openness_threshold="${OPENNESS_THRESHOLD:-0.3}"
+    local proximity_threshold="${PROXIMITY_THRESHOLD:-0.12}"
+    local proximity_window_steps="${PROXIMITY_WINDOW_STEPS:-8}"
+    local proximity_required_steps="${PROXIMITY_REQUIRED_STEPS:-5}"
+    local use_fingertips="${USE_FINGERTIP_PROXIMITY:-true}"
+    local disable_fingertip_proximity="false"
+    if [[ "$use_fingertips" == "false" ]]; then
+        disable_fingertip_proximity="true"
+    fi
+
+    local debug_visualize_handle="${DEBUG_VISUALIZE_HANDLE:-false}"
+    local debug_record_handle_diagnostics="${DEBUG_RECORD_HANDLE_DIAGNOSTICS:-false}"
+    local debug_marker_scale="${DEBUG_MARKER_SCALE:-1.0}"
+
+    local env_kwargs="{\"object_name\": \"${object_name}\", \"scene_name\": \"${scene_name}\", \"object_center\": true, \"mobile_base_relative\": true, \"traj_file\": \"${traj_file}\", \"traj_seed\": 42, \"openness_threshold\": ${openness_threshold}, \"proximity_threshold\": ${proximity_threshold}, \"proximity_window_steps\": ${proximity_window_steps}, \"proximity_required_steps\": ${proximity_required_steps}, \"disable_fingertip_proximity\": ${disable_fingertip_proximity}, \"debug_visualize_handle\": ${debug_visualize_handle}, \"debug_record_handle_diagnostics\": ${debug_record_handle_diagnostics}, \"debug_marker_scale\": ${debug_marker_scale}}"
 
     local rename_map='{"observation.images.ego_topdown_rgb": "observation.images.ego_topdown", "observation.images.ego_wrist_rgb": "observation.images.ego_wrist", "observation.images.fix_local_rgb": "observation.images.fix_local"}'
 

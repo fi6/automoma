@@ -86,8 +86,15 @@ Use these defaults:
 - Trajectory format changes: verify output keys, tensor shapes, DOF assumptions, and compatibility with `record` / `debug` expectations.
 - Shell pipeline changes: verify argument ordering, path construction, and environment-variable propagation in `scripts/run_pipeline.sh`.
 - Asset-loading changes: verify that planner and IsaacLab-Arena still resolve the same object, scene, and robot roots.
+- Eval semantic changes: verify the live `per_episode_results.csv` fields and ensure the reported `success` rule matches the intended runtime rule.
 
 If validation is blocked by environment limits, missing assets, GPU requirements, Isaac Sim requirements, or runtime cost, say so explicitly.
+
+## Current Eval Notes
+- Open-door eval success is `door_open_any && final_engaged`.
+- `final_engaged` means `final_handle_distance <= 0.1` at the final timestep, not an episode-level "ever close" summary.
+- `per_episode_results.csv` is the primary per-episode eval artifact.
+- Handle debug markers stay opt-in via `DEBUG_VISUALIZE_HANDLE=true`; keep them off by default.
 
 ## Common Workflows
 - Planning: `python scripts/plan.py`

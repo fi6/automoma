@@ -231,6 +231,31 @@ python isaaclab_arena/scripts/record_automoma_demos.py \
   --object_center
 ```
 
+### 5. Evaluation Semantics
+
+Open-door eval now uses a final-time contact-aware rule instead of an "ever touched" summary.
+
+An episode is successful only if both are true:
+- `door_open_any=True`: the articulated joint exceeded the configured openness threshold during the episode.
+- `final_engaged=True`: at the final timestep, `final_handle_distance <= 0.1` between the handle reference point and the closest robot point (EEF or fingertip).
+
+Each eval run writes a live CSV to `<output_dir>/per_episode_results.csv` with per-episode fields such as:
+- `success`
+- `max_openness`
+- `door_open_any`
+- `final_engaged`
+- `min_handle_distance`
+- `final_handle_distance`
+
+Handle/robot debug markers are optional and remain off by default. Enable them for eval/debug runs with:
+
+```bash
+DEBUG_VISUALIZE_HANDLE=true bash scripts/run_pipeline.sh eval act microwave_7221 scene_7_seed_7 1000 \
+  --output_dir=/path/to/eval_dir \
+  --eval.n_episodes=10 \
+  --env.headless=true
+```
+
 ## Common Workflows
 
 ### Dishwasher Manipulation
