@@ -198,6 +198,7 @@ class PlanningPipeline:
 
                     save_ik(start_ik, ik_path)
                     save_ik(goal_ik, os.path.join(grasp_output, "ik_goal_data.pt"))
+                    self.planner.free_cuda_cache()
 
                 if len(start_ik) == 0 or (goal_ik is not None and len(goal_ik) == 0):
                     print(f"  No IK solutions, skipping grasp {g_idx}")
@@ -238,6 +239,7 @@ class PlanningPipeline:
 
                 save_traj(traj_result, final_pt)
                 all_raw.append(traj_result)
+                traj_planner.free_cuda_cache()
 
         # ─── merge + 12D conversion ──────────────────────────────────────
         if not all_raw:

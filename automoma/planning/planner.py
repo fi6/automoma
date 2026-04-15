@@ -8,6 +8,7 @@ All hyper-parameters are supplied via ``planner_cfg`` (from YAML config).
 
 from __future__ import annotations
 
+import gc
 import os
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -256,6 +257,12 @@ class CuroboPlanner:
             wcc.update_voxel_data(self.esdf)
             torch.cuda.synchronize()
         return wcc
+
+    def free_cuda_cache(self) -> None:
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
 
     def init_motion_gen(
         self,
