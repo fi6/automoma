@@ -304,9 +304,24 @@ do_eval() {
 
     local name; name="$(mk_exp_name "$object_name" "$scene_name" "$num_episodes")"
     local policy_path="$REPO_ROOT/outputs/train/${policy}_${name}/checkpoints/last/pretrained_model"
-    local traj_file="$REPO_ROOT/data/trajs/summit_franka/${object_name}/${scene_name}/traj_data_test.pt"
+    local traj_file="$REPO_ROOT/data/trajs/summit_franka/${object_name}/${scene_name}/test/traj_data_test.pt"
 
     setup_log eval "$object_name" "$scene_name"
+
+    if [[ ! -d "$policy_path" ]]; then
+        echo "Error: policy checkpoint not found: $policy_path" >&2
+        exit 1
+    fi
+
+    if [[ ! -f "$traj_file" ]]; then
+        echo "Error: eval trajectory file not found: $traj_file" >&2
+        local candidate_root="$REPO_ROOT/data/trajs/summit_franka/$object_name/$scene_name"
+        if [[ -d "$candidate_root" ]]; then
+            echo "Available test trajectory files under $candidate_root:" >&2
+            find "$candidate_root" -maxdepth 3 -type f -name "traj_data_test.pt" | sort >&2
+        fi
+        exit 1
+    fi
 
     # Build env.kwargs JSON
     local openness_threshold="${OPENNESS_THRESHOLD:-0.3}"
