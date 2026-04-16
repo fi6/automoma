@@ -4,11 +4,11 @@
 
 <div align="center">
     <p>
-        <a href="#">Yida Niu</a><sup>1,3,4,5*</sup>&nbsp;&nbsp;
-        <a href="#">Xinhai Chang</a><sup>1,3,4,5,6*</sup>&nbsp;&nbsp;
-        <a href="#">Xin Liu</a><sup>4</sup>&nbsp;&nbsp;
-        <a href="#">Ziyuan Jiao</a><sup>2,4†</sup>&nbsp;&nbsp;
-        <a href="#">Yixin Zhu</a><sup>3,4,5,7†</sup>&nbsp;&nbsp;
+        <a href="https://github.com/fi6">Yida Niu</a><sup>1,3,4,5*</sup>&nbsp;&nbsp;
+        <a href="https://chang-xinhai.github.io/">Xinhai Chang</a><sup>1,3,4,5,6*</sup>&nbsp;&nbsp;
+        <a href="https://openreview.net/profile?id=~Xin_Liu72">Xin Liu</a><sup>4</sup>&nbsp;&nbsp;
+        <a href="https://sites.google.com/g.ucla.edu/zyjiao/home">Ziyuan Jiao</a><sup>2,4†</sup>&nbsp;&nbsp;
+        <a href="https://yzhu.io/">Yixin Zhu</a><sup>3,4,5,7†</sup>&nbsp;&nbsp;
     </p>
     <p>
         <sup>1</sup>Institute for AI, Peking University&nbsp;&nbsp;&nbsp;
