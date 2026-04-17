@@ -80,8 +80,8 @@ objects:
     handle_link: link_0
     joint_name: joint_0
     akr_template: "assets/object/Microwave/{object_id}/{robot_name}_{object_id}_0_grasp_{grasp_id:04d}.yml"
-    grasp_ids: [0, 1]
-    goal_angle: [1.57]
+    grasp_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    goal_angle: [1.333, 1.23, 1.074, 0.997]
 
   "11622":
     asset_type: Dishwasher
@@ -90,5 +90,35 @@ objects:
     handle_link: link_0
     joint_name: joint_0
     akr_template: "assets/object/Dishwasher/{object_id}/{robot_name}_{object_id}_0_grasp_{grasp_id:04d}.yml"
-    grasp_ids: [0, 1, 2, 3, 4, 5]
-    goal_angle: [1.57]
+    grasp_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    goal_angle: [0.772, 0.699, 0.571, 0.515]
+
+  "103634":
+    asset_type: TrashCan
+    scale: 0.48385408192053975
+    urdf_path: assets/object/TrashCan/103634/103634_0_scaling.urdf
+    handle_link: link_0
+    joint_name: joint_0
+    akr_template: "assets/object/TrashCan/{object_id}/{robot_name}_{object_id}_0_grasp_{grasp_id:04d}.yml"
+    grasp_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    goal_angle: [1.241, 0.888, 0.761, 0.685]
+
+  "46197":
+    asset_type: Cabinet
+    scale: 0.5113198146209817
+    urdf_path: assets/object/Cabinet/46197/46197_0_scaling.urdf
+    handle_link: link_0
+    joint_name: joint_0
+    akr_template: "assets/object/Cabinet/{object_id}/{robot_name}_{object_id}_0_grasp_{grasp_id:04d}.yml"
+    grasp_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    goal_angle: [1.718, 1.376, 0.946, 0.628]
+
+  "101773":
+    asset_type: Oven
+    scale: 0.7231779244463762
+    urdf_path: assets/object/Oven/101773/101773_0_scaling.urdf
+    handle_link: link_0
+    joint_name: joint_0
+    akr_template: "assets/object/Oven/{object_id}/{robot_name}_{object_id}_0_grasp_{grasp_id:04d}.yml"
+    grasp_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    goal_angle: [1.015, 0.81, 0.697, 0.497]

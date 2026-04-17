@@ -54,6 +54,8 @@ sim = [
     "plan",
     "isaacsim[all,extscache]==5.1.0",
     "numpy==1.26.0",
+    "lightwheel-sdk==1.0.1",
+    "onnxruntime==1.23.2",
 ]
 
 # Train mode: sim + LeRobot with ACT, DP policies
@@ -78,7 +80,6 @@ train = [
     "imageio[ffmpeg]>=2.34.0,<3.0.0",
     "termcolor>=2.4.0,<4.0.0",
     "onnxruntime==1.23.2",
-    "lightwheel-sdk==1.0.1",
     "vuer[all]==0.0.70",
     "qpsolvers==4.8.1",
     "usd-core",
