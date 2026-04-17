@@ -2,10 +2,15 @@
 # =============================================================================
 # run_pipeline.sh — Unified pipeline for the lerobot-arena project.
 #
-# Supports: record, convert, train, eval, debug
+# Supports: plan, record, convert, train, eval, debug
 #
 # Usage:
 #   bash scripts/run_pipeline.sh <mode> [mode-specific args] [overrides...]
+#
+#   plan:
+#     bash scripts/run_pipeline.sh plan <object_id> <scene_name> <split> [overrides...]
+#     e.g.  bash scripts/run_pipeline.sh plan 7221 scene_0_seed_0 train
+#           bash scripts/run_pipeline.sh plan 7221 scene_0_seed_0 test planner.traj.batch_size=16
 #
 #   record:
 #     bash scripts/run_pipeline.sh record <object_name> <scene_name> <num_episodes> [overrides...]
@@ -46,7 +51,7 @@ ISAACLAB_ARENA="$REPO_ROOT/third_party/IsaacLab-Arena"
 # Export env vars so IsaacLab-Arena resolves assets from lerobot-arena
 # ---------------------------------------------------------------------------
 export AUTOMOMA_OBJECT_ROOT="$REPO_ROOT/assets/object"
-export AUTOMOMA_SCENE_ROOT="$REPO_ROOT/assets/scene/infinigen/kitchen_1130"
+export AUTOMOMA_SCENE_ROOT="$REPO_ROOT/assets/scene/infinigen"
 export AUTOMOMA_ROBOT_ROOT="$REPO_ROOT/assets/robot"
 
 # ---------------------------------------------------------------------------
@@ -55,6 +60,7 @@ export AUTOMOMA_ROBOT_ROOT="$REPO_ROOT/assets/robot"
 usage() {
     cat <<'EOF'
 Usage:
+  bash scripts/run_pipeline.sh plan    <object_id> <scene_name> <split> [overrides...]
   bash scripts/run_pipeline.sh record  <object_name> <scene_name> <num_ep>  [overrides...]
   bash scripts/run_pipeline.sh convert <object_name> <scene_name> <num_ep>  [overrides...]
   bash scripts/run_pipeline.sh train   <policy> <object_name> <scene_name> <num_ep> [overrides...]
@@ -62,6 +68,7 @@ Usage:
   bash scripts/run_pipeline.sh debug   <object_name> <scene_name> [overrides...]
 
 Examples:
+  bash scripts/run_pipeline.sh plan 7221 scene_0_seed_0 train
   bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 30
   bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 30 --interpolated 2
   bash scripts/run_pipeline.sh train act microwave_7221 scene_0_seed_0 30 --steps=20000
@@ -100,6 +107,32 @@ run_logged() {
 }
 
 # ---------------------------------------------------------------------------
+# Mode: plan
+# ---------------------------------------------------------------------------
+do_plan() {
+    local object_id="$1"; shift
+    local scene_name="$1"; shift
+    local split="$1"; shift
+
+    setup_log plan "$object_id" "$scene_name"
+
+    local -a cmd=(
+        python scripts/plan.py
+        "scene_name=${scene_name}"
+        "object_id=${object_id}"
+        "mode=${split}"
+        "$@"
+    )
+
+    echo "Command: ${cmd[*]}"
+    echo ""
+
+    pushd "$REPO_ROOT" > /dev/null
+    run_logged "${cmd[@]}"
+    popd > /dev/null
+}
+
+# ---------------------------------------------------------------------------
 # Mode: record
 # ---------------------------------------------------------------------------
 do_record() {
@@ -111,6 +144,30 @@ do_record() {
     local name; name="$(mk_exp_name "$object_name" "$scene_name" "$num_episodes")"
     local traj_file="$REPO_ROOT/data/trajs/summit_franka/${object_name}/${scene_name}/train/traj_data_train.pt"
     local dataset_file="$REPO_ROOT/data/automoma/${name}.hdf5"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --traj_file=*)
+                traj_file="${1#*=}"
+                shift
+                ;;
+            --traj_file)
+                traj_file="$2"
+                shift 2
+                ;;
+            --dataset_file=*)
+                dataset_file="${1#*=}"
+                shift
+                ;;
+            --dataset_file)
+                dataset_file="$2"
+                shift 2
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
 
     setup_log record "$object_name" "$scene_name"
 
@@ -214,16 +271,60 @@ do_convert() {
     local num_episodes="$1"; shift
 
     local name; name="$(mk_exp_name "$object_name" "$scene_name" "$num_episodes")"
+    local data_root="$REPO_ROOT/data/automoma"
+    local hdf5_name="${name}.hdf5"
+    local repo_id="automoma/${name}"
+    local output_dir="$REPO_ROOT/data/lerobot/automoma/${name}"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --data_root=*)
+                data_root="${1#*=}"
+                shift
+                ;;
+            --data_root)
+                data_root="$2"
+                shift 2
+                ;;
+            --hdf5_name=*)
+                hdf5_name="${1#*=}"
+                shift
+                ;;
+            --hdf5_name)
+                hdf5_name="$2"
+                shift 2
+                ;;
+            --repo_id=*)
+                repo_id="${1#*=}"
+                shift
+                ;;
+            --repo_id)
+                repo_id="$2"
+                shift 2
+                ;;
+            --output_dir=*)
+                output_dir="${1#*=}"
+                shift
+                ;;
+            --output_dir)
+                output_dir="$2"
+                shift 2
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
 
     setup_log convert "$object_name" "$scene_name"
 
     local -a cmd=(
         python isaaclab_arena_gr00t/data_utils/convert_hdf5_to_lerobot_v30.py
         --yaml_file isaaclab_arena_gr00t/config/summit_franka_manip_config.yaml
-        --data_root "$REPO_ROOT/data/automoma"
-        --hdf5_name "${name}.hdf5"
-        --repo_id "automoma/${name}"
-        --output_dir "$REPO_ROOT/data/lerobot/automoma/${name}"
+        --data_root "$data_root"
+        --hdf5_name "$hdf5_name"
+        --repo_id "$repo_id"
+        --output_dir "$output_dir"
         "$@"
     )
 
@@ -245,21 +346,68 @@ do_train() {
     local num_episodes="$1"; shift
 
     local name; name="$(mk_exp_name "$object_name" "$scene_name" "$num_episodes")"
+    local dataset_repo_id="$name"
     local dataset_root="$REPO_ROOT/data/lerobot/automoma/${name}"
     local output_dir="$REPO_ROOT/outputs/train/${policy}_${name}"
+    local job_name="${policy}_${name}"
+    local force_overwrite="${FORCE_TRAIN_OVERWRITE:-0}"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dataset.repo_id=*)
+                dataset_repo_id="${1#*=}"
+                shift
+                ;;
+            --dataset.repo_id)
+                dataset_repo_id="$2"
+                shift 2
+                ;;
+            --dataset.root=*)
+                dataset_root="${1#*=}"
+                shift
+                ;;
+            --dataset.root)
+                dataset_root="$2"
+                shift 2
+                ;;
+            --output_dir=*)
+                output_dir="${1#*=}"
+                shift
+                ;;
+            --output_dir)
+                output_dir="$2"
+                shift 2
+                ;;
+            --job_name=*)
+                job_name="${1#*=}"
+                shift
+                ;;
+            --job_name)
+                job_name="$2"
+                shift 2
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
 
     setup_log train "$object_name" "$scene_name"
 
-    # Interactive check for existing output
     if [[ -d "$output_dir" ]]; then
         echo "Warning: Output directory already exists:"
         echo "  $output_dir"
-        read -r -p "Delete and retrain? [y/N] " answer
-        if [[ "${answer,,}" == "y" ]]; then
+        if [[ "$force_overwrite" == "1" ]]; then
             rm -rf "$output_dir"
-            echo "Deleted."
+            echo "Deleted because FORCE_TRAIN_OVERWRITE=1"
         else
-            echo "Keeping existing directory."
+            read -r -p "Delete and retrain? [y/N] " answer
+            if [[ "${answer,,}" == "y" ]]; then
+                rm -rf "$output_dir"
+                echo "Deleted."
+            else
+                echo "Keeping existing directory."
+            fi
         fi
     fi
 
@@ -271,8 +419,8 @@ do_train() {
         --log_freq=50
         --eval_freq=500
         --save_freq=1000
-        --job_name="${policy}_${name}"
-        --dataset.repo_id="$name"
+        --job_name="$job_name"
+        --dataset.repo_id="$dataset_repo_id"
         --dataset.root="$dataset_root"
         --policy.chunk_size=16
         --policy.n_action_steps=16
@@ -305,6 +453,39 @@ do_eval() {
     local name; name="$(mk_exp_name "$object_name" "$scene_name" "$num_episodes")"
     local policy_path="$REPO_ROOT/outputs/train/${policy}_${name}/checkpoints/last/pretrained_model"
     local traj_file="$REPO_ROOT/data/trajs/summit_franka/${object_name}/${scene_name}/test/traj_data_test.pt"
+    local traj_seed="${EVAL_TRAJ_SEED:-42}"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --policy.path=*)
+                policy_path="${1#*=}"
+                shift
+                ;;
+            --policy.path)
+                policy_path="$2"
+                shift 2
+                ;;
+            --traj_file=*)
+                traj_file="${1#*=}"
+                shift
+                ;;
+            --traj_file)
+                traj_file="$2"
+                shift 2
+                ;;
+            --traj_seed=*)
+                traj_seed="${1#*=}"
+                shift
+                ;;
+            --traj_seed)
+                traj_seed="$2"
+                shift 2
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
 
     setup_log eval "$object_name" "$scene_name"
 
@@ -317,13 +498,12 @@ do_eval() {
         echo "Error: eval trajectory file not found: $traj_file" >&2
         local candidate_root="$REPO_ROOT/data/trajs/summit_franka/$object_name/$scene_name"
         if [[ -d "$candidate_root" ]]; then
-            echo "Available test trajectory files under $candidate_root:" >&2
-            find "$candidate_root" -maxdepth 3 -type f -name "traj_data_test.pt" | sort >&2
+            echo "Available trajectory files under $candidate_root:" >&2
+            find "$candidate_root" -maxdepth 3 -type f -name "traj_data_*.pt" | sort >&2
         fi
         exit 1
     fi
 
-    # Build env.kwargs JSON
     local openness_threshold="${OPENNESS_THRESHOLD:-0.3}"
     local proximity_threshold="${PROXIMITY_THRESHOLD:-0.12}"
     local proximity_window_steps="${PROXIMITY_WINDOW_STEPS:-8}"
@@ -338,7 +518,7 @@ do_eval() {
     local debug_record_handle_diagnostics="${DEBUG_RECORD_HANDLE_DIAGNOSTICS:-false}"
     local debug_marker_scale="${DEBUG_MARKER_SCALE:-1.0}"
 
-    local env_kwargs="{\"object_name\": \"${object_name}\", \"scene_name\": \"${scene_name}\", \"object_center\": true, \"mobile_base_relative\": true, \"traj_file\": \"${traj_file}\", \"traj_seed\": 42, \"openness_threshold\": ${openness_threshold}, \"proximity_threshold\": ${proximity_threshold}, \"proximity_window_steps\": ${proximity_window_steps}, \"proximity_required_steps\": ${proximity_required_steps}, \"disable_fingertip_proximity\": ${disable_fingertip_proximity}, \"debug_visualize_handle\": ${debug_visualize_handle}, \"debug_record_handle_diagnostics\": ${debug_record_handle_diagnostics}, \"debug_marker_scale\": ${debug_marker_scale}}"
+    local env_kwargs="{\"object_name\": \"${object_name}\", \"scene_name\": \"${scene_name}\", \"object_center\": true, \"mobile_base_relative\": true, \"traj_file\": \"${traj_file}\", \"traj_seed\": ${traj_seed}, \"openness_threshold\": ${openness_threshold}, \"proximity_threshold\": ${proximity_threshold}, \"proximity_window_steps\": ${proximity_window_steps}, \"proximity_required_steps\": ${proximity_required_steps}, \"disable_fingertip_proximity\": ${disable_fingertip_proximity}, \"debug_visualize_handle\": ${debug_visualize_handle}, \"debug_record_handle_diagnostics\": ${debug_record_handle_diagnostics}, \"debug_marker_scale\": ${debug_marker_scale}}"
 
     local rename_map='{"observation.images.ego_topdown_rgb": "observation.images.ego_topdown", "observation.images.ego_wrist_rgb": "observation.images.ego_wrist", "observation.images.fix_local_rgb": "observation.images.fix_local"}'
 
@@ -383,6 +563,13 @@ do_eval() {
 MODE="$1"; shift
 
 case "$MODE" in
+    plan)
+        require_arg "${1:-}" "object_id"
+        require_arg "${2:-}" "scene_name"
+        require_arg "${3:-}" "split"
+        OBJ_ID="$1"; SCN="$2"; SPLIT="$3"; shift 3
+        do_plan "$OBJ_ID" "$SCN" "$SPLIT" "$@"
+        ;;
     record)
         require_arg "${1:-}" "object_name"
         require_arg "${2:-}" "scene_name"
