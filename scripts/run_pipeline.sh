@@ -51,8 +51,12 @@ ISAACLAB_ARENA="$REPO_ROOT/third_party/IsaacLab-Arena"
 # Export env vars so IsaacLab-Arena resolves assets from lerobot-arena
 # ---------------------------------------------------------------------------
 export AUTOMOMA_OBJECT_ROOT="$REPO_ROOT/assets/object"
-export AUTOMOMA_SCENE_ROOT="$REPO_ROOT/assets/scene/infinigen"
+export AUTOMOMA_SCENE_ROOT="$REPO_ROOT/assets/scene/infinigen/kitchen_1130"
 export AUTOMOMA_ROBOT_ROOT="$REPO_ROOT/assets/robot"
+
+echo "Using AUTOMOMA_OBJECT_ROOT=$AUTOMOMA_OBJECT_ROOT"
+echo "Using AUTOMOMA_SCENE_ROOT=$AUTOMOMA_SCENE_ROOT"
+echo "Using AUTOMOMA_ROBOT_ROOT=$AUTOMOMA_ROBOT_ROOT"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -71,6 +75,7 @@ Examples:
   bash scripts/run_pipeline.sh plan 7221 scene_0_seed_0 train
   bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 30
   bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 30 --interpolated 2
+  bash scripts/run_pipeline.sh convert microwave_7221 scene_0_seed_0 30
   bash scripts/run_pipeline.sh train act microwave_7221 scene_0_seed_0 30 --steps=20000
   bash scripts/run_pipeline.sh eval  act microwave_7221 scene_0_seed_0 30 --eval.n_episodes=50
   bash scripts/run_pipeline.sh debug microwave_7221 scene_0_seed_0 --debug_file path/to/traj_data.pt
