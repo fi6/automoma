@@ -1,5 +1,6 @@
 # Specific to Python Project
 /assets/
+output/
 data/
 data_meta/
 data_ing/
