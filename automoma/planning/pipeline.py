@@ -16,11 +16,10 @@ import numpy as np
 import torch
 from curobo.types.math import Pose
 
-from automoma.core.types import IKResult, TrajResult
+from automoma.core.types import IKResult, TrajResult, aggregate_grasp_goal_results
 from automoma.planning.planner import CuroboPlanner
 from automoma.utils.file_utils import (
     get_grasp_poses,
-    load_ik,
     load_object_from_metadata,
     load_robot_cfg,
     load_traj,
@@ -148,57 +147,52 @@ class PlanningPipeline:
 
             object_Pose = Pose.from_list(self.planner.object_pose)
             default_joint_cfg = {joint_name: 0.0}
+            ik_path = os.path.join(grasp_output, "ik_data.pt")
+            goal_ik_path = os.path.join(grasp_output, "ik_goal_data.pt")
+            grasp_start_iks: List[IKResult] = []
+            grasp_goal_iks: List[IKResult] = []
+            grasp_trajs: List[TrajResult] = []
 
             for goal_angle in goal_angles:
                 # --- IK planning ---
-                ik_path = os.path.join(grasp_output, "ik_data.pt")
-                if resume and os.path.exists(ik_path):
-                    print(f"  IK: loading from cache")
-                    start_ik = load_ik(ik_path)
-                    goal_ik_path = os.path.join(grasp_output, "ik_goal_data.pt")
-                    goal_ik = load_ik(goal_ik_path) if os.path.exists(goal_ik_path) else None
-                else:
-                    # Start IK (closed state)
-                    start_target = get_open_ee_pose(
-                        object_Pose,
-                        grasp_pose,
-                        self.planner.object_urdf,
-                        handle_link,
-                        default_joint_cfg,
-                        default_joint_cfg,
-                    )
-                    start_ik = self.planner.plan_ik(
-                        torch.tensor(start_target.to_list()),
-                        robot_cfg,
-                        plan_cfg={
-                            "joint_cfg": default_joint_cfg,
-                            "enable_collision": self.cfg.get("planner", {}).get("enable_collision", True),
-                        },
-                    )
-                    print(f"  Start IK: {len(start_ik)} solutions")
+                # Start IK (closed state)
+                start_target = get_open_ee_pose(
+                    object_Pose,
+                    grasp_pose,
+                    self.planner.object_urdf,
+                    handle_link,
+                    default_joint_cfg,
+                    default_joint_cfg,
+                )
+                start_ik = self.planner.plan_ik(
+                    torch.tensor(start_target.to_list()),
+                    robot_cfg,
+                    plan_cfg={
+                        "joint_cfg": default_joint_cfg,
+                        "enable_collision": self.cfg.get("planner", {}).get("enable_collision", True),
+                    },
+                )
+                print(f"  Start IK: {len(start_ik)} solutions")
 
-                    # Goal IK (open state)
-                    goal_target = get_open_ee_pose(
-                        object_Pose,
-                        grasp_pose,
-                        self.planner.object_urdf,
-                        handle_link,
-                        {joint_name: goal_angle},
-                        default_joint_cfg,
-                    )
-                    goal_ik = self.planner.plan_ik(
-                        torch.tensor(goal_target.to_list()),
-                        robot_cfg,
-                        plan_cfg={
-                            "joint_cfg": {joint_name: goal_angle},
-                            "enable_collision": self.cfg.get("planner", {}).get("enable_collision", True),
-                        },
-                    )
-                    print(f"  Goal IK: {len(goal_ik)} solutions")
-
-                    save_ik(start_ik, ik_path)
-                    save_ik(goal_ik, os.path.join(grasp_output, "ik_goal_data.pt"))
-                    self.planner.free_cuda_cache()
+                # Goal IK (open state)
+                goal_target = get_open_ee_pose(
+                    object_Pose,
+                    grasp_pose,
+                    self.planner.object_urdf,
+                    handle_link,
+                    {joint_name: goal_angle},
+                    default_joint_cfg,
+                )
+                goal_ik = self.planner.plan_ik(
+                    torch.tensor(goal_target.to_list()),
+                    robot_cfg,
+                    plan_cfg={
+                        "joint_cfg": {joint_name: goal_angle},
+                        "enable_collision": self.cfg.get("planner", {}).get("enable_collision", True),
+                    },
+                )
+                print(f"  Goal IK: {len(goal_ik)} solutions")
+                self.planner.free_cuda_cache()
 
                 if len(start_ik) == 0 or (goal_ik is not None and len(goal_ik) == 0):
                     print(f"  No IK solutions, skipping grasp {g_idx}")
@@ -237,9 +231,24 @@ class PlanningPipeline:
                 )
                 print(f"  TrajOpt filtered: {traj_result.success.sum().item()}/{traj_result.num_samples} ok")
 
-                save_traj(traj_result, final_pt)
-                all_raw.append(traj_result)
+                grasp_start_iks.append(start_ik)
+                grasp_goal_iks.append(goal_ik)
+                grasp_trajs.append(traj_result)
                 traj_planner.free_cuda_cache()
+
+            if not grasp_trajs:
+                print(f"  No valid trajectories for grasp {g_idx}, skipping save")
+                continue
+
+            merged_start_ik, merged_goal_ik, merged_traj = aggregate_grasp_goal_results(
+                grasp_start_iks,
+                grasp_goal_iks,
+                grasp_trajs,
+            )
+            save_ik(merged_start_ik, ik_path)
+            save_ik(merged_goal_ik, goal_ik_path)
+            save_traj(merged_traj, final_pt)
+            all_raw.append(merged_traj)
 
         # ─── merge + 12D conversion ──────────────────────────────────────
         if not all_raw:

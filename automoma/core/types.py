@@ -212,3 +212,19 @@ class PlanResult:
     stages: List[StageType]
     ik_results: List[IKResult]
     traj_results: List[TrajResult]
+
+
+def aggregate_grasp_goal_results(
+    start_ik_results: List[IKResult],
+    goal_ik_results: List[IKResult],
+    traj_results: List[TrajResult],
+) -> tuple[IKResult, IKResult, TrajResult]:
+    """Aggregate all per-goal-angle results for one grasp into the existing file formats."""
+    if not start_ik_results or not goal_ik_results or not traj_results:
+        raise ValueError("Cannot aggregate an empty grasp result set")
+
+    return (
+        IKResult.cat(start_ik_results),
+        IKResult.cat(goal_ik_results),
+        TrajResult.cat(traj_results),
+    )
