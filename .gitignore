@@ -3,10 +3,12 @@ assets/
 outputs/
 tests/
 data/
+logs/
 
 # agents
 .claude/
 .codex/
+docs/superpowers
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
