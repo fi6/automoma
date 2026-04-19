@@ -59,10 +59,10 @@ Whole-body mobile manipulation requires robots to coordinate mobile base and arm
 - **Imitation Learning Ready**: LeRobot-compatible dataset format
 
 ## News
-Updates
-[2026-04-18] Release dataset [zarr-100k](https://huggingface.co/datasets/automoma/automoma-500k/tree/zarr-100k)!
-[2026-04-09] AutoMoMa has been selected as a highlight paper!
-[2026-01] AutoMoMa accepted to CVPR 2026!
+
+- [2026-04-18] Release dataset [zarr-100k](https://huggingface.co/datasets/automoma/automoma-500k/tree/zarr-100k)!
+- [2026-04-09] AutoMoMa has been selected as a highlight paper!
+- [2026-01] AutoMoMa accepted to CVPR 2026!
 
 ## Installation
 
