@@ -443,8 +443,6 @@ do_train() {
         --job_name="$job_name"
         --dataset.repo_id="$dataset_repo_id"
         --dataset.root="$dataset_root"
-        --policy.chunk_size=16
-        --policy.n_action_steps=16
         --policy.optimizer_lr=1e-4
         --policy.push_to_hub=false
         --policy.device=cuda
@@ -453,8 +451,22 @@ do_train() {
         --dataset.preload=true
         --dataset.preload_cache=true
         --dataset.filter_features_by_policy=true
-        "$@"
     )
+
+    if [[ "$policy" == "diffusion" ]]; then
+        cmd+=(
+            --policy.horizon=16
+            --policy.n_action_steps=16
+            --policy.n_obs_steps=2
+        )
+    else
+        cmd+=(
+            --policy.chunk_size=16
+            --policy.n_action_steps=16
+        )
+    fi
+
+    cmd+=("$@")
 
     echo "Command: ${cmd[*]}"
     echo ""
