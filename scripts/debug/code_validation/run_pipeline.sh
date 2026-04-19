@@ -96,15 +96,8 @@ plan_until_target() {
                 echo "Error: ${split} planning did not reach target after ${PLAN_MAX_ROUNDS} rounds" >&2
                 return 1
             fi
-            local backup_json
-            backup_json=$(python "$TRAJ_UTIL" backup "$traj_file")
-            local backup_path
-            backup_path=$(printf '%s' "$backup_json" | python -c 'import sys,json; print(json.load(sys.stdin)["backup"])')
+            warn_skip "plan(${split}) will append into existing per-grasp and merged trajectory files in $(dirname "$traj_file") during this round"
             run_cmd "bash '$RUN_PIPELINE' plan '$OBJECT_ID' '$SCENE_NAME' '$split' $PLAN_EXTRA_ARGS"
-            local new_path="$traj_file"
-            local merged_path="${traj_file}.merged"
-            python "$TRAJ_UTIL" merge "$merged_path" "$backup_path" "$new_path" >/dev/null
-            mv "$merged_path" "$traj_file"
             round=$((round + 1))
         else
             run_cmd "bash '$RUN_PIPELINE' plan '$OBJECT_ID' '$SCENE_NAME' '$split' $PLAN_EXTRA_ARGS"
