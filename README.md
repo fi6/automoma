@@ -68,25 +68,84 @@ Whole-body mobile manipulation requires robots to coordinate mobile base and arm
 - NVIDIA GPU with CUDA support
 - Linux (Ubuntu 22.04 / 24.04)
 - Python 3.11
-- CUDA 12.1+ (for GPU acceleration)
+- CUDA 12.8 recommended (for GPU acceleration)
 
-### Quick Setup
+### Installation Steps
 
+**1) Create and activate conda environment**
 ```bash
-# 1. Create and activate conda environment
 conda create -y -n automoma python=3.11
 conda activate automoma
+```
 
-# 2. Install AutoMoMa with desired mode
-pip install -e ".[dev]"   # dev = train + dev tools (recommended)
-pip install -e ".[train]" # train mode (sim + LeRobot)
-pip install -e ".[sim]"  # sim mode (plan + IsaacLab)
-pip install -e ".[plan]"  # plan mode only (curobo planning)
+**2) Install dependencies (choose A/B/C)**
 
-# 3. For sim/train/dev modes: one-time setup to auto-configure environment
-# (requires Isaac Sim 5.1.0 installed - see below)
+**A) Plan-only dependencies (curobo)**
+```bash
+# Initialize submodules (once)
+git submodule update --init --recursive third_party/curobo
+
+# Optional but recommended: faster builds
+conda install -c conda-forge ninja
+
+# CUDA toolkit for curobo build (nvcc)
+conda install cuda-nvcc=12.8.* -c nvidia
+export CUDA_HOME=$CONDA_PREFIX
+export PATH=$CUDA_HOME/bin:$PATH
+
+# Build/install curobo
+pip install -e "./third_party/curobo [isaacsim]" --no-build-isolation
+```
+
+**B) Sim dependencies (curobo + Isaac Sim + IsaacLab)**
+```bash
+# Initialize submodules (once)
+git submodule update --init --recursive third_party/curobo third_party/IsaacLab-Arena
+
+# Optional but recommended: faster builds
+conda install -c conda-forge ninja
+
+# CUDA toolkit for curobo build (nvcc)
+conda install cuda-nvcc=12.8.* -c nvidia
+export CUDA_HOME=$CONDA_PREFIX
+export PATH=$CUDA_HOME/bin:$PATH
+
+# Build/install curobo
+pip install -e "./third_party/curobo [isaacsim]" --no-build-isolation
+
+# Isaac Sim 5.1.0 (recommended: pip install), then link into IsaacLab
+pip install "isaacsim[all,extscache]==5.1.0" --extra-index-url https://pypi.nvidia.com
+
+# Create link for IsaacLab (pip default path)
+cd third_party/IsaacLab-Arena/submodules/IsaacLab
+ln -sf "$CONDA_PREFIX/lib/python3.11/site-packages/isaacsim" _isaac_sim
+# If Isaac Sim is installed elsewhere, update the path above accordingly.
+
+# Install IsaacLab + Arena
+./isaaclab.sh -i
+pip install -e ./third_party/IsaacLab-Arena
+
+# Auto-configure environment hooks
 automoma install-hooks
 ```
+
+**C) Train-only dependencies (no sim, no curobo)**
+```bash
+# Initialize submodules (once)
+git submodule update --init --recursive third_party/lerobot
+```
+
+**3) Install AutoMoMa (choose your mode)**
+```bash
+pip install -e ".[plan]"   # plan-only
+pip install -e ".[sim]"    # sim
+pip install -e ".[train]"  # train
+pip install -e ".[dev]"    # dev
+```
+
+**Environment Notes**
+- `automoma install-hooks` sets env vars on `conda activate` (no manual sourcing).
+- Verify setup with: `automoma check`
 
 ### Mode Dependencies
 
@@ -96,49 +155,6 @@ automoma install-hooks
 | **sim** | plan + Isaac Sim 5.1.0 + IsaacLab + IsaacLab-Arena |
 | **train** | sim + LeRobot with ACT, DP, GR00T, etc. |
 | **dev** | train + development tools (same as train for now) |
-
-### Manual Installation Steps
-
-**For plan mode only:**
-```bash
-# Install curobo (requires CUDA toolkit - see CUDA Requirement below)
-pip install -e "./third_party/curobo [isaacsim]" --no-build-isolation
-```
-
-**For sim/train/dev modes (requires Isaac Sim 5.1.0):**
-
-1. Download and install Isaac Sim 5.1.0 from NVIDIA
-2. Create symlink:
-   ```bash
-   cd third_party/IsaacLab-Arena/submodules/IsaacLab
-   ln -sf /path/to/isaac-sim-5.1.0 _isaac_sim
-   ```
-3. Install IsaacLab:
-   ```bash
-   ./isaaclab.sh -i
-   pip install -e ./third_party/IsaacLab-Arena
-   ```
-4. Run `automoma install-hooks` to auto-configure environment
-
-### Environment Variables
-
-After running `automoma install-hooks`, environment variables are automatically set when you `conda activate automoma`. No manual sourcing required.
-
-To check environment status:
-```bash
-automoma check
-```
-
-### CUDA Requirement for Plan Mode
-
-**IMPORTANT**: Plan mode requires CUDA toolkit to be installed and `CUDA_HOME` set for building curobo's CUDA extensions.
-
-If needed, install via conda:
-```bash
-conda install cuda-nvcc=12.6.* -c nvidia
-export CUDA_HOME=$CONDA_PREFIX
-pip install -e "./third_party/curobo [isaacsim]" --no-build-isolation
-```
 
 ### Training a Policy
 
@@ -156,16 +172,14 @@ lerobot-train \
     --output_dir=/path/to/outputs/train/act_example
 ```
 
-### Submodule Initialization
-
-Before installing packages that depend on submodules:
-```bash
-git submodule update --init --recursive third_party/curobo third_party/lerobot third_party/IsaacLab-Arena
-```
-
 ### Note
 
 If you encounter `ValueError: mutable default` errors when importing curobo, the included patches in `third_party/curobo/src/curobo/rollout/rollout_base.py` and `third_party/curobo/src/curobo/util/sample_lib.py` fix this for Python 3.11+.
+
+If you need to clean curobo build artifacts before rebuilding, use:
+```bash
+./scripts/clean_curobo_build.sh
+```
 
 ## Quick Start
 
