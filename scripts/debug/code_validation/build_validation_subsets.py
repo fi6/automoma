@@ -4,51 +4,11 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import shutil
 from pathlib import Path
 
+from lerobot.datasets.dataset_tools import split_dataset
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
-
-
-def copy_subset(dataset: LeRobotDataset, indices: list[int], repo_id: str, root: Path) -> None:
-    root.mkdir(parents=True, exist_ok=True)
-    selected = set(indices)
-    new_dataset = LeRobotDataset.create(
-        repo_id=repo_id,
-        fps=int(dataset.fps),
-        root=root,
-        robot_type=dataset.meta.robot_type,
-        features=dataset.meta.info["features"],
-        use_videos=len(dataset.meta.video_keys) > 0,
-    )
-
-    prev_episode_index = None
-    wrote_any = False
-    for frame_idx in range(len(dataset)):
-        frame = dataset[frame_idx]
-        episode_index = int(frame["episode_index"].item())
-        if episode_index not in selected:
-            continue
-
-        if prev_episode_index is None:
-            prev_episode_index = episode_index
-        elif episode_index != prev_episode_index:
-            new_dataset.save_episode()
-            prev_episode_index = episode_index
-
-        new_frame = {}
-        for key, value in frame.items():
-            if key in ("task_index", "timestamp", "episode_index", "frame_index", "index", "task"):
-                continue
-            if hasattr(value, "dim") and value.dim() == 0:
-                value = value.unsqueeze(0)
-            new_frame[key] = value
-        new_frame["task"] = frame["task"]
-        new_dataset.add_frame(new_frame)
-        wrote_any = True
-
-    if wrote_any:
-        new_dataset.save_episode()
-    new_dataset.finalize()
 
 
 def main() -> int:
@@ -84,7 +44,10 @@ def main() -> int:
         indices = ordering[:size]
         subset_name = f"{args.prefix}-{size}"
         subset_root = output_root / subset_name
-        copy_subset(dataset, indices, subset_name, subset_root)
+        if subset_root.exists():
+            shutil.rmtree(subset_root)
+        split_dataset(dataset, {subset_name: indices}, output_dir=output_root)
+
         subset_manifest = {
             "size": size,
             "indices": indices,
@@ -93,9 +56,9 @@ def main() -> int:
         }
         manifest["subsets"][str(size)] = subset_manifest
         (subset_root / "selected_episodes.json").write_text(json.dumps(subset_manifest, indent=2), encoding="utf-8")
+        (output_root / "subset_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
-    (output_root / "subset_manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
-    print(json.dumps(manifest, indent=2))
+    print(f"Built {len(manifest['subsets'])} subsets under {output_root}")
     return 0
 
 
