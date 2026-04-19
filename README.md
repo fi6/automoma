@@ -136,6 +136,11 @@ automoma install-hooks
 ```bash
 # Initialize submodules (once)
 git submodule update --init --recursive third_party/lerobot
+
+# Install LeRobot
+cd third_party/lerobot
+pip install -e .
+cd ../..
 ```
 
 **3) Install AutoMoMa (choose your mode)**

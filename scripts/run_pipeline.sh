@@ -451,6 +451,7 @@ do_train() {
         --dataset.preload=true
         --dataset.preload_cache=true
         --dataset.filter_features_by_policy=true
+        --dataset.video_backend=pyav
     )
 
     if [[ "$policy" == "diffusion" ]]; then
