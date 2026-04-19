@@ -1,6 +1,6 @@
 <h1 align="center">Scalable Trajectory Generation for Whole-Body Mobile Manipulation</h1>
 
-<h3 align="center">CVPR 2026</h3>
+<h3 align="center">CVPR 2026 Highlight</h3>
 
 <div align="center">
     <p>
@@ -59,7 +59,10 @@ Whole-body mobile manipulation requires robots to coordinate mobile base and arm
 - **Imitation Learning Ready**: LeRobot-compatible dataset format
 
 ## News
-* **2026-01:** AutoMoMa accepted to **CVPR 2026**
+Updates
+[2026-04-18] Release dataset [zarr-100k](https://huggingface.co/datasets/automoma/automoma-500k/tree/zarr-100k)!
+[2026-04-09] AutoMoMa has been selected as a highlight paper!
+[2026-01] AutoMoMa accepted to CVPR 2026!
 
 ## Installation
 
@@ -135,7 +138,7 @@ automoma check
 
 If needed, install via conda:
 ```bash
-conda install cuda-nvcc=12.6.* -c nvidia
+conda install cuda-nvcc=12.8.* -c nvidia
 export CUDA_HOME=$CONDA_PREFIX
 pip install -e "./third_party/curobo [isaacsim]" --no-build-isolation
 ```

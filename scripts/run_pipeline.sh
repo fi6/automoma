@@ -65,19 +65,19 @@ usage() {
     cat <<'EOF'
 Usage:
   bash scripts/run_pipeline.sh plan    <object_id> <scene_name> <split> [overrides...]
-  bash scripts/run_pipeline.sh record  <object_name> <scene_name> <num_ep>  [overrides...]
+  bash scripts/run_pipeline.sh record  <object_name> <scene_name> <num_ep>  [--headless|--no-headless] [overrides...]
   bash scripts/run_pipeline.sh convert <object_name> <scene_name> <num_ep>  [overrides...]
   bash scripts/run_pipeline.sh train   <policy> <object_name> <scene_name> <num_ep> [overrides...]
-  bash scripts/run_pipeline.sh eval    <policy> <object_name> <scene_name> <num_ep> [overrides...]
+  bash scripts/run_pipeline.sh eval    <policy> <object_name> <scene_name> <num_ep> [--headless|--no-headless] [overrides...]
   bash scripts/run_pipeline.sh debug   <object_name> <scene_name> [overrides...]
 
 Examples:
   bash scripts/run_pipeline.sh plan 7221 scene_0_seed_0 train
-  bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 30
-  bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 30 --interpolated 2
+  bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 30 --headless
+  bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 30 --headless --interpolated 2
   bash scripts/run_pipeline.sh convert microwave_7221 scene_0_seed_0 30
   bash scripts/run_pipeline.sh train act microwave_7221 scene_0_seed_0 30 --steps=20000
-  bash scripts/run_pipeline.sh eval  act microwave_7221 scene_0_seed_0 30 --eval.n_episodes=50
+  bash scripts/run_pipeline.sh eval  act microwave_7221 scene_0_seed_0 30 --headless --eval.n_episodes=50
   bash scripts/run_pipeline.sh debug microwave_7221 scene_0_seed_0 --debug_file path/to/traj_data.pt
 EOF
     exit 1
@@ -149,9 +149,18 @@ do_record() {
     local name; name="$(mk_exp_name "$object_name" "$scene_name" "$num_episodes")"
     local traj_file="$REPO_ROOT/data/trajs/summit_franka/${object_name}/${scene_name}/train/traj_data_train.pt"
     local dataset_file="$REPO_ROOT/data/automoma/${name}.hdf5"
+    local headless_flag=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --headless)
+                headless_flag="--headless"
+                shift
+                ;;
+            --no-headless)
+                headless_flag=""
+                shift
+                ;;
             --traj_file=*)
                 traj_file="${1#*=}"
                 shift
@@ -177,7 +186,7 @@ do_record() {
     setup_log record "$object_name" "$scene_name"
 
     # Build command.  Overrides go before the subcommand so argparse
-    # treats them as top-level flags (e.g. --interpolated, --device).
+    # treats them as top-level flags (e.g. --headless, --interpolated, --device).
     local -a cmd=(
         python isaaclab_arena/scripts/record_automoma_demos.py
         --enable_cameras
@@ -185,6 +194,13 @@ do_record() {
         --traj_file "$traj_file"
         --dataset_file "$dataset_file"
         --num_episodes "$num_episodes"
+    )
+
+    if [[ -n "$headless_flag" ]]; then
+        cmd+=("$headless_flag")
+    fi
+
+    cmd+=(
         "$@"                              # ← overrides (before subcommand)
         summit_franka_open_door           # subcommand
         --object_name "$object_name"
@@ -459,9 +475,18 @@ do_eval() {
     local policy_path="$REPO_ROOT/outputs/train/${policy}_${name}/checkpoints/last/pretrained_model"
     local traj_file="$REPO_ROOT/data/trajs/summit_franka/${object_name}/${scene_name}/test/traj_data_test.pt"
     local traj_seed="${EVAL_TRAJ_SEED:-42}"
+    local env_headless="false"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --headless)
+                env_headless="true"
+                shift
+                ;;
+            --no-headless)
+                env_headless="false"
+                shift
+                ;;
             --policy.path=*)
                 policy_path="${1#*=}"
                 shift
@@ -534,7 +559,7 @@ do_eval() {
         --env.type=isaaclab_arena
         --env.hub_path="$ISAACLAB_ARENA/isaaclab-arena-envs"
         --env.environment=summit_franka_open_door_eval
-        --env.headless=false
+        "--env.headless=${env_headless}"
         --env.enable_cameras=true
         --env.state_keys=joint_pos
         --env.camera_keys=ego_topdown_rgb,ego_wrist_rgb,fix_local_rgb

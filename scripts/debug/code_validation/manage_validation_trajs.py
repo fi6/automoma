@@ -20,6 +20,8 @@ TRAJ_KEYS = [
     "traj_success",
 ]
 
+REQUIRED_TRAJ_KEYS = tuple(TRAJ_KEYS)
+
 
 def load_traj(path: Path) -> dict[str, Any]:
     return torch.load(path, weights_only=False)
@@ -38,16 +40,68 @@ def count_stats(data: dict[str, Any]) -> dict[str, int]:
     return {"total": total, "successful": successful}
 
 
-def merge_payloads(payloads: list[dict[str, Any]]) -> dict[str, Any]:
+def shape_summary(data: dict[str, Any]) -> dict[str, list[int]]:
+    summary: dict[str, list[int]] = {}
+    for key in TRAJ_KEYS:
+        value = data.get(key)
+        if hasattr(value, "shape"):
+            summary[key] = list(value.shape)
+    return summary
+
+
+def validate_payload(data: dict[str, Any], *, label: str) -> None:
+    missing = [key for key in REQUIRED_TRAJ_KEYS if key not in data]
+    if missing:
+        raise ValueError(f"{label} is missing required trajectory keys: {missing}")
+
+    for key in TRAJ_KEYS:
+        value = data[key]
+        if not isinstance(value, torch.Tensor):
+            raise TypeError(f"{label} key '{key}' must be a torch.Tensor, got {type(value).__name__}")
+
+
+def validate_merge_compatibility(payloads: list[dict[str, Any]], labels: list[str]) -> None:
+    if len(payloads) != len(labels):
+        raise ValueError("Payload/label length mismatch")
+    if not payloads:
+        raise ValueError("No payloads to validate")
+
+    for payload, label in zip(payloads, labels):
+        validate_payload(payload, label=label)
+
+    reference = payloads[0]
+    reference_label = labels[0]
+    for payload, label in zip(payloads[1:], labels[1:]):
+        for key in TRAJ_KEYS:
+            ref_tensor = reference[key]
+            tensor = payload[key]
+            if ref_tensor.ndim != tensor.ndim:
+                raise ValueError(
+                    f"Cannot merge {label} into {reference_label}: key '{key}' rank mismatch "
+                    f"{tensor.ndim} != {ref_tensor.ndim}"
+                )
+            if ref_tensor.shape[1:] != tensor.shape[1:]:
+                raise ValueError(
+                    f"Cannot merge {label} into {reference_label}: key '{key}' shape mismatch "
+                    f"{tuple(tensor.shape)} vs {tuple(ref_tensor.shape)}"
+                )
+            if ref_tensor.dtype != tensor.dtype:
+                raise ValueError(
+                    f"Cannot merge {label} into {reference_label}: key '{key}' dtype mismatch "
+                    f"{tensor.dtype} vs {ref_tensor.dtype}"
+                )
+
+
+def merge_payloads(payloads: list[dict[str, Any]], labels: list[str] | None = None) -> dict[str, Any]:
     if not payloads:
         raise ValueError("No payloads to merge")
 
+    labels = labels or [f"payload[{idx}]" for idx in range(len(payloads))]
+    validate_merge_compatibility(payloads, labels)
+
     merged: dict[str, Any] = {}
     for key in TRAJ_KEYS:
-        values = [payload[key] for payload in payloads if key in payload]
-        if not values:
-            continue
-        merged[key] = torch.cat(values, dim=0)
+        merged[key] = torch.cat([payload[key] for payload in payloads], dim=0)
     return merged
 
 
@@ -88,14 +142,18 @@ def cmd_merge(args: argparse.Namespace) -> int:
     output = Path(args.output)
     input_paths = [Path(p) for p in args.inputs]
     payloads = [load_traj(path) for path in input_paths]
-    merged = merge_payloads(payloads)
+    labels = [str(path) for path in input_paths]
+    merged = merge_payloads(payloads, labels)
     output.parent.mkdir(parents=True, exist_ok=True)
     torch.save(merged, output)
 
     report = {
         "output": str(output),
         "inputs": [str(p) for p in input_paths],
+        "input_stats": {str(path): count_stats(payload) for path, payload in zip(input_paths, payloads)},
+        "input_shapes": {str(path): shape_summary(payload) for path, payload in zip(input_paths, payloads)},
         "stats": count_stats(merged),
+        "shapes": shape_summary(merged),
     }
     print(json.dumps(report, indent=2))
     return 0

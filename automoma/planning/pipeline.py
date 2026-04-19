@@ -17,6 +17,7 @@ import torch
 from curobo.types.math import Pose
 
 from automoma.core.types import IKResult, TrajResult, aggregate_grasp_goal_results
+from automoma.planning.io_utils import PlanningIO
 from automoma.planning.planner import CuroboPlanner
 from automoma.utils.file_utils import (
     get_grasp_poses,
@@ -24,8 +25,6 @@ from automoma.utils.file_utils import (
     load_robot_cfg,
     load_traj,
     process_robot_cfg,
-    save_ik,
-    save_traj,
 )
 from automoma.utils.math_utils import get_open_ee_pose, stack_iks_angle
 
@@ -44,6 +43,7 @@ class PlanningPipeline:
 
         planner_cfg = cfg.get("planner", {})
         self.planner = CuroboPlanner(planner_cfg)
+        self.planning_io = PlanningIO()
 
         self.output_cfg = planner_cfg.get("output", {})
 
@@ -245,9 +245,9 @@ class PlanningPipeline:
                 grasp_goal_iks,
                 grasp_trajs,
             )
-            save_ik(merged_start_ik, ik_path)
-            save_ik(merged_goal_ik, goal_ik_path)
-            save_traj(merged_traj, final_pt)
+            merged_start_ik = self.planning_io.save_ik(merged_start_ik, ik_path)
+            merged_goal_ik = self.planning_io.save_ik(merged_goal_ik, goal_ik_path)
+            merged_traj = self.planning_io.save_traj(merged_traj, final_pt)
             all_raw.append(merged_traj)
 
         # ─── merge + 12D conversion ──────────────────────────────────────
@@ -261,8 +261,7 @@ class PlanningPipeline:
 
         converted = self._convert_to_12d(merged)
         out_path = os.path.join(output_dir, f"traj_data_{mode}.pt")
-        torch.save(converted, out_path)
-        print(f"Saved: {out_path}")
+        converted = self.planning_io.save_converted(converted, out_path)
         self._verify(converted)
         return out_path
 
