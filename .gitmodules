@@ -4,6 +4,7 @@
 [submodule "third_party/lerobot"]
 	path = third_party/lerobot
 	url = https://github.com/chang-xinhai/lerobot.git
+	branch = sync
 [submodule "third_party/IsaacLab-Arena"]
 	path = third_party/IsaacLab-Arena
 	url = https://github.com/chang-xinhai/IsaacLab-Arena.git
