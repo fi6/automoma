@@ -70,14 +70,14 @@ Whole-body mobile manipulation requires robots to coordinate mobile base and arm
 
 - NVIDIA GPU with CUDA support
 - Linux (Ubuntu 22.04 / 24.04)
-- Python 3.11
+- Python 3.12
 - CUDA 12.8 recommended (for GPU acceleration)
 
 ### Installation Steps
 
 **1) Create and activate conda environment**
 ```bash
-conda create -y -n automoma python=3.11
+conda create -y -n automoma python=3.12
 conda activate automoma
 ```
 
@@ -121,7 +121,7 @@ pip install "isaacsim[all,extscache]==5.1.0" --extra-index-url https://pypi.nvid
 
 # Create link for IsaacLab (pip default path)
 cd third_party/IsaacLab-Arena/submodules/IsaacLab
-ln -sf "$CONDA_PREFIX/lib/python3.11/site-packages/isaacsim" _isaac_sim
+ln -sf "$CONDA_PREFIX/lib/python3.12/site-packages/isaacsim" _isaac_sim
 # If Isaac Sim is installed elsewhere, update the path above accordingly.
 
 # Install IsaacLab + Arena
@@ -182,7 +182,7 @@ lerobot-train \
 
 ### Note
 
-If you encounter `ValueError: mutable default` errors when importing curobo, the included patches in `third_party/curobo/src/curobo/rollout/rollout_base.py` and `third_party/curobo/src/curobo/util/sample_lib.py` fix this for Python 3.11+.
+If you encounter `ValueError: mutable default` errors when importing curobo, the included patches in `third_party/curobo/src/curobo/rollout/rollout_base.py` and `third_party/curobo/src/curobo/util/sample_lib.py` fix this for Python 3.12+.
 
 If you need to clean curobo build artifacts before rebuilding, use:
 ```bash

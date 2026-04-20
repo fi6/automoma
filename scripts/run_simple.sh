@@ -82,7 +82,7 @@ python isaaclab_arena_gr00t/data_utils/convert_hdf5_to_lerobot_v30.py \
 # =============================================================================
 python scripts/prepare_object.py --object_type Microwave --object_id 7221
 bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 100 --set_state
-bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 100 --headless
+bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 10 --headless
 bash scripts/run_pipeline.sh record microwave_7221 scene_1_seed_1 10 --interpolated 2
 bash scripts/run_pipeline.sh convert microwave_7221 scene_0_seed_0 10
 
@@ -109,3 +109,5 @@ lerobot-dataset-viz \
     --root data/lerobot/automoma/summit_franka_open-dishwasher_11622-scene_0_seed_0-30 \
     --episode-index 0 \
     --video-backend pyav
+
+python scripts/automoma_dataset_viz.py data/automoma/summit_franka_open-microwave_7221-scene_0_seed_0-10.hdf5

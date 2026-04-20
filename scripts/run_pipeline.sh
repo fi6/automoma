@@ -475,9 +475,6 @@ do_train() {
         --policy.device=cuda
         --wandb.enable=true
         --output_dir="$output_dir"
-        --dataset.preload=true
-        --dataset.preload_cache=true
-        --dataset.filter_features_by_policy=true
         --dataset.video_backend=pyav
     )
 

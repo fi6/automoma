@@ -66,6 +66,7 @@ outputs/
 - When behavior changes, describe which pipeline stage is affected: planning only, replay/eval only, or cross-system alignment.
 - Prefer targeted fixes over broad cleanup.
 - Treat generated data formats and intermediate `.pt` / `.hdf5` expectations as interfaces, not incidental implementation details.
+- If creating or amending commits, commit messages must follow Conventional Commits (for example: `feat(planning): ...`, `fix(scripts): ...`, `docs(readme): ...`).
 
 ## Third-Party Boundary
 - Do not modify anything under `third_party/` without explicit user confirmation first.
