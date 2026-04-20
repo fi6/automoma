@@ -225,12 +225,37 @@ bash scripts/run_pipeline.sh record microwave_7221 scene_1_seed_1 30 --interpola
 # Convert recorded trajectories to LeRobot dataset
 bash scripts/run_pipeline.sh convert microwave_7221 scene_0_seed_0 30
 
-# Visualize dataset
+# Visualize converted LeRobot dataset
 lerobot-dataset-viz \
     --repo-id automoma/summit_franka_open-microwave_7221-scene_0_seed_0-30 \
     --root data/lerobot/automoma/summit_franka_open-microwave_7221-scene_0_seed_0-30 \
     --episode-index 0
 ```
+
+### 3.1 Visualize Raw AutoMoMa HDF5
+
+Use `scripts/automoma_dataset_viz.py` to inspect raw AutoMoMa HDF5 recordings directly in an interactive Rerun viewer.
+
+```bash
+# Preview a small dataset (all demos become tabs)
+python scripts/automoma_dataset_viz.py \
+    data/automoma/summit_franka_open-microwave_7221-scene_0_seed_0-10.hdf5
+
+# Preview specific demos only
+python scripts/automoma_dataset_viz.py \
+    data/automoma/summit_franka_open-microwave_7221-scene_0_seed_0-10.hdf5 \
+    --demo-index 1,3-4
+
+# Large datasets: load only one demo for fast inspection
+python scripts/automoma_dataset_viz.py \
+    data/automoma/code_validation/code_validation-microwave_7221-scene_0_seed_0-6400-set_state.hdf5 \
+    --demo-index 123
+```
+
+Notes:
+- `--demo-index` accepts a single demo id like `123` or a subset like `1,3-4`.
+- If the dataset contains many demos and `--demo-index` is omitted, the viewer auto-limits to `demo_0` for fast startup.
+- The viewer shows RGB/depth cameras, action/state time series, and keeps playback on `frame_index`.
 
 ### 4. GUI Recording (with Display)
 
