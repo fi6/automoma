@@ -21,8 +21,8 @@
 #     bash scripts/run_pipeline.sh convert <object_name> <scene_name> <num_episodes> [overrides...]
 #
 #   train:
-#     bash scripts/run_pipeline.sh train <policy> <object_name> <scene_name> <num_episodes> [overrides...]
-#     e.g.  bash scripts/run_pipeline.sh train act microwave_7221 scene_0_seed_0 30 --steps=20000
+#     bash scripts/run_pipeline.sh train <policy> <object_name> <scene_name> <num_episodes> [--steps=N] [--batch_size=N] [overrides...]
+#     e.g.  bash scripts/run_pipeline.sh train act microwave_7221 scene_0_seed_0 30 --steps=20000 --batch_size=128
 #
 #   eval:
 #     bash scripts/run_pipeline.sh eval <policy> <object_name> <scene_name> <num_episodes> [overrides...]
@@ -67,7 +67,7 @@ Usage:
   bash scripts/run_pipeline.sh plan    <object_id> <scene_name> <split> [overrides...]
   bash scripts/run_pipeline.sh record  <object_name> <scene_name> <num_ep>  [--headless|--no-headless] [overrides...]
   bash scripts/run_pipeline.sh convert <object_name> <scene_name> <num_ep>  [overrides...]
-  bash scripts/run_pipeline.sh train   <policy> <object_name> <scene_name> <num_ep> [overrides...]
+  bash scripts/run_pipeline.sh train   <policy> <object_name> <scene_name> <num_ep> [--steps=N] [--batch_size=N] [overrides...]
   bash scripts/run_pipeline.sh eval    <policy> <object_name> <scene_name> <num_ep> [--headless|--no-headless] [overrides...]
   bash scripts/run_pipeline.sh debug   <object_name> <scene_name> [overrides...]
 
@@ -372,6 +372,8 @@ do_train() {
     local output_dir="$REPO_ROOT/outputs/train/${policy}_${name}"
     local job_name="${policy}_${name}"
     local force_overwrite="${FORCE_TRAIN_OVERWRITE:-0}"
+    local train_steps="100000"
+    local batch_size="128"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -407,6 +409,22 @@ do_train() {
                 job_name="$2"
                 shift 2
                 ;;
+            --steps=*)
+                train_steps="${1#*=}"
+                shift
+                ;;
+            --steps)
+                train_steps="$2"
+                shift 2
+                ;;
+            --batch_size=*)
+                batch_size="${1#*=}"
+                shift
+                ;;
+            --batch_size)
+                batch_size="$2"
+                shift 2
+                ;;
             *)
                 break
                 ;;
@@ -432,14 +450,23 @@ do_train() {
         fi
     fi
 
+    local eval_freq=$(( train_steps / 100 ))
+    local save_freq=$(( train_steps / 10 ))
+    if (( eval_freq < 1 )); then
+        eval_freq=1
+    fi
+    if (( save_freq < 1 )); then
+        save_freq=1
+    fi
+
     local -a cmd=(
         lerobot-train
         --policy.type="$policy"
-        --batch_size=128
-        --steps=10000
+        --batch_size="$batch_size"
+        --steps="$train_steps"
         --log_freq=50
-        --eval_freq=500
-        --save_freq=1000
+        --eval_freq="$eval_freq"
+        --save_freq="$save_freq"
         --job_name="$job_name"
         --dataset.repo_id="$dataset_repo_id"
         --dataset.root="$dataset_root"

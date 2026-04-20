@@ -22,6 +22,7 @@ RECORD_EXTRA_ARGS="${RECORD_EXTRA_ARGS:---headless}"
 SUBSET_SIZES="${SUBSET_SIZES:-100 200 400 800 1600 3200 6400}"
 POLICIES="${POLICIES:-diffusion}"
 TRAIN_EXTRA_ARGS="${TRAIN_EXTRA_ARGS:-}"
+BASE_TRAIN_STEPS="${BASE_TRAIN_STEPS:-20000}"
 EVAL_EPISODES="${EVAL_EPISODES:-50}"
 EVAL_TRAJ_SEED="${EVAL_TRAJ_SEED:-42}"
 EVAL_EXTRA_ARGS="${EVAL_EXTRA_ARGS:---env.headless=true}"
@@ -145,12 +146,13 @@ train_all() {
             local dataset_root="$SUBSET_OUTPUT_ROOT/$dataset_repo_id"
             local output_dir="$TRAIN_ROOT/$policy/$size"
             local job_name="${VALIDATION_NAME}-${policy}-${size}"
+            local train_steps=$(( BASE_TRAIN_STEPS * size / 100 ))
             remove_if_forced "$output_dir"
-            if [[ -d "$output_dir/checkpoints/last/pretrained_model" || -d "$output_dir" ]]; then
-                warn_skip "skip train: found $output_dir (use --force to rerun)"
+            if [[ -d "$output_dir/checkpoints/last/pretrained_model" ]]; then
+                warn_skip "skip train: found $output_dir/checkpoints/last/pretrained_model (use --force to rerun)"
                 continue
             fi
-            run_cmd "FORCE_TRAIN_OVERWRITE='$FORCE_TRAIN_OVERWRITE' bash '$RUN_PIPELINE' train '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$size' --dataset.repo_id='$dataset_repo_id' --dataset.root='$dataset_root' --output_dir='$output_dir' --job_name='$job_name' $TRAIN_EXTRA_ARGS"
+            run_cmd "FORCE_TRAIN_OVERWRITE='$FORCE_TRAIN_OVERWRITE' bash '$RUN_PIPELINE' train '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$size' --steps='$train_steps' --dataset.repo_id='$dataset_repo_id' --dataset.root='$dataset_root' --output_dir='$output_dir' --job_name='$job_name' $TRAIN_EXTRA_ARGS"
         done
     done
 }
