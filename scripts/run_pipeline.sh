@@ -373,7 +373,7 @@ do_train() {
     local job_name="${policy}_${name}"
     local force_overwrite="${FORCE_TRAIN_OVERWRITE:-0}"
     local train_steps="100000"
-    local batch_size="128"
+    local batch_size="8"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -430,6 +430,14 @@ do_train() {
                 ;;
         esac
     done
+
+    if [[ -z "$batch_size" ]]; then
+        if [[ "$policy" == "diffusion" ]]; then
+            batch_size="8"
+        else
+            batch_size="128"
+        fi
+    fi
 
     setup_log train "$object_name" "$scene_name"
 

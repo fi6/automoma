@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 RUN_PIPELINE="$REPO_ROOT/scripts/run_pipeline.sh"
 TRAJ_UTIL="$SCRIPT_DIR/manage_validation_trajs.py"
-SUBSET_UTIL="$SCRIPT_DIR/build_validation_subsets.py"
+SUBSET_UTIL="$SCRIPT_DIR/build_validation_episode_manifest.py"
 SUMMARY_UTIL="$SCRIPT_DIR/summarize_validation_results.py"
 
 SCENE_NAME="${SCENE_NAME:-scene_0_seed_0}"
@@ -23,6 +23,7 @@ SUBSET_SIZES="${SUBSET_SIZES:-100 200 400 800 1600 3200 6400}"
 POLICIES="${POLICIES:-diffusion}"
 TRAIN_EXTRA_ARGS="${TRAIN_EXTRA_ARGS:-}"
 BASE_TRAIN_STEPS="${BASE_TRAIN_STEPS:-20000}"
+TRAIN_NUM_WORKERS="${TRAIN_NUM_WORKERS:-8}"
 EVAL_EPISODES="${EVAL_EPISODES:-50}"
 EVAL_TRAJ_SEED="${EVAL_TRAJ_SEED:-42}"
 EVAL_EXTRA_ARGS="${EVAL_EXTRA_ARGS:---env.headless=true}"
@@ -131,19 +132,24 @@ ensure_converted() {
 }
 
 ensure_subsets() {
-    remove_if_forced "$SUBSET_OUTPUT_ROOT"
+    remove_if_forced "$SUBSET_MANIFEST"
     if [[ -f "$SUBSET_MANIFEST" ]]; then
         warn_skip "skip subsets: found $SUBSET_MANIFEST (use --force to rerun)"
         return 0
     fi
-    run_cmd "PYTHONPATH='$REPO_ROOT/third_party/lerobot/src' python '$SUBSET_UTIL' --repo-id '$FULL_DATASET_REPO_ID' --root '$FULL_DATASET_ROOT' --output-root '$SUBSET_OUTPUT_ROOT' --subset-sizes $SUBSET_SIZES --seed '$EVAL_TRAJ_SEED' --prefix '$VALIDATION_NAME'"
+    run_cmd "PYTHONPATH='$REPO_ROOT/third_party/lerobot/src' python '$SUBSET_UTIL' --repo-id '$FULL_DATASET_REPO_ID' --root '$FULL_DATASET_ROOT' --output '$SUBSET_MANIFEST' --subset-sizes $SUBSET_SIZES --seed '$EVAL_TRAJ_SEED'"
+}
+
+get_subset_episodes() {
+    local size="$1"
+    python -c 'import json, sys; manifest = json.load(open(sys.argv[1], encoding="utf-8")); print(json.dumps(manifest["subsets"][sys.argv[2]]["episodes"], separators=(",", ":")))' "$SUBSET_MANIFEST" "$size"
 }
 
 train_all() {
     for policy in $POLICIES; do
         for size in $SUBSET_SIZES; do
-            local dataset_repo_id="${VALIDATION_NAME}-${size}"
-            local dataset_root="$SUBSET_OUTPUT_ROOT/$dataset_repo_id"
+            local episodes_json
+            episodes_json=$(get_subset_episodes "$size")
             local output_dir="$TRAIN_ROOT/$policy/$size"
             local job_name="${VALIDATION_NAME}-${policy}-${size}"
             local train_steps=$(( BASE_TRAIN_STEPS * size / 100 ))
@@ -152,7 +158,7 @@ train_all() {
                 warn_skip "skip train: found $output_dir/checkpoints/last/pretrained_model (use --force to rerun)"
                 continue
             fi
-            run_cmd "FORCE_TRAIN_OVERWRITE='$FORCE_TRAIN_OVERWRITE' bash '$RUN_PIPELINE' train '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$size' --steps='$train_steps' --dataset.repo_id='$dataset_repo_id' --dataset.root='$dataset_root' --output_dir='$output_dir' --job_name='$job_name' $TRAIN_EXTRA_ARGS"
+            run_cmd "FORCE_TRAIN_OVERWRITE='$FORCE_TRAIN_OVERWRITE' bash '$RUN_PIPELINE' train '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$size' --steps='$train_steps' --dataset.repo_id='$FULL_DATASET_REPO_ID' --dataset.root='$FULL_DATASET_ROOT' --output_dir='$output_dir' --job_name='$job_name' --num_workers='$TRAIN_NUM_WORKERS' $TRAIN_EXTRA_ARGS --dataset.episodes='$episodes_json'"
         done
     done
 }
