@@ -83,6 +83,8 @@ train = [
     "vuer[all]==0.0.70",
     "qpsolvers==4.8.1",
     "usd-core",
+    "zarr>=2.18.0,<3.0.0",
+    "fpsample>=1.0.0,<2.0.0",
 ]
 
 # Dev mode: train + development tools (currently same as train)

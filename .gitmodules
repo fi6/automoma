@@ -9,3 +9,6 @@
 	path = third_party/IsaacLab-Arena
 	url = https://github.com/chang-xinhai/IsaacLab-Arena.git
 	branch = develop
+[submodule "third_party/RoboTwin"]
+	path = third_party/RoboTwin
+	url = git@github.com:chang-xinhai/RoboTwin.git

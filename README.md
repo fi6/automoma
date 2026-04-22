@@ -161,7 +161,7 @@ pip install -e ".[dev]"    # dev
 |------|-------------|
 | **plan** | Base + curobo (GPU motion planning) |
 | **sim** | plan + Isaac Sim 5.1.0 + IsaacLab + IsaacLab-Arena |
-| **train** | sim + LeRobot with ACT, DP, GR00T, etc. |
+| **train** | sim + LeRobot / RoboTwin training dependencies (ACT, DP, DP3, GR00T, etc.) |
 | **dev** | train + development tools (same as train for now) |
 
 ### Training a Policy
@@ -179,6 +179,15 @@ lerobot-train \
     --steps=10000 \
     --output_dir=/path/to/outputs/train/act_example
 ```
+
+### AutoMoMa pipeline dependency note
+
+The unified `scripts/run_pipeline.sh` training routes require these extra Python packages in the active environment:
+
+- `zarr>=2.18,<3`
+- `fpsample>=1.0,<2`
+
+They are included in `.[train]` in `pyproject.toml`.
 
 ### Note
 
