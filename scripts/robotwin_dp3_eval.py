@@ -124,7 +124,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ckpt_setting", required=True)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--gpu_id", default="0")
-    parser.add_argument("--checkpoint_num", type=int, default=2)
+    parser.add_argument("--checkpoint_num", type=int, default=3000)
     parser.add_argument("--camera_view", choices=CAMERA_CHOICES, default="ego_topdown")
     parser.add_argument("--n_points", type=int, default=1024)
     parser.add_argument("--random_drop_points", type=int, default=5000)
@@ -176,8 +176,18 @@ def load_policy(cfg, args: argparse.Namespace):
     return policy, env_runner
 
 
+def parse_env_identifiers(task_config: str) -> tuple[str, str]:
+    parts = task_config.split("-")
+    if len(parts) < 3:
+        raise ValueError(f"Invalid task_config: {task_config}")
+    object_name = parts[0]
+    scene_name = parts[1]
+    return object_name, scene_name
+
+
 def build_env(args: argparse.Namespace):
-    traj_file = REPO_ROOT / "data" / "trajs" / "summit_franka" / args.task_name / args.task_config / "test" / "traj_data_test.pt"
+    object_name, scene_name = parse_env_identifiers(args.task_config)
+    traj_file = REPO_ROOT / "data" / "trajs" / "summit_franka" / object_name / scene_name / "test" / "traj_data_test.pt"
     cfg = SimpleEnvConfig(
         environment="summit_franka_open_door_eval",
         headless=args.headless,
@@ -189,8 +199,8 @@ def build_env(args: argparse.Namespace):
         camera_height=240,
         camera_width=320,
         episode_length=300,
-        object_name=args.task_name,
-        scene_name=args.task_config,
+        object_name=object_name,
+        scene_name=scene_name,
         object_center=True,
         mobile_base_relative=True,
         traj_file=str(traj_file),
@@ -329,7 +339,9 @@ def main() -> None:
 
                 if len(env_runner.obs) == 0:
                     env_runner.update_obs(dp3_obs)
-                actions = env_runner.get_action(policy, dp3_obs)
+                    actions = env_runner.get_action(policy)
+                else:
+                    actions = env_runner.get_action(policy, dp3_obs)
                 for action in actions:
                     obs, reward, terminated, truncated, info = env.step(action[None, :])
                     reward_value = float(reward[0] if np.ndim(reward) else reward)

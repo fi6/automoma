@@ -22,7 +22,7 @@ fi
 case "$POLICY" in
     DP3)
         cd "$POLICY_DIR"
-        bash train.sh "$TASK_NAME" "$TASK_CONFIG" "$EXPERT_DATA_NUM" "$SEED" "$GPU_ID" "$OUTPUT_DIR" "$@"
+        bash train.sh "$TASK_NAME" "$TASK_CONFIG" "$EXPERT_DATA_NUM" "$CKPT_SETTING" "$SEED" "$GPU_ID" "$OUTPUT_DIR" "$@"
         ;;
     *)
         echo "Error: Unsupported RoboTwin policy for train wrapper: $POLICY" >&2
