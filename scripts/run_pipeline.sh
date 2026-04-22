@@ -284,7 +284,7 @@ do_convert() {
         "$object_name"
         "$scene_name"
         "$num_episodes"
-        --hdf5_path "$hdf5_path"
+        --input_hdf5 "$hdf5_path"
         "$@"
     )
 
@@ -456,6 +456,9 @@ do_eval() {
 
         setup_log eval "$object_name" "$scene_name"
 
+        rm -f "$output_dir/per_episode_results.csv" "$output_dir/eval_info.json"
+        rm -rf "$output_dir/videos"
+
         local openness_threshold="${OPENNESS_THRESHOLD:-0.3}"
         local proximity_threshold="${PROXIMITY_THRESHOLD:-0.12}"
         local proximity_window_steps="${PROXIMITY_WINDOW_STEPS:-8}"
@@ -501,6 +504,44 @@ do_eval() {
         pushd "$ISAACLAB_ARENA" > /dev/null
         run_logged "${cmd[@]}"
         popd > /dev/null
+
+        if [[ -f "$output_dir/per_episode_results.csv" && ! -f "$output_dir/eval_info.json" ]]; then
+            python - "$output_dir" <<'PY'
+import csv
+import json
+import sys
+from pathlib import Path
+
+output_dir = Path(sys.argv[1])
+rows = list(csv.DictReader((output_dir / "per_episode_results.csv").open()))
+sum_rewards = [float(row["sum_reward"]) for row in rows]
+max_rewards = [float(row["max_reward"]) for row in rows]
+successes = [str(row["success"]).lower() == "true" for row in rows]
+seeds = [int(row["seed"]) if row.get("seed") else None for row in rows]
+video_paths = [row.get("video_path", "") for row in rows if row.get("video_path")]
+
+eval_info = {
+    "per_episode": [
+        {
+            "episode_ix": int(row["episode_ix"]),
+            "sum_reward": sum_rewards[i],
+            "max_reward": max_rewards[i],
+            "success": successes[i],
+            "seed": seeds[i],
+        }
+        for i, row in enumerate(rows)
+    ],
+    "aggregated": {
+        "avg_sum_reward": float(sum(sum_rewards) / len(sum_rewards)) if sum_rewards else 0.0,
+        "avg_max_reward": float(sum(max_rewards) / len(max_rewards)) if max_rewards else 0.0,
+        "pc_success": float(sum(successes) / len(successes) * 100) if successes else 0.0,
+    },
+}
+if video_paths:
+    eval_info["video_paths"] = video_paths
+(output_dir / "eval_info.json").write_text(json.dumps(eval_info, indent=2))
+PY
+        fi
         return
     fi
 

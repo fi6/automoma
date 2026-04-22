@@ -384,38 +384,38 @@ def main() -> None:
             max_rewards.append(max_reward)
             all_successes.append(bool(metrics["success"]))
             all_seeds.append(episode_seed)
+
+        elapsed = time.time() - start_time
+        eval_info = {
+            "per_episode": [
+                {
+                    "episode_ix": i,
+                    "sum_reward": sum_reward,
+                    "max_reward": max_reward,
+                    "success": success,
+                    "seed": seed,
+                }
+                for i, (sum_reward, max_reward, success, seed) in enumerate(
+                    zip(sum_rewards, max_rewards, all_successes, all_seeds, strict=True)
+                )
+            ],
+            "aggregated": {
+                "avg_sum_reward": float(np.nanmean(sum_rewards)) if sum_rewards else 0.0,
+                "avg_max_reward": float(np.nanmean(max_rewards)) if max_rewards else 0.0,
+                "pc_success": float(np.nanmean(all_successes) * 100) if all_successes else 0.0,
+                "eval_s": elapsed,
+                "eval_ep_s": elapsed / args.n_episodes if args.n_episodes else 0.0,
+            },
+        }
+        if video_paths:
+            eval_info["video_paths"] = video_paths
+
+        with (output_dir / "eval_info.json").open("w") as f:
+            json.dump(eval_info, f, indent=2)
+
+        print(f"saved eval results to {csv_path}")
     finally:
         env.close()
-
-    elapsed = time.time() - start_time
-    eval_info = {
-        "per_episode": [
-            {
-                "episode_ix": i,
-                "sum_reward": sum_reward,
-                "max_reward": max_reward,
-                "success": success,
-                "seed": seed,
-            }
-            for i, (sum_reward, max_reward, success, seed) in enumerate(
-                zip(sum_rewards, max_rewards, all_successes, all_seeds, strict=True)
-            )
-        ],
-        "aggregated": {
-            "avg_sum_reward": float(np.nanmean(sum_rewards)) if sum_rewards else 0.0,
-            "avg_max_reward": float(np.nanmean(max_rewards)) if max_rewards else 0.0,
-            "pc_success": float(np.nanmean(all_successes) * 100) if all_successes else 0.0,
-            "eval_s": elapsed,
-            "eval_ep_s": elapsed / args.n_episodes if args.n_episodes else 0.0,
-        },
-    }
-    if video_paths:
-        eval_info["video_paths"] = video_paths
-
-    with (output_dir / "eval_info.json").open("w") as f:
-        json.dump(eval_info, f, indent=2)
-
-    print(f"saved eval results to {csv_path}")
 
 
 if __name__ == "__main__":
