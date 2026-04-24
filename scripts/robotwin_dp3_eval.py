@@ -34,14 +34,11 @@ from train_dp3 import TrainDP3Workspace
 PER_EPISODE_CSV_COLUMNS = [
     "episode_ix",
     "seed",
-    "sum_reward",
-    "max_reward",
     "success",
     "video_path",
-    "max_openness",
-    "door_open_any",
+    "final_openness",
+    "final_door_open",
     "final_engaged",
-    "min_handle_distance",
     "final_handle_distance",
 ]
 
@@ -144,6 +141,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max_episodes_rendered", type=int, default=10)
     parser.add_argument("--debug_visualize_handle", type=str2bool, default=False)
     parser.add_argument("--debug_record_handle_diagnostics", type=str2bool, default=False)
+    parser.add_argument("--handle_distance_threshold", type=float, default=0.1)
     return parser.parse_args()
 
 
@@ -177,17 +175,20 @@ def load_policy(cfg, args: argparse.Namespace):
     return policy, env_runner
 
 
-def parse_env_identifiers(task_config: str) -> tuple[str, str]:
+def parse_env_identifiers(task_name: str, task_config: str) -> tuple[str, str]:
     parts = task_config.split("-")
-    if len(parts) < 3:
-        raise ValueError(f"Invalid task_config: {task_config}")
-    object_name = parts[0]
-    scene_name = parts[1]
-    return object_name, scene_name
+    if len(parts) >= 3:
+        object_name = parts[0]
+        scene_name = parts[1]
+        return object_name, scene_name
+    if len(parts) == 2:
+        object_name, scene_name = parts
+        return object_name, scene_name
+    return task_name, task_config
 
 
 def build_env(args: argparse.Namespace):
-    object_name, scene_name = parse_env_identifiers(args.task_config)
+    object_name, scene_name = parse_env_identifiers(args.task_name, args.task_config)
     traj_file = Path(args.traj_file) if args.traj_file else REPO_ROOT / "data" / "trajs" / "summit_franka" / object_name / scene_name / "test" / "traj_data_test.pt"
     cfg = SimpleEnvConfig(
         environment="summit_franka_open_door_eval",
@@ -207,6 +208,7 @@ def build_env(args: argparse.Namespace):
         traj_file=str(traj_file),
         traj_seed=args.traj_seed,
         openness_threshold=0.3,
+        handle_distance_threshold=args.handle_distance_threshold,
         proximity_threshold=0.12,
         proximity_window_steps=8,
         proximity_required_steps=5,
@@ -249,10 +251,9 @@ def get_success_metrics(final_info: dict) -> dict[str, float | bool]:
 
     return {
         "success": bool(pick("is_success", False)),
-        "max_openness": float(pick("max_openness")),
-        "door_open_any": bool(pick("door_open_any", False)),
+        "final_openness": float(pick("final_openness")),
+        "final_door_open": bool(pick("final_door_open", False)),
         "final_engaged": bool(pick("final_engaged", False)),
-        "min_handle_distance": float(pick("min_handle_distance")),
         "final_handle_distance": float(pick("final_handle_distance")),
     }
 
@@ -308,8 +309,7 @@ def main() -> None:
     )
     rng = np.random.default_rng(args.seed)
 
-    sum_rewards: list[float] = []
-    max_rewards: list[float] = []
+    all_episode_metrics: list[dict[str, object]] = []
     all_successes: list[bool] = []
     all_seeds: list[int] = []
     video_paths: list[str] = []
@@ -320,7 +320,6 @@ def main() -> None:
             obs, _info = env.reset(seed=episode_seed)
             env_runner.reset_obs()
 
-            rewards: list[float] = []
             frames: list[np.ndarray] = []
             if episode_ix < args.max_episodes_rendered:
                 frame = render_frame(env)
@@ -344,9 +343,7 @@ def main() -> None:
                 else:
                     actions = env_runner.get_action(policy, dp3_obs)
                 for action in actions:
-                    obs, reward, terminated, truncated, info = env.step(action[None, :])
-                    reward_value = float(reward[0] if np.ndim(reward) else reward)
-                    rewards.append(reward_value)
+                    obs, _reward, terminated, truncated, info = env.step(action[None, :])
                     steps += 1
                     done = bool(terminated[0] or truncated[0])
                     final_info = info.get("final_info", final_info)
@@ -366,8 +363,6 @@ def main() -> None:
                         break
 
             metrics = get_success_metrics(final_info)
-            sum_reward = float(np.sum(rewards)) if rewards else 0.0
-            max_reward = float(np.max(rewards)) if rewards else 0.0
             video_path = ""
             if episode_ix < args.max_episodes_rendered and frames:
                 videos_dir.mkdir(parents=True, exist_ok=True)
@@ -380,21 +375,22 @@ def main() -> None:
             row = {
                 "episode_ix": episode_ix,
                 "seed": episode_seed,
-                "sum_reward": sum_reward,
-                "max_reward": max_reward,
                 "success": bool(metrics["success"]),
                 "video_path": video_path,
-                "max_openness": maybe_scalar(metrics["max_openness"]),
-                "door_open_any": maybe_scalar(metrics["door_open_any"]),
+                "final_openness": maybe_scalar(metrics["final_openness"]),
+                "final_door_open": maybe_scalar(metrics["final_door_open"]),
                 "final_engaged": maybe_scalar(metrics["final_engaged"]),
-                "min_handle_distance": maybe_scalar(metrics["min_handle_distance"]),
                 "final_handle_distance": maybe_scalar(metrics["final_handle_distance"]),
             }
             append_per_episode_csv_row(csv_path, row)
             print(row, flush=True)
 
-            sum_rewards.append(sum_reward)
-            max_rewards.append(max_reward)
+            all_episode_metrics.append({
+                "final_openness": maybe_scalar(metrics["final_openness"]),
+                "final_door_open": bool(metrics["final_door_open"]),
+                "final_engaged": bool(metrics["final_engaged"]),
+                "final_handle_distance": maybe_scalar(metrics["final_handle_distance"]),
+            })
             all_successes.append(bool(metrics["success"]))
             all_seeds.append(episode_seed)
 
@@ -403,18 +399,15 @@ def main() -> None:
             "per_episode": [
                 {
                     "episode_ix": i,
-                    "sum_reward": sum_reward,
-                    "max_reward": max_reward,
                     "success": success,
                     "seed": seed,
+                    **episode_metrics,
                 }
-                for i, (sum_reward, max_reward, success, seed) in enumerate(
-                    zip(sum_rewards, max_rewards, all_successes, all_seeds, strict=True)
+                for i, (episode_metrics, success, seed) in enumerate(
+                    zip(all_episode_metrics, all_successes, all_seeds, strict=True)
                 )
             ],
             "aggregated": {
-                "avg_sum_reward": float(np.nanmean(sum_rewards)) if sum_rewards else 0.0,
-                "avg_max_reward": float(np.nanmean(max_rewards)) if max_rewards else 0.0,
                 "pc_success": float(np.nanmean(all_successes) * 100) if all_successes else 0.0,
                 "eval_s": elapsed,
                 "eval_ep_s": elapsed / args.n_episodes if args.n_episodes else 0.0,

@@ -514,26 +514,23 @@ from pathlib import Path
 
 output_dir = Path(sys.argv[1])
 rows = list(csv.DictReader((output_dir / "per_episode_results.csv").open()))
-sum_rewards = [float(row["sum_reward"]) for row in rows]
-max_rewards = [float(row["max_reward"]) for row in rows]
 successes = [str(row["success"]).lower() == "true" for row in rows]
-seeds = [int(row["seed"]) if row.get("seed") else None for row in rows]
 video_paths = [row.get("video_path", "") for row in rows if row.get("video_path")]
 
+per_episode = [
+    {
+        "episode_ix": int(row["episode_ix"]),
+        "final_door_openness": float(row["final_door_openness"]) if row.get("final_door_openness") else None,
+        "final_handle_distance": float(row["final_handle_distance"]) if row.get("final_handle_distance") else None,
+        "success": str(row["success"]).lower() == "true",
+        "seed": int(row["seed"]) if row.get("seed") else None,
+    }
+    for row in rows
+]
+
 eval_info = {
-    "per_episode": [
-        {
-            "episode_ix": int(row["episode_ix"]),
-            "sum_reward": sum_rewards[i],
-            "max_reward": max_rewards[i],
-            "success": successes[i],
-            "seed": seeds[i],
-        }
-        for i, row in enumerate(rows)
-    ],
+    "per_episode": per_episode,
     "aggregated": {
-        "avg_sum_reward": float(sum(sum_rewards) / len(sum_rewards)) if sum_rewards else 0.0,
-        "avg_max_reward": float(sum(max_rewards) / len(max_rewards)) if max_rewards else 0.0,
         "pc_success": float(sum(successes) / len(successes) * 100) if successes else 0.0,
     },
 }
