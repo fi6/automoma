@@ -28,6 +28,8 @@ EVAL_EPISODES="${EVAL_EPISODES:-50}"
 EVAL_TRAJ_SEED="${EVAL_TRAJ_SEED:-42}"
 EVAL_EXTRA_ARGS="${EVAL_EXTRA_ARGS:---env.headless=true}"
 FORCE_TRAIN_OVERWRITE="${FORCE_TRAIN_OVERWRITE:-1}"
+POINT_CLOUD_USE_RGB="${POINT_CLOUD_USE_RGB:-false}"
+CONVERT_EXTRA_ARGS="${CONVERT_EXTRA_ARGS:-}"
 
 VALIDATION_TAG="${VALIDATION_TAG:-code_validation}"
 VALIDATION_NAME="${VALIDATION_TAG}-${OBJECT_NAME}-${SCENE_NAME}-${RECORD_EPISODES}-${RECORD_MODE}"
@@ -123,6 +125,15 @@ if [[ "$RECORD_MODE" == "set_state" ]]; then
     record_args+=(--set_state)
 fi
 
+robotwin_convert_args=()
+robotwin_train_args=()
+robotwin_eval_args=()
+if [[ -n "$POINT_CLOUD_USE_RGB" ]]; then
+    robotwin_convert_args+=(--use_rgb="$POINT_CLOUD_USE_RGB")
+    robotwin_train_args+=(--use_rgb="$POINT_CLOUD_USE_RGB")
+    robotwin_eval_args+=(--use_rgb="$POINT_CLOUD_USE_RGB")
+fi
+
 ensure_recorded() {
     local hdf5_path="$HDF5_ROOT/$HDF5_NAME"
     remove_if_forced "$hdf5_path"
@@ -154,7 +165,7 @@ ensure_converted() {
         if [[ -d "$robotwin_output_dir" ]]; then
             warn_skip "skip convert(${benchmark}:${policy}): found $robotwin_output_dir (use --force to rerun)"
         else
-            run_cmd "bash '$RUN_PIPELINE' convert '$benchmark' '$OBJECT_NAME' '$SCENE_NAME' '$RECORD_EPISODES' --policy='$policy' --data_root='$HDF5_ROOT' --hdf5_name='$HDF5_NAME'"
+            run_cmd "bash '$RUN_PIPELINE' convert '$benchmark' '$OBJECT_NAME' '$SCENE_NAME' '$RECORD_EPISODES' --policy='$policy' --data_root='$HDF5_ROOT' --hdf5_name='$HDF5_NAME' ${robotwin_convert_args[*]} $CONVERT_EXTRA_ARGS"
         fi
     done
 }
@@ -193,9 +204,9 @@ train_all() {
                 continue
             fi
             if [[ "$benchmark" == "lerobot" ]]; then
-                run_cmd "FORCE_TRAIN_OVERWRITE='$FORCE_TRAIN_OVERWRITE' bash '$RUN_PIPELINE' train '$benchmark' '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$size' --steps='$train_steps' --dataset.repo_id='$FULL_DATASET_REPO_ID' --dataset.root='$FULL_DATASET_ROOT' --dataset.revision='local' --output_dir='$output_dir' --job_name='$job_name' --num_workers='$TRAIN_NUM_WORKERS' $TRAIN_EXTRA_ARGS --dataset.episodes='$episodes_json'"
+                run_cmd "FORCE_TRAIN_OVERWRITE='$FORCE_TRAIN_OVERWRITE' bash '$RUN_PIPELINE' train '$benchmark' '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$size' --steps='$train_steps' --dataset.repo_id='$FULL_DATASET_REPO_ID' --dataset.root='$FULL_DATASET_ROOT' --output_dir='$output_dir' --job_name='$job_name' --num_workers='$TRAIN_NUM_WORKERS' $TRAIN_EXTRA_ARGS --dataset.episodes='$episodes_json'"
             else
-                run_cmd "bash '$RUN_PIPELINE' train '$benchmark' '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$size' --output_dir='$output_dir' task.dataset.max_train_episodes='$size' $TRAIN_EXTRA_ARGS"
+                run_cmd "bash '$RUN_PIPELINE' train '$benchmark' '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$RECORD_EPISODES' --output_dir='$output_dir' task.dataset.max_train_episodes='$size' ${robotwin_train_args[*]} $TRAIN_EXTRA_ARGS"
             fi
         done
     done
@@ -215,9 +226,9 @@ eval_all() {
             else
                 if [[ "$benchmark" == "lerobot" ]]; then
                     local policy_path="$TRAIN_ROOT/$benchmark/$policy/$size/checkpoints/last/pretrained_model"
-                    run_cmd "bash '$RUN_PIPELINE' eval '$benchmark' '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$size' --policy.path='$policy_path' --dataset.revision='local' --traj_file='$TRAIN_TRAJ_FILE' --traj_seed='$EVAL_TRAJ_SEED' --output_dir='$train_output_dir' --eval.n_episodes='$EVAL_EPISODES' $EVAL_EXTRA_ARGS"
+                    run_cmd "bash '$RUN_PIPELINE' eval '$benchmark' '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$size' --policy.path='$policy_path' --traj_seed='$EVAL_TRAJ_SEED' --output_dir='$train_output_dir' --eval.n_episodes='$EVAL_EPISODES' $EVAL_EXTRA_ARGS"
                 else
-                    run_cmd "bash '$RUN_PIPELINE' eval '$benchmark' '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$size' --checkpoint_root='$TRAIN_ROOT/$benchmark/$policy/$size' --output_dir='$train_output_dir' --eval.n_episodes='$EVAL_EPISODES' --traj_file='$TRAIN_TRAJ_FILE' $EVAL_EXTRA_ARGS"
+                    run_cmd "bash '$RUN_PIPELINE' eval '$benchmark' '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$RECORD_EPISODES' --checkpoint_root='$TRAIN_ROOT/$benchmark/$policy/$size' --output_dir='$train_output_dir' --eval.n_episodes='$EVAL_EPISODES' ${robotwin_eval_args[*]} $EVAL_EXTRA_ARGS"
                 fi
             fi
             if [[ -f "$test_output_dir/eval_info.json" ]]; then
@@ -225,9 +236,9 @@ eval_all() {
             else
                 if [[ "$benchmark" == "lerobot" ]]; then
                     local policy_path="$TRAIN_ROOT/$benchmark/$policy/$size/checkpoints/last/pretrained_model"
-                    run_cmd "bash '$RUN_PIPELINE' eval '$benchmark' '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$size' --policy.path='$policy_path' --dataset.revision='local' --traj_file='$TEST_TRAJ_FILE' --traj_seed='$EVAL_TRAJ_SEED' --output_dir='$test_output_dir' --eval.n_episodes='$EVAL_EPISODES' $EVAL_EXTRA_ARGS"
+                    run_cmd "bash '$RUN_PIPELINE' eval '$benchmark' '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$size' --policy.path='$policy_path' --traj_seed='$EVAL_TRAJ_SEED' --output_dir='$test_output_dir' --eval.n_episodes='$EVAL_EPISODES' $EVAL_EXTRA_ARGS"
                 else
-                    run_cmd "bash '$RUN_PIPELINE' eval '$benchmark' '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$size' --checkpoint_root='$TRAIN_ROOT/$benchmark/$policy/$size' --output_dir='$test_output_dir' --eval.n_episodes='$EVAL_EPISODES' --traj_file='$TEST_TRAJ_FILE' $EVAL_EXTRA_ARGS"
+                    run_cmd "bash '$RUN_PIPELINE' eval '$benchmark' '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$RECORD_EPISODES' --checkpoint_root='$TRAIN_ROOT/$benchmark/$policy/$size' --output_dir='$test_output_dir' --eval.n_episodes='$EVAL_EPISODES' ${robotwin_eval_args[*]} $EVAL_EXTRA_ARGS"
                 fi
             fi
         done

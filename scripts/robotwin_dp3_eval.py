@@ -35,11 +35,12 @@ PER_EPISODE_CSV_COLUMNS = [
     "episode_ix",
     "seed",
     "success",
-    "video_path",
-    "final_openness",
     "final_door_open",
+    "final_door_openness",
     "final_engaged",
     "final_handle_distance",
+    "steps",
+    "video_path",
 ]
 
 
@@ -138,6 +139,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--traj_file", type=str, default=None)
     parser.add_argument("--traj_seed", type=int, default=42)
     parser.add_argument("--headless", type=str2bool, default=True)
+    parser.add_argument("--env.headless", dest="headless", type=str2bool)
     parser.add_argument("--max_episodes_rendered", type=int, default=10)
     parser.add_argument("--debug_visualize_handle", type=str2bool, default=False)
     parser.add_argument("--debug_record_handle_diagnostics", type=str2bool, default=False)
@@ -251,7 +253,7 @@ def get_success_metrics(final_info: dict) -> dict[str, float | bool]:
 
     return {
         "success": bool(pick("is_success", False)),
-        "final_openness": float(pick("final_openness")),
+        "final_door_openness": float(pick("final_openness")),
         "final_door_open": bool(pick("final_door_open", False)),
         "final_engaged": bool(pick("final_engaged", False)),
         "final_handle_distance": float(pick("final_handle_distance")),
@@ -376,19 +378,18 @@ def main() -> None:
                 "episode_ix": episode_ix,
                 "seed": episode_seed,
                 "success": bool(metrics["success"]),
-                "video_path": video_path,
-                "final_openness": maybe_scalar(metrics["final_openness"]),
                 "final_door_open": maybe_scalar(metrics["final_door_open"]),
+                "final_door_openness": maybe_scalar(metrics["final_door_openness"]),
                 "final_engaged": maybe_scalar(metrics["final_engaged"]),
                 "final_handle_distance": maybe_scalar(metrics["final_handle_distance"]),
+                "steps": f"{steps}/{env_runner.n_action_steps}",
+                "video_path": video_path,
             }
             append_per_episode_csv_row(csv_path, row)
             print(row, flush=True)
 
             all_episode_metrics.append({
-                "final_openness": maybe_scalar(metrics["final_openness"]),
-                "final_door_open": bool(metrics["final_door_open"]),
-                "final_engaged": bool(metrics["final_engaged"]),
+                "final_door_openness": maybe_scalar(metrics["final_door_openness"]),
                 "final_handle_distance": maybe_scalar(metrics["final_handle_distance"]),
             })
             all_successes.append(bool(metrics["success"]))
@@ -399,9 +400,9 @@ def main() -> None:
             "per_episode": [
                 {
                     "episode_ix": i,
+                    **episode_metrics,
                     "success": success,
                     "seed": seed,
-                    **episode_metrics,
                 }
                 for i, (episode_metrics, success, seed) in enumerate(
                     zip(all_episode_metrics, all_successes, all_seeds, strict=True)
@@ -409,8 +410,6 @@ def main() -> None:
             ],
             "aggregated": {
                 "pc_success": float(np.nanmean(all_successes) * 100) if all_successes else 0.0,
-                "eval_s": elapsed,
-                "eval_ep_s": elapsed / args.n_episodes if args.n_episodes else 0.0,
             },
         }
         if video_paths:

@@ -227,6 +227,7 @@ do_convert() {
     local hdf5_name="${name}.hdf5"
     local repo_id="automoma/${name}"
     local output_dir="$REPO_ROOT/data/lerobot/automoma/${name}"
+    local use_rgb=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -240,6 +241,8 @@ do_convert() {
             --repo_id) repo_id="$2"; shift 2 ;;
             --output_dir=*) output_dir="${1#*=}"; shift ;;
             --output_dir) output_dir="$2"; shift 2 ;;
+            --use_rgb=*) use_rgb="${1#*=}"; shift ;;
+            --use_rgb) use_rgb="$2"; shift 2 ;;
             *) break ;;
         esac
     done
@@ -285,8 +288,11 @@ do_convert() {
         "$scene_name"
         "$num_episodes"
         --input_hdf5 "$hdf5_path"
-        "$@"
     )
+    if [[ -n "$use_rgb" ]]; then
+        cmd+=(--use_rgb "$use_rgb")
+    fi
+    cmd+=("$@")
 
     echo "Command: ${cmd[*]}"
     echo ""
@@ -383,6 +389,7 @@ do_train() {
     local gpu_id="0"
     local ckpt_setting="$scene_name"
     local output_dir="$REPO_ROOT/outputs/train/robotwin/${policy}_${name}"
+    local use_rgb=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -394,6 +401,8 @@ do_train() {
             --ckpt_setting) ckpt_setting="$2"; shift 2 ;;
             --output_dir=*) output_dir="${1#*=}"; shift ;;
             --output_dir) output_dir="$2"; shift 2 ;;
+            --use_rgb=*) use_rgb="${1#*=}"; shift ;;
+            --use_rgb) use_rgb="$2"; shift 2 ;;
             *) break ;;
         esac
     done
@@ -411,8 +420,11 @@ do_train() {
         "$seed"
         "$gpu_id"
         "$output_dir"
-        "$@"
     )
+    if [[ -n "$use_rgb" ]]; then
+        cmd+=("policy.use_pc_color=${use_rgb}")
+    fi
+    cmd+=("$@")
 
     echo "Command: ${cmd[*]}"
     echo ""
@@ -549,6 +561,7 @@ PY
     local ckpt_setting="$scene_name"
     local checkpoint_root="$REPO_ROOT/outputs/train/robotwin/${policy}_${name}"
     local output_dir="$REPO_ROOT/outputs/eval/robotwin/${policy}_${name}"
+    local use_rgb=""
     local -a passthrough=()
 
     while [[ $# -gt 0 ]]; do
@@ -563,24 +576,31 @@ PY
             --checkpoint_root) checkpoint_root="$2"; shift 2 ;;
             --output_dir=*) output_dir="${1#*=}"; shift ;;
             --output_dir) output_dir="$2"; shift 2 ;;
+            --use_rgb=*) use_rgb="${1#*=}"; shift ;;
+            --use_rgb) use_rgb="$2"; shift 2 ;;
             *) passthrough+=("$1"); shift ;;
         esac
     done
 
     local eval_wrapper="$REPO_ROOT/scripts/robotwin_eval.sh"
+    local task_name="$object_name"
+    local task_config="$scene_name"
     local -a cmd=(
         bash "$eval_wrapper"
         "$policy_name_upper"
-        "$object_name"
-        "$scene_name"
+        "$task_name"
+        "$task_config"
         "$num_episodes"
         "$ckpt_setting"
         "$seed"
         "$gpu_id"
         "$checkpoint_root"
         "$output_dir"
-        "${passthrough[@]}"
     )
+    if [[ -n "$use_rgb" ]]; then
+        cmd+=(--use_rgb "$use_rgb")
+    fi
+    cmd+=("${passthrough[@]}")
 
     echo "Command: ${cmd[*]}"
     echo ""
