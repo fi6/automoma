@@ -45,6 +45,39 @@ bash scripts/run_pipeline.sh debug microwave_7221 scene_0_seed_0 \
   --set_state
 
 # =============================================================================
+# DEBUG — visualize grasp poses and wrist camera views
+# =============================================================================
+# Run from the repo root after: conda activate lerobot-arena
+export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+
+# Interactive viewer for Microwave 7221 grasps 0-19.
+# Controls: N/Right/Down=next, B/Left/Up=prev, R=refresh, Q/Esc=quit.
+python scripts/debug/grasp_convert/viz_grasp_pose.py \
+  --camera \
+  --object-id 7221 \
+  --grasp-ids 0-19 \
+  --ik-seeds 64 \
+  summit_franka_grasp_viz \
+  --object_name microwave_7221 \
+  --scene_name scene_0_seed_0 \
+  --object_center
+
+# Headless batch export of ego_topdown + ego_wrist + fix_local camera sheets.
+python scripts/debug/grasp_convert/viz_grasp_pose.py \
+  --headless \
+  --camera \
+  --save-all \
+  --object-id 7221 \
+  --grasp-ids 0-19 \
+  --ik-seeds 64 \
+  --hold-frames 1 \
+  --save-camera-dir outputs/viz_grasp_pose_7221_0_19 \
+  summit_franka_grasp_viz \
+  --object_name microwave_7221 \
+  --scene_name scene_0_seed_0 \
+  --object_center
+
+# =============================================================================
 # DEBUG — GUI recording (with display)
 # =============================================================================
 export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
