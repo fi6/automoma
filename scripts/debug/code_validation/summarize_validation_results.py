@@ -25,26 +25,32 @@ def main() -> int:
         info = load_eval_info(info_path)
         relative = info_path.relative_to(eval_root)
         parts = relative.parts
-        if len(parts) < 4:
+        if len(parts) < 5:
             continue
-        policy = parts[0]
-        dataset_size = int(parts[1])
-        split = parts[2]
-        overall = info.get("overall", {})
+        benchmark = parts[0]
+        policy = parts[1]
+        dataset_size = int(parts[2])
+        split = parts[3]
+        overall = info.get("overall") or info.get("aggregated", {})
+        n_episodes = overall.get("n_episodes")
+        if n_episodes is None:
+            per_episode = info.get("per_episode", [])
+            n_episodes = len(per_episode)
         rows.append(
             {
+                "benchmark": benchmark,
                 "policy": policy,
                 "dataset_size": dataset_size,
                 "eval_split": split,
                 "success_rate": overall.get("pc_success"),
-                "n_episodes": overall.get("n_episodes"),
+                "n_episodes": n_episodes,
                 "avg_sum_reward": overall.get("avg_sum_reward"),
                 "avg_max_reward": overall.get("avg_max_reward"),
                 "eval_info_path": str(info_path),
             }
         )
 
-    rows.sort(key=lambda row: (row["policy"], row["dataset_size"], row["eval_split"]))
+    rows.sort(key=lambda row: (row["benchmark"], row["policy"], row["dataset_size"], row["eval_split"]))
 
     output_csv = Path(args.output_csv)
     output_csv.parent.mkdir(parents=True, exist_ok=True)
@@ -52,6 +58,7 @@ def main() -> int:
         writer = csv.DictWriter(
             f,
             fieldnames=[
+                "benchmark",
                 "policy",
                 "dataset_size",
                 "eval_split",

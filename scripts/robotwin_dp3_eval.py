@@ -138,6 +138,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--eval.n_episodes", dest="n_episodes", type=int, default=10)
     parser.add_argument("--checkpoint_root", type=str, default=None)
     parser.add_argument("--output_dir", type=str, default=None)
+    parser.add_argument("--traj_file", type=str, default=None)
     parser.add_argument("--traj_seed", type=int, default=42)
     parser.add_argument("--headless", type=str2bool, default=True)
     parser.add_argument("--max_episodes_rendered", type=int, default=10)
@@ -187,7 +188,7 @@ def parse_env_identifiers(task_config: str) -> tuple[str, str]:
 
 def build_env(args: argparse.Namespace):
     object_name, scene_name = parse_env_identifiers(args.task_config)
-    traj_file = REPO_ROOT / "data" / "trajs" / "summit_franka" / object_name / scene_name / "test" / "traj_data_test.pt"
+    traj_file = Path(args.traj_file) if args.traj_file else REPO_ROOT / "data" / "trajs" / "summit_franka" / object_name / scene_name / "test" / "traj_data_test.pt"
     cfg = SimpleEnvConfig(
         environment="summit_franka_open_door_eval",
         headless=args.headless,

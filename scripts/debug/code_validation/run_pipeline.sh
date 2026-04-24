@@ -20,7 +20,7 @@ RECORD_EPISODES="${RECORD_EPISODES:-6400}"
 RECORD_MODE="${RECORD_MODE:-set_state}"
 RECORD_EXTRA_ARGS="${RECORD_EXTRA_ARGS:---headless}"
 SUBSET_SIZES="${SUBSET_SIZES:-100 200 400 800 1600 3200 6400}"
-POLICIES="${POLICIES:-diffusion}"
+RUNS="${RUNS:-lerobot:act robotwin:dp3}"
 TRAIN_EXTRA_ARGS="${TRAIN_EXTRA_ARGS:-}"
 BASE_TRAIN_STEPS="${BASE_TRAIN_STEPS:-20000}"
 TRAIN_NUM_WORKERS="${TRAIN_NUM_WORKERS:-8}"
@@ -58,10 +58,21 @@ TEST_TRAJ_FILE="$REPO_ROOT/data/trajs/summit_franka/${OBJECT_NAME}/${SCENE_NAME}
 HDF5_NAME="${VALIDATION_NAME}.hdf5"
 FULL_DATASET_REPO_ID="${VALIDATION_NAME}"
 FULL_DATASET_ROOT="$LEROBOT_ROOT/$FULL_DATASET_REPO_ID"
-SUBSET_OUTPUT_ROOT="$LEROBOT_ROOT/subsets"
+SUBSET_OUTPUT_ROOT="$LEROBOT_ROOT/subsets/${VALIDATION_NAME}"
 SUMMARY_CSV="$SUMMARY_ROOT/${VALIDATION_NAME}_summary.csv"
 SUMMARY_JSON="$SUMMARY_ROOT/${VALIDATION_NAME}_summary.json"
 SUBSET_MANIFEST="$SUBSET_OUTPUT_ROOT/subset_manifest.json"
+
+parse_run() {
+    local run_spec="$1"
+    local benchmark="${run_spec%%:*}"
+    local policy="${run_spec#*:}"
+    if [[ "$benchmark" == "$run_spec" || -z "$benchmark" || -z "$policy" ]]; then
+        echo "Error: invalid run spec '$run_spec'. Expected <benchmark>:<policy>." >&2
+        exit 1
+    fi
+    printf '%s %s\n' "$benchmark" "$policy"
+}
 
 run_cmd() {
     echo ""
@@ -123,12 +134,29 @@ ensure_recorded() {
 }
 
 ensure_converted() {
-    remove_if_forced "$FULL_DATASET_ROOT"
-    if [[ -d "$FULL_DATASET_ROOT" ]]; then
-        warn_skip "skip convert: found $FULL_DATASET_ROOT (use --force to rerun)"
-        return 0
-    fi
-    run_cmd "bash '$RUN_PIPELINE' convert '$OBJECT_NAME' '$SCENE_NAME' '$RECORD_EPISODES' --data_root='$HDF5_ROOT' --hdf5_name='$HDF5_NAME' --repo_id='$FULL_DATASET_REPO_ID' --output_dir='$FULL_DATASET_ROOT'"
+    for run_spec in $RUNS; do
+        local benchmark policy
+        read -r benchmark policy <<< "$(parse_run "$run_spec")"
+
+        if [[ "$benchmark" == "lerobot" ]]; then
+            remove_if_forced "$FULL_DATASET_ROOT"
+            if [[ -d "$FULL_DATASET_ROOT" ]]; then
+                warn_skip "skip convert(${benchmark}:${policy}): found $FULL_DATASET_ROOT (use --force to rerun)"
+            else
+                run_cmd "bash '$RUN_PIPELINE' convert '$benchmark' '$OBJECT_NAME' '$SCENE_NAME' '$RECORD_EPISODES' --data_root='$HDF5_ROOT' --hdf5_name='$HDF5_NAME' --repo_id='$FULL_DATASET_REPO_ID' --output_dir='$FULL_DATASET_ROOT'"
+            fi
+            continue
+        fi
+
+        local robotwin_policy_dir="$REPO_ROOT/third_party/RoboTwin/policy/${policy^^}"
+        local robotwin_output_dir="$robotwin_policy_dir/data/${OBJECT_NAME}-${SCENE_NAME}-${RECORD_EPISODES}.zarr"
+        remove_if_forced "$robotwin_output_dir"
+        if [[ -d "$robotwin_output_dir" ]]; then
+            warn_skip "skip convert(${benchmark}:${policy}): found $robotwin_output_dir (use --force to rerun)"
+        else
+            run_cmd "bash '$RUN_PIPELINE' convert '$benchmark' '$OBJECT_NAME' '$SCENE_NAME' '$RECORD_EPISODES' --policy='$policy' --data_root='$HDF5_ROOT' --hdf5_name='$HDF5_NAME'"
+        fi
+    done
 }
 
 ensure_subsets() {
@@ -146,40 +174,61 @@ get_subset_episodes() {
 }
 
 train_all() {
-    for policy in $POLICIES; do
+    for run_spec in $RUNS; do
+        local benchmark policy
+        read -r benchmark policy <<< "$(parse_run "$run_spec")"
         for size in $SUBSET_SIZES; do
             local episodes_json
             episodes_json=$(get_subset_episodes "$size")
-            local output_dir="$TRAIN_ROOT/$policy/$size"
-            local job_name="${VALIDATION_NAME}-${policy}-${size}"
+            local output_dir="$TRAIN_ROOT/$benchmark/$policy/$size"
+            local job_name="${VALIDATION_NAME}-${benchmark}-${policy}-${size}"
             local train_steps=$(( BASE_TRAIN_STEPS * size / 100 ))
             remove_if_forced "$output_dir"
-            if [[ -d "$output_dir/checkpoints/last/pretrained_model" ]]; then
-                warn_skip "skip train: found $output_dir/checkpoints/last/pretrained_model (use --force to rerun)"
+            if [[ "$benchmark" == "lerobot" && -d "$output_dir/checkpoints/last/pretrained_model" ]]; then
+                warn_skip "skip train(${benchmark}:${policy}): found $output_dir/checkpoints/last/pretrained_model (use --force to rerun)"
                 continue
             fi
-            run_cmd "FORCE_TRAIN_OVERWRITE='$FORCE_TRAIN_OVERWRITE' bash '$RUN_PIPELINE' train '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$size' --steps='$train_steps' --dataset.repo_id='$FULL_DATASET_REPO_ID' --dataset.root='$FULL_DATASET_ROOT' --output_dir='$output_dir' --job_name='$job_name' --num_workers='$TRAIN_NUM_WORKERS' $TRAIN_EXTRA_ARGS --dataset.episodes='$episodes_json'"
+            if [[ "$benchmark" == "robotwin" && -d "$output_dir" && -n "$(ls -A "$output_dir" 2>/dev/null)" ]]; then
+                warn_skip "skip train(${benchmark}:${policy}): found non-empty $output_dir (use --force to rerun)"
+                continue
+            fi
+            if [[ "$benchmark" == "lerobot" ]]; then
+                run_cmd "FORCE_TRAIN_OVERWRITE='$FORCE_TRAIN_OVERWRITE' bash '$RUN_PIPELINE' train '$benchmark' '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$size' --steps='$train_steps' --dataset.repo_id='$FULL_DATASET_REPO_ID' --dataset.root='$FULL_DATASET_ROOT' --dataset.revision='local' --output_dir='$output_dir' --job_name='$job_name' --num_workers='$TRAIN_NUM_WORKERS' $TRAIN_EXTRA_ARGS --dataset.episodes='$episodes_json'"
+            else
+                run_cmd "bash '$RUN_PIPELINE' train '$benchmark' '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$size' --output_dir='$output_dir' task.dataset.max_train_episodes='$size' $TRAIN_EXTRA_ARGS"
+            fi
         done
     done
 }
 
 eval_all() {
-    for policy in $POLICIES; do
+    for run_spec in $RUNS; do
+        local benchmark policy
+        read -r benchmark policy <<< "$(parse_run "$run_spec")"
         for size in $SUBSET_SIZES; do
-            local policy_path="$TRAIN_ROOT/$policy/$size/checkpoints/last/pretrained_model"
-            local train_output_dir="$EVAL_ROOT/$policy/$size/train_init"
-            local test_output_dir="$EVAL_ROOT/$policy/$size/test_init"
+            local train_output_dir="$EVAL_ROOT/$benchmark/$policy/$size/train_init"
+            local test_output_dir="$EVAL_ROOT/$benchmark/$policy/$size/test_init"
             remove_if_forced "$train_output_dir"
             remove_if_forced "$test_output_dir"
             if [[ -f "$train_output_dir/eval_info.json" ]]; then
-                warn_skip "skip eval train_init: found $train_output_dir/eval_info.json (use --force to rerun)"
+                warn_skip "skip eval(${benchmark}:${policy},train_init): found $train_output_dir/eval_info.json (use --force to rerun)"
             else
-                run_cmd "bash '$RUN_PIPELINE' eval '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$size' --policy.path='$policy_path' --traj_file='$TRAIN_TRAJ_FILE' --traj_seed='$EVAL_TRAJ_SEED' --output_dir='$train_output_dir' --eval.n_episodes='$EVAL_EPISODES' $EVAL_EXTRA_ARGS"
+                if [[ "$benchmark" == "lerobot" ]]; then
+                    local policy_path="$TRAIN_ROOT/$benchmark/$policy/$size/checkpoints/last/pretrained_model"
+                    run_cmd "bash '$RUN_PIPELINE' eval '$benchmark' '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$size' --policy.path='$policy_path' --dataset.revision='local' --traj_file='$TRAIN_TRAJ_FILE' --traj_seed='$EVAL_TRAJ_SEED' --output_dir='$train_output_dir' --eval.n_episodes='$EVAL_EPISODES' $EVAL_EXTRA_ARGS"
+                else
+                    run_cmd "bash '$RUN_PIPELINE' eval '$benchmark' '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$size' --checkpoint_root='$TRAIN_ROOT/$benchmark/$policy/$size' --output_dir='$train_output_dir' --eval.n_episodes='$EVAL_EPISODES' --traj_file='$TRAIN_TRAJ_FILE' $EVAL_EXTRA_ARGS"
+                fi
             fi
             if [[ -f "$test_output_dir/eval_info.json" ]]; then
-                warn_skip "skip eval test_init: found $test_output_dir/eval_info.json (use --force to rerun)"
+                warn_skip "skip eval(${benchmark}:${policy},test_init): found $test_output_dir/eval_info.json (use --force to rerun)"
             else
-                run_cmd "bash '$RUN_PIPELINE' eval '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$size' --policy.path='$policy_path' --traj_file='$TEST_TRAJ_FILE' --traj_seed='$EVAL_TRAJ_SEED' --output_dir='$test_output_dir' --eval.n_episodes='$EVAL_EPISODES' $EVAL_EXTRA_ARGS"
+                if [[ "$benchmark" == "lerobot" ]]; then
+                    local policy_path="$TRAIN_ROOT/$benchmark/$policy/$size/checkpoints/last/pretrained_model"
+                    run_cmd "bash '$RUN_PIPELINE' eval '$benchmark' '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$size' --policy.path='$policy_path' --dataset.revision='local' --traj_file='$TEST_TRAJ_FILE' --traj_seed='$EVAL_TRAJ_SEED' --output_dir='$test_output_dir' --eval.n_episodes='$EVAL_EPISODES' $EVAL_EXTRA_ARGS"
+                else
+                    run_cmd "bash '$RUN_PIPELINE' eval '$benchmark' '$policy' '$OBJECT_NAME' '$SCENE_NAME' '$size' --checkpoint_root='$TRAIN_ROOT/$benchmark/$policy/$size' --output_dir='$test_output_dir' --eval.n_episodes='$EVAL_EPISODES' --traj_file='$TEST_TRAJ_FILE' $EVAL_EXTRA_ARGS"
+                fi
             fi
         done
     done
