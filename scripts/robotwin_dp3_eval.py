@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import sys
 import time
 from pathlib import Path
 
+import dill
 import numpy as np
 import torch
 from omegaconf import OmegaConf
@@ -27,6 +29,7 @@ for path in (
         sys.path.insert(0, path)
 
 from automoma_dp3_utils import PointCloudConfig, rgbd_to_pointcloud
+from diffusion_policy_3d.env_runner.robot_runner import RobotRunner
 from lerobot.utils.io_utils import write_video
 from train_dp3 import TrainDP3Workspace
 
@@ -122,12 +125,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ckpt_setting", required=True)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--gpu_id", default="0")
-    parser.add_argument("--checkpoint_num", type=int, default=3000)
+    parser.add_argument("--checkpoint_num", type=int, default=None)
+    parser.add_argument("--checkpoint_path", type=str, default=None)
+    parser.add_argument("--checkpoint_task_name", type=str, default=None)
+    parser.add_argument("--checkpoint_setting", type=str, default=None)
+    parser.add_argument("--checkpoint_expert_data_num", type=int, default=None)
+    parser.add_argument("--legacy_cvpr26", nargs="?", const=True, default=False, type=str2bool)
     parser.add_argument("--camera_view", choices=CAMERA_CHOICES, default="ego_topdown")
-    parser.add_argument("--n_points", type=int, default=1024)
-    parser.add_argument("--random_drop_points", type=int, default=5000)
-    parser.add_argument("--use_fps", type=str2bool, default=True)
-    parser.add_argument("--use_rgb", type=str2bool, default=False)
+    parser.add_argument("--n_points", type=int, default=None)
+    parser.add_argument("--random_drop_points", type=int, default=None)
+    parser.add_argument("--use_fps", type=str2bool, default=None)
+    parser.add_argument("--use_rgb", type=str2bool, default=None)
     parser.add_argument("--fov_deg", type=float, default=60.0)
     parser.add_argument("--fx", type=float, default=None)
     parser.add_argument("--fy", type=float, default=None)
@@ -144,10 +152,145 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--debug_visualize_handle", type=str2bool, default=False)
     parser.add_argument("--debug_record_handle_diagnostics", type=str2bool, default=False)
     parser.add_argument("--handle_distance_threshold", type=float, default=0.1)
+    parser.add_argument("--max_steps", type=int, default=300)
+    parser.add_argument("--preclose_steps", type=int, default=None)
+    parser.add_argument("--obs_gripper_value", type=float, default=None)
+    parser.add_argument("--action_gripper_value", type=float, default=None)
     return parser.parse_args()
 
 
-def make_cfg(args: argparse.Namespace):
+def _unique_existing(paths: list[Path]) -> list[Path]:
+    seen: set[Path] = set()
+    existing: list[Path] = []
+    for path in paths:
+        resolved = path.expanduser().resolve()
+        if resolved in seen or not resolved.is_file():
+            continue
+        seen.add(resolved)
+        existing.append(resolved)
+    return existing
+
+
+def _numeric_ckpt_key(path: Path) -> tuple[int, str]:
+    try:
+        number = int(path.stem)
+    except ValueError:
+        number = -1
+    return number, str(path)
+
+
+def _checkpoint_dir_name(task_name: str, ckpt_setting: str, expert_data_num: int, seed: int, use_pc_color: bool) -> str:
+    return TrainDP3Workspace.checkpoint_dir_name(
+        task_name=task_name,
+        ckpt_setting=ckpt_setting,
+        expert_data_num=expert_data_num,
+        seed=seed,
+        use_pc_color=use_pc_color,
+    )
+
+
+def resolve_checkpoint_path(args: argparse.Namespace) -> Path:
+    if args.checkpoint_path:
+        checkpoint_path = Path(args.checkpoint_path).expanduser().resolve()
+        if not checkpoint_path.is_file():
+            raise FileNotFoundError(f"checkpoint_path not found: {checkpoint_path}")
+        return checkpoint_path
+
+    checkpoint_root = Path(args.checkpoint_root).expanduser().resolve() if args.checkpoint_root else None
+    if checkpoint_root is None:
+        if args.legacy_cvpr26:
+            checkpoint_root = REPO_ROOT / "outputs" / "train" / "debug_eval" / "robotwin" / "dp3"
+        else:
+            checkpoint_root = REPO_ROOT / "outputs" / "train" / "robotwin" / f"dp3_{args.task_name}-{args.task_config}-{args.expert_data_num}"
+
+    if checkpoint_root.is_file():
+        return checkpoint_root
+    if not checkpoint_root.exists():
+        raise FileNotFoundError(f"checkpoint_root not found: {checkpoint_root}")
+
+    expert_data_num = args.checkpoint_expert_data_num or args.expert_data_num
+    checkpoint_num = args.checkpoint_num if args.checkpoint_num is not None else (None if args.legacy_cvpr26 else 3000)
+    model_use_pc_color = bool(args.use_rgb) if args.use_rgb is not None and not args.legacy_cvpr26 else False
+
+    task_names = []
+    if args.checkpoint_task_name:
+        task_names.append(args.checkpoint_task_name)
+    if args.legacy_cvpr26:
+        task_names.append("automoma_manip_summit_franka")
+    task_names.append(args.task_name)
+
+    settings = []
+    if args.checkpoint_setting:
+        settings.append(args.checkpoint_setting)
+    settings.append(args.ckpt_setting)
+    if args.legacy_cvpr26:
+        settings.extend(
+            [
+                "task_1object_1scene_20pose",
+                "task_1object_30scene_20pose",
+                "task_5object_30scene_20pose",
+            ]
+        )
+
+    candidates: list[Path] = []
+    if checkpoint_num is not None:
+        for task_name in dict.fromkeys(task_names):
+            for setting in dict.fromkeys(settings):
+                dirname = _checkpoint_dir_name(
+                    task_name,
+                    setting,
+                    expert_data_num,
+                    args.seed,
+                    model_use_pc_color,
+                )
+                candidates.append(checkpoint_root / "checkpoints" / dirname / f"{checkpoint_num}.ckpt")
+                candidates.append(checkpoint_root / dirname / f"{checkpoint_num}.ckpt")
+
+    existing = _unique_existing(candidates)
+    if len(existing) == 1:
+        return existing[0]
+    if len(existing) > 1:
+        raise RuntimeError("Ambiguous checkpoint candidates:\n" + "\n".join(str(path) for path in existing))
+
+    globbed = sorted(checkpoint_root.glob("**/*.ckpt"))
+    if checkpoint_num is not None:
+        globbed = [path for path in globbed if path.name == f"{checkpoint_num}.ckpt"]
+
+    expert_seed_token = f"-{expert_data_num}_{args.seed}"
+    filtered = [path for path in globbed if expert_seed_token in path.parent.name]
+    if not filtered:
+        expert_token = f"-{expert_data_num}_"
+        filtered = [path for path in globbed if expert_token in path.parent.name]
+    if args.checkpoint_task_name:
+        filtered = [path for path in filtered if args.checkpoint_task_name in path.parent.name]
+    if args.checkpoint_setting:
+        filtered = [path for path in filtered if args.checkpoint_setting in path.parent.name]
+    if not filtered and globbed and not args.legacy_cvpr26:
+        filtered = globbed
+
+    if not filtered:
+        details = (
+            f"root={checkpoint_root}, expert_data_num={expert_data_num}, "
+            f"seed={args.seed}, checkpoint_num={checkpoint_num}"
+        )
+        raise FileNotFoundError(f"No DP3 checkpoint found ({details})")
+
+    filtered = sorted(filtered, key=_numeric_ckpt_key)
+    return filtered[-1].resolve()
+
+
+def load_checkpoint_payload(checkpoint_path: Path) -> dict:
+    return torch.load(checkpoint_path.open("rb"), pickle_module=dill, map_location="cpu")
+
+
+def make_cfg(args: argparse.Namespace, checkpoint_payload: dict | None = None):
+    if checkpoint_payload is not None and checkpoint_payload.get("cfg") is not None:
+        cfg = copy.deepcopy(checkpoint_payload["cfg"])
+        OmegaConf.set_struct(cfg, False)
+        cfg.training.device = f"cuda:{args.gpu_id}"
+        OmegaConf.set_struct(cfg, True)
+        return cfg
+
     config_path = DP3_DIFFUSION_ROOT / "diffusion_policy_3d" / "config"
     with __import__("hydra").initialize_config_dir(config_dir=str(config_path), version_base="1.2"):
         cfg = __import__("hydra").compose(config_name="robot_dp3.yaml")
@@ -156,24 +299,55 @@ def make_cfg(args: argparse.Namespace):
     cfg.expert_data_num = args.expert_data_num
     cfg.setting = args.ckpt_setting
     cfg.raw_task_name = args.task_name
-    cfg.policy.use_pc_color = args.use_rgb
+    cfg.training.device = f"cuda:{args.gpu_id}"
+    cfg.policy.use_pc_color = bool(args.use_rgb) if args.use_rgb is not None else False
     cfg.task.shape_meta.obs.agent_pos.shape = [12]
     cfg.task.shape_meta.action.shape = [12]
     OmegaConf.set_struct(cfg, True)
     return cfg
 
 
-def load_policy(cfg, args: argparse.Namespace):
+def get_policy_dims(cfg) -> tuple[int, int, int]:
+    agent_pos_dim = int(cfg.task.shape_meta.obs.agent_pos.shape[0])
+    action_dim = int(cfg.task.shape_meta.action.shape[0])
+    point_count = int(cfg.task.shape_meta.obs.point_cloud.shape[0])
+    return agent_pos_dim, action_dim, point_count
+
+
+def configure_runtime_defaults(args: argparse.Namespace, cfg) -> None:
+    _agent_pos_dim, _action_dim, cfg_point_count = get_policy_dims(cfg)
+    if args.n_points is None:
+        args.n_points = 4096 if args.legacy_cvpr26 else cfg_point_count
+    if args.random_drop_points is None:
+        if args.legacy_cvpr26:
+            args.random_drop_points = min(int(0.25 * 240 * 320), 2 * args.n_points)
+        else:
+            args.random_drop_points = 5000
+    if args.use_fps is None:
+        args.use_fps = False if args.legacy_cvpr26 else True
+    if args.use_rgb is None:
+        args.use_rgb = True if args.legacy_cvpr26 else bool(cfg.policy.use_pc_color)
+    if args.preclose_steps is None:
+        args.preclose_steps = 4 if args.legacy_cvpr26 else 0
+    if args.obs_gripper_value is None:
+        args.obs_gripper_value = 0.02 if args.legacy_cvpr26 else None
+    if args.action_gripper_value is None:
+        args.action_gripper_value = 0.0 if args.legacy_cvpr26 else None
+
+
+def load_policy(cfg, checkpoint_payload: dict, checkpoint_path: Path):
     workspace = TrainDP3Workspace(cfg)
-    usr_args = {
-        "task_name": args.task_name,
-        "ckpt_setting": args.ckpt_setting,
-        "expert_data_num": args.expert_data_num,
-        "seed": args.seed,
-        "checkpoint_num": args.checkpoint_num,
-        "output_dir": str(Path(args.checkpoint_root).resolve()) if args.checkpoint_root else None,
-    }
-    policy, env_runner = workspace.get_policy_and_runner(cfg, usr_args)
+    workspace.load_payload(checkpoint_payload)
+
+    policy = workspace.ema_model if cfg.training.use_ema else workspace.model
+    policy.eval()
+    policy.cuda()
+
+    env_runner = RobotRunner(
+        n_obs_steps=int(cfg.n_obs_steps),
+        n_action_steps=int(cfg.n_action_steps),
+    )
+    print(f"Loaded DP3 checkpoint: {checkpoint_path}", flush=True)
     return policy, env_runner
 
 
@@ -192,6 +366,7 @@ def parse_env_identifiers(task_name: str, task_config: str) -> tuple[str, str]:
 def build_env(args: argparse.Namespace):
     object_name, scene_name = parse_env_identifiers(args.task_name, args.task_config)
     traj_file = Path(args.traj_file) if args.traj_file else REPO_ROOT / "data" / "trajs" / "summit_franka" / object_name / scene_name / "test" / "traj_data_test.pt"
+    episode_length = int(args.max_steps) + max(int(args.preclose_steps or 0), 0)
     cfg = SimpleEnvConfig(
         environment="summit_franka_open_door_eval",
         headless=args.headless,
@@ -202,7 +377,7 @@ def build_env(args: argparse.Namespace):
         action_dim=12,
         camera_height=240,
         camera_width=320,
-        episode_length=300,
+        episode_length=episode_length,
         object_name=object_name,
         scene_name=scene_name,
         object_center=True,
@@ -240,6 +415,116 @@ def extract_joint_pos(obs: dict) -> np.ndarray:
     if isinstance(joint_pos, torch.Tensor):
         joint_pos = joint_pos.detach().cpu().numpy()
     return joint_pos[0].astype(np.float32) if joint_pos.ndim == 2 else joint_pos.astype(np.float32)
+
+
+def policy_agent_pos(joint_pos: np.ndarray, policy_state_dim: int, obs_gripper_value: float | None) -> np.ndarray:
+    state = np.asarray(joint_pos, dtype=np.float32).copy()
+    if obs_gripper_value is not None:
+        if state.shape[0] >= 12:
+            state[-2:] = obs_gripper_value
+        elif state.shape[0] >= 11:
+            state[-1] = obs_gripper_value
+
+    if policy_state_dim == 11 and state.shape[0] >= 12:
+        gripper = np.array([state[-2:].mean()], dtype=np.float32)
+        state = np.concatenate([state[:10], gripper]).astype(np.float32)
+    elif policy_state_dim == 12 and state.shape[0] == 11:
+        state = np.concatenate([state, state[-1:]]).astype(np.float32)
+
+    if state.shape[0] < policy_state_dim:
+        state = np.pad(state, (0, policy_state_dim - state.shape[0]))
+    elif state.shape[0] > policy_state_dim:
+        state = state[:policy_state_dim]
+    return state.astype(np.float32)
+
+
+def policy_action_to_env_action(
+    action: np.ndarray,
+    env_action_dim: int,
+    action_gripper_value: float | None,
+) -> np.ndarray:
+    env_action = np.asarray(action, dtype=np.float32).copy()
+    if env_action.ndim != 1:
+        env_action = env_action.reshape(-1)
+
+    if env_action.shape[0] == 11 and env_action_dim == 12:
+        env_action = np.concatenate([env_action, env_action[-1:]]).astype(np.float32)
+    elif env_action.shape[0] < env_action_dim:
+        env_action = np.pad(env_action, (0, env_action_dim - env_action.shape[0]))
+    elif env_action.shape[0] > env_action_dim:
+        env_action = env_action[:env_action_dim]
+
+    if action_gripper_value is not None and env_action.shape[0] >= 2:
+        env_action[-2:] = action_gripper_value
+    return env_action.astype(np.float32)
+
+
+def make_dp3_obs(
+    obs: dict,
+    camera_view: str,
+    pc_cfg: PointCloudConfig,
+    rng: np.random.Generator,
+    policy_state_dim: int,
+    obs_gripper_value: float | None,
+) -> dict[str, np.ndarray]:
+    point_cloud = extract_point_cloud(obs, camera_view, pc_cfg, rng)
+    joint_pos = extract_joint_pos(obs)
+    return {
+        "point_cloud": point_cloud.astype(np.float32),
+        "agent_pos": policy_agent_pos(joint_pos, policy_state_dim, obs_gripper_value),
+    }
+
+
+def make_hold_close_action(
+    joint_pos: np.ndarray,
+    env_action_dim: int,
+    gripper_value: float,
+    mobile_base_relative: bool,
+) -> np.ndarray:
+    action = np.asarray(joint_pos, dtype=np.float32).copy()
+    if action.shape[0] < env_action_dim:
+        action = np.pad(action, (0, env_action_dim - action.shape[0]))
+    elif action.shape[0] > env_action_dim:
+        action = action[:env_action_dim]
+
+    if mobile_base_relative and action.shape[0] >= 3:
+        action[:3] = 0.0
+    if action.shape[0] >= 2:
+        action[-2:] = gripper_value
+    return action.astype(np.float32)
+
+
+def run_preclose(
+    env,
+    obs: dict,
+    args: argparse.Namespace,
+    frames: list[np.ndarray],
+    episode_ix: int,
+) -> tuple[dict, int, bool, dict]:
+    preclose_steps = max(int(args.preclose_steps or 0), 0)
+    if preclose_steps == 0:
+        return obs, 0, False, {"is_success": np.array([False])}
+
+    joint_pos = extract_joint_pos(obs)
+    env_action_dim = env.action_space.shape[-1]
+    mobile_base_relative = bool(getattr(env, "_mobile_base_relative", False))
+    target_gripper = 0.0 if args.action_gripper_value is None else float(args.action_gripper_value)
+    start_gripper = float(joint_pos[-2:].mean()) if joint_pos.shape[0] >= 2 else 0.04
+
+    final_info = {"is_success": np.array([False])}
+    for grip in np.linspace(start_gripper, target_gripper, num=preclose_steps, dtype=np.float32):
+        action = make_hold_close_action(joint_pos, env_action_dim, float(grip), mobile_base_relative)
+        obs, _reward, terminated, truncated, info = env.step(action[None, :])
+        final_info = info.get("final_info", final_info)
+        if episode_ix < args.max_episodes_rendered:
+            frame = render_frame(env)
+            if frame is not None:
+                frames.append(frame)
+        if bool(terminated[0] or truncated[0]):
+            return obs, preclose_steps, True, final_info
+        joint_pos = extract_joint_pos(obs)
+
+    return obs, preclose_steps, False, final_info
 
 
 def get_success_metrics(final_info: dict) -> dict[str, float | bool]:
@@ -285,8 +570,12 @@ def main() -> None:
     args = parse_args()
     torch.cuda.set_device(int(args.gpu_id))
 
-    cfg = make_cfg(args)
-    policy, env_runner = load_policy(cfg, args)
+    checkpoint_path = resolve_checkpoint_path(args)
+    checkpoint_payload = load_checkpoint_payload(checkpoint_path)
+    cfg = make_cfg(args, checkpoint_payload)
+    configure_runtime_defaults(args, cfg)
+    policy_state_dim, _policy_action_dim, _cfg_point_count = get_policy_dims(cfg)
+    policy, env_runner = load_policy(cfg, checkpoint_payload, checkpoint_path)
     env = build_env(args)
 
     output_dir = Path(args.output_dir) if args.output_dir else REPO_ROOT / "outputs" / "eval" / "robotwin" / f"dp3_{args.task_name}-{args.task_config}-{args.expert_data_num}"
@@ -310,6 +599,7 @@ def main() -> None:
         use_rgb=args.use_rgb,
     )
     rng = np.random.default_rng(args.seed)
+    env_action_dim = env.action_space.shape[-1]
 
     all_episode_metrics: list[dict[str, object]] = []
     all_successes: list[bool] = []
@@ -328,16 +618,18 @@ def main() -> None:
                 if frame is not None:
                     frames.append(frame)
 
-            done = False
-            final_info = {"is_success": np.array([False])}
-            steps = 0
-            while not done and steps < 300:
-                point_cloud = extract_point_cloud(obs, args.camera_view, pc_cfg, rng)
-                joint_pos = extract_joint_pos(obs)
-                dp3_obs = {
-                    "point_cloud": point_cloud.astype(np.float32),
-                    "agent_pos": joint_pos.astype(np.float32),
-                }
+            obs, preclose_count, done, final_info = run_preclose(env, obs, args, frames, episode_ix)
+
+            policy_steps = 0
+            while not done and policy_steps < args.max_steps:
+                dp3_obs = make_dp3_obs(
+                    obs,
+                    args.camera_view,
+                    pc_cfg,
+                    rng,
+                    policy_state_dim,
+                    args.obs_gripper_value,
+                )
 
                 if len(env_runner.obs) == 0:
                     env_runner.update_obs(dp3_obs)
@@ -345,23 +637,26 @@ def main() -> None:
                 else:
                     actions = env_runner.get_action(policy, dp3_obs)
                 for action in actions:
-                    obs, _reward, terminated, truncated, info = env.step(action[None, :])
-                    steps += 1
+                    env_action = policy_action_to_env_action(action, env_action_dim, args.action_gripper_value)
+                    obs, _reward, terminated, truncated, info = env.step(env_action[None, :])
+                    policy_steps += 1
                     done = bool(terminated[0] or truncated[0])
                     final_info = info.get("final_info", final_info)
                     if episode_ix < args.max_episodes_rendered:
                         frame = render_frame(env)
                         if frame is not None:
                             frames.append(frame)
-                    point_cloud = extract_point_cloud(obs, args.camera_view, pc_cfg, rng)
-                    joint_pos = extract_joint_pos(obs)
                     env_runner.update_obs(
-                        {
-                            "point_cloud": point_cloud.astype(np.float32),
-                            "agent_pos": joint_pos.astype(np.float32),
-                        }
+                        make_dp3_obs(
+                            obs,
+                            args.camera_view,
+                            pc_cfg,
+                            rng,
+                            policy_state_dim,
+                            args.obs_gripper_value,
+                        )
                     )
-                    if done or steps >= 300:
+                    if done or policy_steps >= args.max_steps:
                         break
 
             metrics = get_success_metrics(final_info)
@@ -382,7 +677,7 @@ def main() -> None:
                 "final_door_openness": maybe_scalar(metrics["final_door_openness"]),
                 "final_engaged": maybe_scalar(metrics["final_engaged"]),
                 "final_handle_distance": maybe_scalar(metrics["final_handle_distance"]),
-                "steps": f"{steps}/{env_runner.n_action_steps}",
+                "steps": f"pre={preclose_count},policy={policy_steps}/{env_runner.n_action_steps}",
                 "video_path": video_path,
             }
             append_per_episode_csv_row(csv_path, row)
@@ -410,6 +705,19 @@ def main() -> None:
             ],
             "aggregated": {
                 "pc_success": float(np.nanmean(all_successes) * 100) if all_successes else 0.0,
+            },
+            "debug_eval": {
+                "legacy_cvpr26": bool(args.legacy_cvpr26),
+                "checkpoint_path": str(checkpoint_path),
+                "policy_state_dim": policy_state_dim,
+                "n_points": args.n_points,
+                "use_rgb": bool(args.use_rgb),
+                "use_fps": bool(args.use_fps),
+                "random_drop_points": args.random_drop_points,
+                "preclose_steps": args.preclose_steps,
+                "obs_gripper_value": args.obs_gripper_value,
+                "action_gripper_value": args.action_gripper_value,
+                "max_steps": args.max_steps,
             },
         }
         if video_paths:

@@ -562,25 +562,55 @@ PY
     local checkpoint_root="$REPO_ROOT/outputs/train/robotwin/${policy}_${name}"
     local output_dir="$REPO_ROOT/outputs/eval/robotwin/${policy}_${name}"
     local use_rgb=""
+    local legacy_cvpr26="false"
+    local seed_explicit="false"
+    local checkpoint_root_explicit="false"
+    local output_dir_explicit="false"
     local -a passthrough=()
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --seed=*) seed="${1#*=}"; shift ;;
-            --seed) seed="$2"; shift 2 ;;
+            --seed=*) seed="${1#*=}"; seed_explicit="true"; shift ;;
+            --seed) seed="$2"; seed_explicit="true"; shift 2 ;;
             --gpu_id=*) gpu_id="${1#*=}"; shift ;;
             --gpu_id) gpu_id="$2"; shift 2 ;;
             --ckpt_setting=*) ckpt_setting="${1#*=}"; shift ;;
             --ckpt_setting) ckpt_setting="$2"; shift 2 ;;
-            --checkpoint_root=*) checkpoint_root="${1#*=}"; shift ;;
-            --checkpoint_root) checkpoint_root="$2"; shift 2 ;;
-            --output_dir=*) output_dir="${1#*=}"; shift ;;
-            --output_dir) output_dir="$2"; shift 2 ;;
+            --checkpoint_root=*) checkpoint_root="${1#*=}"; checkpoint_root_explicit="true"; shift ;;
+            --checkpoint_root) checkpoint_root="$2"; checkpoint_root_explicit="true"; shift 2 ;;
+            --output_dir=*) output_dir="${1#*=}"; output_dir_explicit="true"; shift ;;
+            --output_dir) output_dir="$2"; output_dir_explicit="true"; shift 2 ;;
             --use_rgb=*) use_rgb="${1#*=}"; shift ;;
             --use_rgb) use_rgb="$2"; shift 2 ;;
+            --legacy_cvpr26)
+                legacy_cvpr26="true"
+                passthrough+=("$1")
+                shift
+                ;;
+            --legacy_cvpr26=*)
+                local legacy_value="${1#*=}"
+                case "${legacy_value,,}" in
+                    1|true|yes|y|on) legacy_cvpr26="true" ;;
+                    *) legacy_cvpr26="false" ;;
+                esac
+                passthrough+=("$1")
+                shift
+                ;;
             *) passthrough+=("$1"); shift ;;
         esac
     done
+
+    if [[ "$legacy_cvpr26" == "true" ]]; then
+        if [[ "$seed_explicit" == "false" ]]; then
+            seed="0"
+        fi
+        if [[ "$checkpoint_root_explicit" == "false" ]]; then
+            checkpoint_root="$REPO_ROOT/outputs/train/debug_eval/robotwin/${policy}"
+        fi
+        if [[ "$output_dir_explicit" == "false" ]]; then
+            output_dir="$REPO_ROOT/outputs/eval/debug_eval/robotwin/${policy}_${name}"
+        fi
+    fi
 
     local eval_wrapper="$REPO_ROOT/scripts/robotwin_eval.sh"
     local task_name="$object_name"
