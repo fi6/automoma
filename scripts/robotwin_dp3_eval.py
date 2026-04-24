@@ -42,6 +42,9 @@ PER_EPISODE_CSV_COLUMNS = [
     "final_door_openness",
     "final_engaged",
     "final_handle_distance",
+    "preclose_gripper_left",
+    "preclose_gripper_right",
+    "preclose_base_arm_max_abs_delta",
     "steps",
     "video_path",
 ]
@@ -154,6 +157,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--handle_distance_threshold", type=float, default=0.1)
     parser.add_argument("--max_steps", type=int, default=300)
     parser.add_argument("--preclose_steps", type=int, default=None)
+    parser.add_argument("--preclose_repeat_per_step", type=int, default=None)
+    parser.add_argument("--preclose_start_gripper_value", type=float, default=None)
+    parser.add_argument("--preclose_gripper_value", type=float, default=None)
     parser.add_argument("--obs_gripper_value", type=float, default=None)
     parser.add_argument("--action_gripper_value", type=float, default=None)
     return parser.parse_args()
@@ -328,7 +334,13 @@ def configure_runtime_defaults(args: argparse.Namespace, cfg) -> None:
     if args.use_rgb is None:
         args.use_rgb = True if args.legacy_cvpr26 else bool(cfg.policy.use_pc_color)
     if args.preclose_steps is None:
-        args.preclose_steps = 4 if args.legacy_cvpr26 else 0
+        args.preclose_steps = 10 if args.legacy_cvpr26 else 0
+    if args.preclose_repeat_per_step is None:
+        args.preclose_repeat_per_step = int(cfg.n_action_steps) if args.legacy_cvpr26 else 1
+    if args.preclose_start_gripper_value is None:
+        args.preclose_start_gripper_value = 0.04 if args.legacy_cvpr26 else None
+    if args.preclose_gripper_value is None:
+        args.preclose_gripper_value = 0.0 if args.legacy_cvpr26 else None
     if args.obs_gripper_value is None:
         args.obs_gripper_value = 0.02 if args.legacy_cvpr26 else None
     if args.action_gripper_value is None:
@@ -366,7 +378,9 @@ def parse_env_identifiers(task_name: str, task_config: str) -> tuple[str, str]:
 def build_env(args: argparse.Namespace):
     object_name, scene_name = parse_env_identifiers(args.task_name, args.task_config)
     traj_file = Path(args.traj_file) if args.traj_file else REPO_ROOT / "data" / "trajs" / "summit_franka" / object_name / scene_name / "test" / "traj_data_test.pt"
-    episode_length = int(args.max_steps) + max(int(args.preclose_steps or 0), 0)
+    preclose_steps = max(int(args.preclose_steps or 0), 0)
+    preclose_repeat_per_step = max(int(args.preclose_repeat_per_step or 1), 1)
+    episode_length = int(args.max_steps) + preclose_steps * preclose_repeat_per_step
     cfg = SimpleEnvConfig(
         environment="summit_franka_open_door_eval",
         headless=args.headless,
@@ -395,7 +409,22 @@ def build_env(args: argparse.Namespace):
         debug_marker_scale=1.0,
     )
     env_map = env_module.make_env(n_envs=1, cfg=cfg)
-    return env_map["summit_franka_open_door_eval"][0]
+    env = env_map["summit_franka_open_door_eval"][0]
+    sync_episode_budget(env, episode_length)
+    return env
+
+
+def sync_episode_budget(env, total_steps: int) -> None:
+    if hasattr(env, "_episode_length"):
+        env._episode_length = int(total_steps)
+
+    raw_env = getattr(env, "_env", None)
+    raw_cfg = getattr(raw_env, "cfg", None)
+    if raw_env is None or raw_cfg is None or not hasattr(raw_cfg, "episode_length_s"):
+        return
+
+    step_dt = float(getattr(raw_env, "step_dt", 0.02) or 0.02)
+    raw_cfg.episode_length_s = int(total_steps) * step_dt
 
 
 def extract_point_cloud(obs: dict, camera_view: str, pc_cfg: PointCloudConfig, rng: np.random.Generator) -> np.ndarray:
@@ -459,6 +488,29 @@ def policy_action_to_env_action(
     return env_action.astype(np.float32)
 
 
+def _disabled_termination(env) -> torch.Tensor:
+    return torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+
+
+def disable_success_termination(env):
+    raw_env = getattr(env, "_env", None)
+    termination_manager = getattr(raw_env, "termination_manager", None)
+    if termination_manager is None or "success" not in getattr(termination_manager, "active_terms", []):
+        return lambda: None
+
+    term_cfg = termination_manager.get_term_cfg("success")
+    original_func = term_cfg.func
+    original_params = term_cfg.params
+    term_cfg.func = _disabled_termination
+    term_cfg.params = {}
+
+    def restore() -> None:
+        term_cfg.func = original_func
+        term_cfg.params = original_params
+
+    return restore
+
+
 def make_dp3_obs(
     obs: dict,
     camera_view: str,
@@ -494,6 +546,45 @@ def make_hold_close_action(
     return action.astype(np.float32)
 
 
+def lock_base_arm_state(env, hold_joint_pos: np.ndarray) -> dict | None:
+    raw_env = getattr(env, "_env", None)
+    scene = getattr(raw_env, "scene", None)
+    if raw_env is None or scene is None or "robot" not in scene.keys():
+        return None
+
+    robot = scene["robot"]
+    if not hasattr(robot, "write_joint_state_to_sim") or not hasattr(robot, "data"):
+        return None
+
+    joint_pos = robot.data.joint_pos.clone()
+    joint_vel = robot.data.joint_vel.clone()
+    if joint_pos.ndim != 2 or joint_pos.shape[0] < 1:
+        return None
+
+    freeze_dim = min(max(int(hold_joint_pos.shape[0]) - 2, 0), int(getattr(robot, "num_joints", joint_pos.shape[1])))
+    if freeze_dim <= 0:
+        return None
+
+    hold = torch.as_tensor(hold_joint_pos[:freeze_dim], dtype=joint_pos.dtype, device=joint_pos.device)
+    joint_pos[:, :freeze_dim] = hold.unsqueeze(0)
+    joint_vel[:, :freeze_dim] = 0.0
+    robot.write_joint_state_to_sim(joint_pos, joint_vel)
+
+    if hasattr(scene, "write_data_to_sim"):
+        scene.write_data_to_sim()
+    if hasattr(raw_env, "sim") and hasattr(raw_env.sim, "render"):
+        raw_env.sim.render()
+    if hasattr(scene, "update"):
+        scene.update(getattr(raw_env, "physics_dt", 0.0))
+
+    observation_manager = getattr(raw_env, "observation_manager", None)
+    if observation_manager is None:
+        return None
+    obs = observation_manager.compute()
+    raw_env.obs_buf = obs
+    return obs
+
+
 def run_preclose(
     env,
     obs: dict,
@@ -501,30 +592,41 @@ def run_preclose(
     frames: list[np.ndarray],
     episode_ix: int,
 ) -> tuple[dict, int, bool, dict]:
-    preclose_steps = max(int(args.preclose_steps or 0), 0)
-    if preclose_steps == 0:
+    preclose_blocks = max(int(args.preclose_steps or 0), 0)
+    repeat_per_block = max(int(args.preclose_repeat_per_step or 1), 1)
+    total_preclose_steps = preclose_blocks * repeat_per_block
+    if total_preclose_steps == 0:
         return obs, 0, False, {"is_success": np.array([False])}
 
-    joint_pos = extract_joint_pos(obs)
+    hold_joint_pos = extract_joint_pos(obs)
     env_action_dim = env.action_space.shape[-1]
     mobile_base_relative = bool(getattr(env, "_mobile_base_relative", False))
-    target_gripper = 0.0 if args.action_gripper_value is None else float(args.action_gripper_value)
-    start_gripper = float(joint_pos[-2:].mean()) if joint_pos.shape[0] >= 2 else 0.04
+    if args.preclose_gripper_value is None:
+        target_gripper = 0.0 if args.action_gripper_value is None else float(args.action_gripper_value)
+    else:
+        target_gripper = float(args.preclose_gripper_value)
 
     final_info = {"is_success": np.array([False])}
-    for grip in np.linspace(start_gripper, target_gripper, num=preclose_steps, dtype=np.float32):
-        action = make_hold_close_action(joint_pos, env_action_dim, float(grip), mobile_base_relative)
-        obs, _reward, terminated, truncated, info = env.step(action[None, :])
-        final_info = info.get("final_info", final_info)
-        if episode_ix < args.max_episodes_rendered:
-            frame = render_frame(env)
-            if frame is not None:
-                frames.append(frame)
-        if bool(terminated[0] or truncated[0]):
-            return obs, preclose_steps, True, final_info
-        joint_pos = extract_joint_pos(obs)
+    preclose_step_ix = 0
+    restore_success_termination = disable_success_termination(env)
+    try:
+        for _block_ix in range(preclose_blocks):
+            for _ in range(repeat_per_block):
+                action = make_hold_close_action(hold_joint_pos, env_action_dim, target_gripper, mobile_base_relative)
+                obs, _reward, _terminated, _truncated, info = env.step(action[None, :])
+                locked_obs = lock_base_arm_state(env, hold_joint_pos)
+                if locked_obs is not None:
+                    obs = locked_obs
+                preclose_step_ix += 1
+                final_info = info.get("final_info", final_info)
+                if episode_ix < args.max_episodes_rendered:
+                    frame = render_frame(env)
+                    if frame is not None:
+                        frames.append(frame)
+    finally:
+        restore_success_termination()
 
-    return obs, preclose_steps, False, final_info
+    return obs, total_preclose_steps, False, final_info
 
 
 def get_success_metrics(final_info: dict) -> dict[str, float | bool]:
@@ -553,6 +655,21 @@ def maybe_scalar(value: object) -> object:
     if isinstance(value, float) and np.isnan(value):
         return ""
     return value
+
+
+def gripper_values_from_obs(obs: dict) -> tuple[float, float]:
+    joint_pos = extract_joint_pos(obs)
+    if joint_pos.shape[0] < 2:
+        return np.nan, np.nan
+    return float(joint_pos[-2]), float(joint_pos[-1])
+
+
+def base_arm_max_abs_delta(obs: dict, reference_joint_pos: np.ndarray) -> float:
+    joint_pos = extract_joint_pos(obs)
+    freeze_dim = min(max(int(reference_joint_pos.shape[0]) - 2, 0), int(joint_pos.shape[0]))
+    if freeze_dim <= 0:
+        return np.nan
+    return float(np.max(np.abs(joint_pos[:freeze_dim] - reference_joint_pos[:freeze_dim])))
 
 
 def render_frame(env) -> np.ndarray | None:
@@ -618,7 +735,10 @@ def main() -> None:
                 if frame is not None:
                     frames.append(frame)
 
+            preclose_reference_joint_pos = extract_joint_pos(obs)
             obs, preclose_count, done, final_info = run_preclose(env, obs, args, frames, episode_ix)
+            preclose_gripper_left, preclose_gripper_right = gripper_values_from_obs(obs)
+            preclose_base_arm_delta = base_arm_max_abs_delta(obs, preclose_reference_joint_pos)
 
             policy_steps = 0
             while not done and policy_steps < args.max_steps:
@@ -677,6 +797,9 @@ def main() -> None:
                 "final_door_openness": maybe_scalar(metrics["final_door_openness"]),
                 "final_engaged": maybe_scalar(metrics["final_engaged"]),
                 "final_handle_distance": maybe_scalar(metrics["final_handle_distance"]),
+                "preclose_gripper_left": maybe_scalar(preclose_gripper_left),
+                "preclose_gripper_right": maybe_scalar(preclose_gripper_right),
+                "preclose_base_arm_max_abs_delta": maybe_scalar(preclose_base_arm_delta),
                 "steps": f"pre={preclose_count},policy={policy_steps}/{env_runner.n_action_steps}",
                 "video_path": video_path,
             }
@@ -715,9 +838,15 @@ def main() -> None:
                 "use_fps": bool(args.use_fps),
                 "random_drop_points": args.random_drop_points,
                 "preclose_steps": args.preclose_steps,
+                "preclose_repeat_per_step": args.preclose_repeat_per_step,
+                "preclose_start_gripper_value": args.preclose_start_gripper_value,
+                "preclose_gripper_value": args.preclose_gripper_value,
                 "obs_gripper_value": args.obs_gripper_value,
                 "action_gripper_value": args.action_gripper_value,
                 "max_steps": args.max_steps,
+                "episode_length_steps": int(args.max_steps)
+                + max(int(args.preclose_steps or 0), 0) * max(int(args.preclose_repeat_per_step or 1), 1),
+                "episode_length_s": float(getattr(getattr(env, "_env", None), "max_episode_length_s", np.nan)),
             },
         }
         if video_paths:
