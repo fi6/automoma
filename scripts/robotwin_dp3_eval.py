@@ -45,6 +45,7 @@ PER_EPISODE_CSV_COLUMNS = [
     "preclose_gripper_left",
     "preclose_gripper_right",
     "preclose_base_arm_max_abs_delta",
+    "preclose_diagnostics_path",
     "steps",
     "video_path",
 ]
@@ -172,6 +173,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max_steps", type=int, default=300)
     parser.add_argument("--preclose_steps", type=int, default=None)
     parser.add_argument("--preclose_gripper_value", type=float, default=None)
+    parser.add_argument("--preclose_lock_base_arm", type=str2bool, default=None)
     parser.add_argument("--obs_gripper_value", type=float, default=None)
     parser.add_argument("--action_gripper_value", type=float, default=None)
     return parser.parse_args()
@@ -352,6 +354,8 @@ def configure_runtime_defaults(args: argparse.Namespace, cfg) -> None:
         args.preclose_steps = 60 if args.legacy_cvpr26 else 0
     if args.preclose_gripper_value is None:
         args.preclose_gripper_value = 0.0 if args.legacy_cvpr26 else None
+    if args.preclose_lock_base_arm is None:
+        args.preclose_lock_base_arm = bool(args.legacy_cvpr26)
     if args.obs_gripper_value is None:
         args.obs_gripper_value = 0.02 if args.legacy_cvpr26 else None
     if args.action_gripper_value is None:
@@ -456,6 +460,29 @@ def extract_joint_pos(obs: dict) -> np.ndarray:
     return joint_pos[0].astype(np.float32) if joint_pos.ndim == 2 else joint_pos.astype(np.float32)
 
 
+def get_sim_joint_names(env) -> list[str]:
+    raw_env = getattr(env, "_env", None)
+    scene = getattr(raw_env, "scene", None)
+    if raw_env is not None and scene is not None and "robot" in scene.keys():
+        robot = scene["robot"]
+        if hasattr(robot.data, "joint_names"):
+            return list(robot.data.joint_names)
+    return []
+
+
+def get_action_joint_names(env) -> list[str]:
+    raw_env = getattr(env, "_env", None)
+    action_manager = getattr(raw_env, "action_manager", None)
+    if action_manager is None:
+        return []
+    joint_names: list[str] = []
+    for term in getattr(action_manager, "_terms", {}).values():
+        names = getattr(term, "_joint_names", None)
+        if names is not None:
+            joint_names.extend(list(names))
+    return joint_names
+
+
 def extract_sim_joint_pos(env, fallback_obs: dict | None = None) -> np.ndarray:
     raw_env = getattr(env, "_env", None)
     scene = getattr(raw_env, "scene", None)
@@ -472,6 +499,42 @@ def extract_sim_joint_pos(env, fallback_obs: dict | None = None) -> np.ndarray:
     if fallback_obs is None:
         raise RuntimeError("Could not read robot joint state from simulator")
     return extract_joint_pos(fallback_obs)
+
+
+def lock_base_arm_state(env, reference_joint_pos: np.ndarray) -> dict | None:
+    raw_env = getattr(env, "_env", None)
+    scene = getattr(raw_env, "scene", None)
+    if raw_env is None or scene is None or "robot" not in scene.keys():
+        return None
+
+    robot = scene["robot"]
+    if not hasattr(robot, "write_joint_state_to_sim") or not hasattr(robot, "data"):
+        return None
+
+    joint_pos = robot.data.joint_pos.clone()
+    joint_vel = robot.data.joint_vel.clone()
+    freeze_dim = min(max(int(reference_joint_pos.shape[0]) - 2, 0), int(joint_pos.shape[1]))
+    if freeze_dim <= 0:
+        return None
+
+    hold = torch.as_tensor(reference_joint_pos[:freeze_dim], dtype=joint_pos.dtype, device=joint_pos.device)
+    joint_pos[:, :freeze_dim] = hold.unsqueeze(0)
+    joint_vel[:, :freeze_dim] = 0.0
+    robot.write_joint_state_to_sim(joint_pos, joint_vel)
+
+    if hasattr(scene, "write_data_to_sim"):
+        scene.write_data_to_sim()
+    if hasattr(raw_env, "sim") and hasattr(raw_env.sim, "render"):
+        raw_env.sim.render()
+    if hasattr(scene, "update"):
+        scene.update(getattr(raw_env, "physics_dt", 0.0))
+
+    observation_manager = getattr(raw_env, "observation_manager", None)
+    if observation_manager is None:
+        return None
+    obs = observation_manager.compute()
+    raw_env.obs_buf = obs
+    return obs
 
 
 def policy_agent_pos(joint_pos: np.ndarray, policy_state_dim: int, obs_gripper_value: float | None) -> np.ndarray:
@@ -580,10 +643,20 @@ def run_preclose(
     args: argparse.Namespace,
     frames: list[np.ndarray],
     episode_ix: int,
-) -> tuple[dict, int, dict]:
+    reference_joint_pos: np.ndarray,
+) -> tuple[dict, int, dict, dict[str, object]]:
     total_preclose_steps = max(int(args.preclose_steps or 0), 0)
+    diagnostics: dict[str, object] = {
+        "episode_ix": episode_ix,
+        "preclose_steps": total_preclose_steps,
+        "joint_names": list(SUMMIT_FRANKA_ACTION_JOINT_NAMES),
+        "sim_joint_names": get_sim_joint_names(env),
+        "action_joint_names": get_action_joint_names(env),
+        "reference_joint_pos": np.asarray(reference_joint_pos, dtype=np.float32).tolist(),
+        "steps": [],
+    }
     if total_preclose_steps == 0:
-        return obs, 0, {"is_success": np.array([False])}
+        return obs, 0, {"is_success": np.array([False])}, diagnostics
 
     env_action_dim = env.action_space.shape[-1]
     mobile_base_relative = bool(getattr(env, "_mobile_base_relative", False))
@@ -592,14 +665,44 @@ def run_preclose(
     else:
         close_value = float(args.preclose_gripper_value)
 
+    freeze_dim = min(max(int(reference_joint_pos.shape[0]) - 2, 0), int(env_action_dim))
+    diagnostics.update({
+        "env_action_dim": int(env_action_dim),
+        "mobile_base_relative": mobile_base_relative,
+        "close_value": close_value,
+        "preclose_lock_base_arm": bool(args.preclose_lock_base_arm),
+        "freeze_dim": freeze_dim,
+    })
+
     final_info = {"is_success": np.array([False])}
     restore_success_termination = disable_success_termination(env)
     try:
-        for _ in range(total_preclose_steps):
-            joint_pos = extract_sim_joint_pos(env, obs)
-            action = preclose_policy(joint_pos, env_action_dim, close_value, mobile_base_relative)
+        for step_ix in range(total_preclose_steps):
+            joint_pos_before = extract_sim_joint_pos(env, obs)
+            action = preclose_policy(reference_joint_pos, env_action_dim, close_value, mobile_base_relative)
             obs, _reward, _terminated, _truncated, info = env.step(action[None, :])
+            if args.preclose_lock_base_arm:
+                locked_obs = lock_base_arm_state(env, reference_joint_pos)
+                if locked_obs is not None:
+                    obs = locked_obs
+            joint_pos_after = extract_sim_joint_pos(env, obs)
             final_info = info.get("final_info", final_info)
+            if freeze_dim > 0:
+                base_arm_delta = np.abs(joint_pos_after[:freeze_dim] - reference_joint_pos[:freeze_dim])
+                step_base_arm_max_abs_delta = float(np.max(base_arm_delta))
+                step_base_arm_l2_delta = float(np.linalg.norm(base_arm_delta))
+            else:
+                step_base_arm_max_abs_delta = np.nan
+                step_base_arm_l2_delta = np.nan
+            diagnostics["steps"].append({
+                "step_ix": step_ix,
+                "joint_pos_before": np.asarray(joint_pos_before, dtype=np.float32).tolist(),
+                "joint_pos_after": np.asarray(joint_pos_after, dtype=np.float32).tolist(),
+                "action": np.asarray(action, dtype=np.float32).tolist(),
+                "base_arm_max_abs_delta_from_reset": step_base_arm_max_abs_delta,
+                "base_arm_l2_delta_from_reset": step_base_arm_l2_delta,
+                "gripper_after": np.asarray(joint_pos_after[-2:], dtype=np.float32).tolist() if joint_pos_after.shape[0] >= 2 else [],
+            })
             if episode_ix < args.max_episodes_rendered:
                 frame = render_frame(env)
                 if frame is not None:
@@ -607,7 +710,7 @@ def run_preclose(
     finally:
         restore_success_termination()
 
-    return obs, total_preclose_steps, final_info
+    return obs, total_preclose_steps, final_info, diagnostics
 
 
 def get_success_metrics(final_info: dict) -> dict[str, float | bool]:
@@ -716,10 +819,21 @@ def main() -> None:
                     frames.append(frame)
 
             preclose_reference_joint_pos = extract_joint_pos(obs)
-            obs, preclose_count, final_info = run_preclose(env, obs, args, frames, episode_ix)
+            obs, preclose_count, final_info, preclose_diagnostics = run_preclose(
+                env,
+                obs,
+                args,
+                frames,
+                episode_ix,
+                preclose_reference_joint_pos,
+            )
             done = False
             preclose_gripper_left, preclose_gripper_right = gripper_values_from_obs(obs)
             preclose_base_arm_delta = base_arm_max_abs_delta(obs, preclose_reference_joint_pos)
+            preclose_diagnostics.update({
+                "final_gripper": [preclose_gripper_left, preclose_gripper_right],
+                "final_base_arm_max_abs_delta_from_reset": preclose_base_arm_delta,
+            })
 
             policy_steps = 0
             while not done and policy_steps < args.max_steps:
@@ -761,6 +875,15 @@ def main() -> None:
                         break
 
             metrics = get_success_metrics(final_info)
+            preclose_diagnostics_path = ""
+            if preclose_count > 0:
+                diagnostics_dir = output_dir / "preclose_diagnostics"
+                diagnostics_dir.mkdir(parents=True, exist_ok=True)
+                diagnostics_file = diagnostics_dir / f"preclose_diagnostics_episode_{episode_ix}.json"
+                with diagnostics_file.open("w") as f:
+                    json.dump(preclose_diagnostics, f, indent=2)
+                preclose_diagnostics_path = str(diagnostics_file)
+
             video_path = ""
             if episode_ix < args.max_episodes_rendered and frames:
                 videos_dir.mkdir(parents=True, exist_ok=True)
@@ -781,6 +904,7 @@ def main() -> None:
                 "preclose_gripper_left": maybe_scalar(preclose_gripper_left),
                 "preclose_gripper_right": maybe_scalar(preclose_gripper_right),
                 "preclose_base_arm_max_abs_delta": maybe_scalar(preclose_base_arm_delta),
+                "preclose_diagnostics_path": preclose_diagnostics_path,
                 "steps": f"pre={preclose_count},policy={policy_steps}/{env_runner.n_action_steps}",
                 "video_path": video_path,
             }
@@ -812,6 +936,7 @@ def main() -> None:
                 "random_drop_points": args.random_drop_points,
                 "preclose_steps": args.preclose_steps,
                 "preclose_gripper_value": args.preclose_gripper_value,
+                "preclose_lock_base_arm": bool(args.preclose_lock_base_arm),
                 "obs_gripper_value": args.obs_gripper_value,
                 "action_gripper_value": args.action_gripper_value,
                 "max_steps": args.max_steps,
