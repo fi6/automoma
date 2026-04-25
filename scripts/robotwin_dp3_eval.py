@@ -61,6 +61,20 @@ def load_module(module_name: str, file_path: Path):
 env_module = load_module("automoma_isaac_env", ISAAC_ENV_ROOT / "env.py")
 
 CAMERA_CHOICES = ("ego_topdown", "ego_wrist", "fix_local")
+SUMMIT_FRANKA_ACTION_JOINT_NAMES = (
+    "base_x",
+    "base_y",
+    "base_z",
+    "panda_joint1",
+    "panda_joint2",
+    "panda_joint3",
+    "panda_joint4",
+    "panda_joint5",
+    "panda_joint6",
+    "panda_joint7",
+    "panda_finger_joint1",
+    "panda_finger_joint2",
+)
 
 
 def append_per_episode_csv_row(csv_path: Path, row: dict[str, object]) -> None:
@@ -157,8 +171,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--handle_distance_threshold", type=float, default=0.1)
     parser.add_argument("--max_steps", type=int, default=300)
     parser.add_argument("--preclose_steps", type=int, default=None)
-    parser.add_argument("--preclose_repeat_per_step", type=int, default=None)
-    parser.add_argument("--preclose_start_gripper_value", type=float, default=None)
     parser.add_argument("--preclose_gripper_value", type=float, default=None)
     parser.add_argument("--obs_gripper_value", type=float, default=None)
     parser.add_argument("--action_gripper_value", type=float, default=None)
@@ -313,15 +325,18 @@ def make_cfg(args: argparse.Namespace, checkpoint_payload: dict | None = None):
     return cfg
 
 
-def get_policy_dims(cfg) -> tuple[int, int, int]:
+def get_policy_dims(cfg) -> tuple[int, int]:
     agent_pos_dim = int(cfg.task.shape_meta.obs.agent_pos.shape[0])
-    action_dim = int(cfg.task.shape_meta.action.shape[0])
     point_count = int(cfg.task.shape_meta.obs.point_cloud.shape[0])
-    return agent_pos_dim, action_dim, point_count
+    return agent_pos_dim, point_count
+
+
+def get_point_count(cfg) -> int:
+    return int(cfg.task.shape_meta.obs.point_cloud.shape[0])
 
 
 def configure_runtime_defaults(args: argparse.Namespace, cfg) -> None:
-    _agent_pos_dim, _action_dim, cfg_point_count = get_policy_dims(cfg)
+    cfg_point_count = get_point_count(cfg)
     if args.n_points is None:
         args.n_points = 4096 if args.legacy_cvpr26 else cfg_point_count
     if args.random_drop_points is None:
@@ -334,11 +349,7 @@ def configure_runtime_defaults(args: argparse.Namespace, cfg) -> None:
     if args.use_rgb is None:
         args.use_rgb = True if args.legacy_cvpr26 else bool(cfg.policy.use_pc_color)
     if args.preclose_steps is None:
-        args.preclose_steps = 10 if args.legacy_cvpr26 else 0
-    if args.preclose_repeat_per_step is None:
-        args.preclose_repeat_per_step = int(cfg.n_action_steps) if args.legacy_cvpr26 else 1
-    if args.preclose_start_gripper_value is None:
-        args.preclose_start_gripper_value = 0.04 if args.legacy_cvpr26 else None
+        args.preclose_steps = 60 if args.legacy_cvpr26 else 0
     if args.preclose_gripper_value is None:
         args.preclose_gripper_value = 0.0 if args.legacy_cvpr26 else None
     if args.obs_gripper_value is None:
@@ -379,8 +390,7 @@ def build_env(args: argparse.Namespace):
     object_name, scene_name = parse_env_identifiers(args.task_name, args.task_config)
     traj_file = Path(args.traj_file) if args.traj_file else REPO_ROOT / "data" / "trajs" / "summit_franka" / object_name / scene_name / "test" / "traj_data_test.pt"
     preclose_steps = max(int(args.preclose_steps or 0), 0)
-    preclose_repeat_per_step = max(int(args.preclose_repeat_per_step or 1), 1)
-    episode_length = int(args.max_steps) + preclose_steps * preclose_repeat_per_step
+    episode_length = int(args.max_steps) + preclose_steps
     cfg = SimpleEnvConfig(
         environment="summit_franka_open_door_eval",
         headless=args.headless,
@@ -444,6 +454,24 @@ def extract_joint_pos(obs: dict) -> np.ndarray:
     if isinstance(joint_pos, torch.Tensor):
         joint_pos = joint_pos.detach().cpu().numpy()
     return joint_pos[0].astype(np.float32) if joint_pos.ndim == 2 else joint_pos.astype(np.float32)
+
+
+def extract_sim_joint_pos(env, fallback_obs: dict | None = None) -> np.ndarray:
+    raw_env = getattr(env, "_env", None)
+    scene = getattr(raw_env, "scene", None)
+    if raw_env is not None and scene is not None and "robot" in scene.keys():
+        robot = scene["robot"]
+        joint_pos = robot.data.joint_pos
+        if hasattr(robot.data, "joint_names"):
+            name_to_ix = {name: ix for ix, name in enumerate(robot.data.joint_names)}
+            if all(name in name_to_ix for name in SUMMIT_FRANKA_ACTION_JOINT_NAMES):
+                indices = [name_to_ix[name] for name in SUMMIT_FRANKA_ACTION_JOINT_NAMES]
+                joint_pos = joint_pos[:, indices]
+        joint_pos_np = joint_pos.detach().cpu().numpy()
+        return joint_pos_np[0].astype(np.float32) if joint_pos_np.ndim == 2 else joint_pos_np.astype(np.float32)
+    if fallback_obs is None:
+        raise RuntimeError("Could not read robot joint state from simulator")
+    return extract_joint_pos(fallback_obs)
 
 
 def policy_agent_pos(joint_pos: np.ndarray, policy_state_dim: int, obs_gripper_value: float | None) -> np.ndarray:
@@ -527,10 +555,10 @@ def make_dp3_obs(
     }
 
 
-def make_hold_close_action(
+def preclose_policy(
     joint_pos: np.ndarray,
     env_action_dim: int,
-    gripper_value: float,
+    close_value: float,
     mobile_base_relative: bool,
 ) -> np.ndarray:
     action = np.asarray(joint_pos, dtype=np.float32).copy()
@@ -542,47 +570,8 @@ def make_hold_close_action(
     if mobile_base_relative and action.shape[0] >= 3:
         action[:3] = 0.0
     if action.shape[0] >= 2:
-        action[-2:] = gripper_value
+        action[-2:] = close_value
     return action.astype(np.float32)
-
-
-def lock_base_arm_state(env, hold_joint_pos: np.ndarray) -> dict | None:
-    raw_env = getattr(env, "_env", None)
-    scene = getattr(raw_env, "scene", None)
-    if raw_env is None or scene is None or "robot" not in scene.keys():
-        return None
-
-    robot = scene["robot"]
-    if not hasattr(robot, "write_joint_state_to_sim") or not hasattr(robot, "data"):
-        return None
-
-    joint_pos = robot.data.joint_pos.clone()
-    joint_vel = robot.data.joint_vel.clone()
-    if joint_pos.ndim != 2 or joint_pos.shape[0] < 1:
-        return None
-
-    freeze_dim = min(max(int(hold_joint_pos.shape[0]) - 2, 0), int(getattr(robot, "num_joints", joint_pos.shape[1])))
-    if freeze_dim <= 0:
-        return None
-
-    hold = torch.as_tensor(hold_joint_pos[:freeze_dim], dtype=joint_pos.dtype, device=joint_pos.device)
-    joint_pos[:, :freeze_dim] = hold.unsqueeze(0)
-    joint_vel[:, :freeze_dim] = 0.0
-    robot.write_joint_state_to_sim(joint_pos, joint_vel)
-
-    if hasattr(scene, "write_data_to_sim"):
-        scene.write_data_to_sim()
-    if hasattr(raw_env, "sim") and hasattr(raw_env.sim, "render"):
-        raw_env.sim.render()
-    if hasattr(scene, "update"):
-        scene.update(getattr(raw_env, "physics_dt", 0.0))
-
-    observation_manager = getattr(raw_env, "observation_manager", None)
-    if observation_manager is None:
-        return None
-    obs = observation_manager.compute()
-    raw_env.obs_buf = obs
-    return obs
 
 
 def run_preclose(
@@ -591,42 +580,34 @@ def run_preclose(
     args: argparse.Namespace,
     frames: list[np.ndarray],
     episode_ix: int,
-) -> tuple[dict, int, bool, dict]:
-    preclose_blocks = max(int(args.preclose_steps or 0), 0)
-    repeat_per_block = max(int(args.preclose_repeat_per_step or 1), 1)
-    total_preclose_steps = preclose_blocks * repeat_per_block
+) -> tuple[dict, int, dict]:
+    total_preclose_steps = max(int(args.preclose_steps or 0), 0)
     if total_preclose_steps == 0:
-        return obs, 0, False, {"is_success": np.array([False])}
+        return obs, 0, {"is_success": np.array([False])}
 
-    hold_joint_pos = extract_joint_pos(obs)
     env_action_dim = env.action_space.shape[-1]
     mobile_base_relative = bool(getattr(env, "_mobile_base_relative", False))
     if args.preclose_gripper_value is None:
-        target_gripper = 0.0 if args.action_gripper_value is None else float(args.action_gripper_value)
+        close_value = 0.0 if args.action_gripper_value is None else float(args.action_gripper_value)
     else:
-        target_gripper = float(args.preclose_gripper_value)
+        close_value = float(args.preclose_gripper_value)
 
     final_info = {"is_success": np.array([False])}
-    preclose_step_ix = 0
     restore_success_termination = disable_success_termination(env)
     try:
-        for _block_ix in range(preclose_blocks):
-            for _ in range(repeat_per_block):
-                action = make_hold_close_action(hold_joint_pos, env_action_dim, target_gripper, mobile_base_relative)
-                obs, _reward, _terminated, _truncated, info = env.step(action[None, :])
-                locked_obs = lock_base_arm_state(env, hold_joint_pos)
-                if locked_obs is not None:
-                    obs = locked_obs
-                preclose_step_ix += 1
-                final_info = info.get("final_info", final_info)
-                if episode_ix < args.max_episodes_rendered:
-                    frame = render_frame(env)
-                    if frame is not None:
-                        frames.append(frame)
+        for _ in range(total_preclose_steps):
+            joint_pos = extract_sim_joint_pos(env, obs)
+            action = preclose_policy(joint_pos, env_action_dim, close_value, mobile_base_relative)
+            obs, _reward, _terminated, _truncated, info = env.step(action[None, :])
+            final_info = info.get("final_info", final_info)
+            if episode_ix < args.max_episodes_rendered:
+                frame = render_frame(env)
+                if frame is not None:
+                    frames.append(frame)
     finally:
         restore_success_termination()
 
-    return obs, total_preclose_steps, False, final_info
+    return obs, total_preclose_steps, final_info
 
 
 def get_success_metrics(final_info: dict) -> dict[str, float | bool]:
@@ -691,7 +672,7 @@ def main() -> None:
     checkpoint_payload = load_checkpoint_payload(checkpoint_path)
     cfg = make_cfg(args, checkpoint_payload)
     configure_runtime_defaults(args, cfg)
-    policy_state_dim, _policy_action_dim, _cfg_point_count = get_policy_dims(cfg)
+    policy_state_dim, _cfg_point_count = get_policy_dims(cfg)
     policy, env_runner = load_policy(cfg, checkpoint_payload, checkpoint_path)
     env = build_env(args)
 
@@ -718,9 +699,8 @@ def main() -> None:
     rng = np.random.default_rng(args.seed)
     env_action_dim = env.action_space.shape[-1]
 
-    all_episode_metrics: list[dict[str, object]] = []
+    per_episode: list[dict[str, object]] = []
     all_successes: list[bool] = []
-    all_seeds: list[int] = []
     video_paths: list[str] = []
 
     try:
@@ -736,7 +716,8 @@ def main() -> None:
                     frames.append(frame)
 
             preclose_reference_joint_pos = extract_joint_pos(obs)
-            obs, preclose_count, done, final_info = run_preclose(env, obs, args, frames, episode_ix)
+            obs, preclose_count, final_info = run_preclose(env, obs, args, frames, episode_ix)
+            done = False
             preclose_gripper_left, preclose_gripper_right = gripper_values_from_obs(obs)
             preclose_base_arm_delta = base_arm_max_abs_delta(obs, preclose_reference_joint_pos)
 
@@ -806,26 +787,18 @@ def main() -> None:
             append_per_episode_csv_row(csv_path, row)
             print(row, flush=True)
 
-            all_episode_metrics.append({
+            per_episode.append({
+                "episode_ix": episode_ix,
                 "final_door_openness": maybe_scalar(metrics["final_door_openness"]),
                 "final_handle_distance": maybe_scalar(metrics["final_handle_distance"]),
+                "success": bool(metrics["success"]),
+                "seed": episode_seed,
             })
             all_successes.append(bool(metrics["success"]))
-            all_seeds.append(episode_seed)
 
         elapsed = time.time() - start_time
         eval_info = {
-            "per_episode": [
-                {
-                    "episode_ix": i,
-                    **episode_metrics,
-                    "success": success,
-                    "seed": seed,
-                }
-                for i, (episode_metrics, success, seed) in enumerate(
-                    zip(all_episode_metrics, all_successes, all_seeds, strict=True)
-                )
-            ],
+            "per_episode": per_episode,
             "aggregated": {
                 "pc_success": float(np.nanmean(all_successes) * 100) if all_successes else 0.0,
             },
@@ -838,14 +811,11 @@ def main() -> None:
                 "use_fps": bool(args.use_fps),
                 "random_drop_points": args.random_drop_points,
                 "preclose_steps": args.preclose_steps,
-                "preclose_repeat_per_step": args.preclose_repeat_per_step,
-                "preclose_start_gripper_value": args.preclose_start_gripper_value,
                 "preclose_gripper_value": args.preclose_gripper_value,
                 "obs_gripper_value": args.obs_gripper_value,
                 "action_gripper_value": args.action_gripper_value,
                 "max_steps": args.max_steps,
-                "episode_length_steps": int(args.max_steps)
-                + max(int(args.preclose_steps or 0), 0) * max(int(args.preclose_repeat_per_step or 1), 1),
+                "episode_length_steps": int(args.max_steps) + max(int(args.preclose_steps or 0), 0),
                 "episode_length_s": float(getattr(getattr(env, "_env", None), "max_episode_length_s", np.nan)),
             },
         }
