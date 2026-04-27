@@ -134,6 +134,15 @@ class CuroboPlanner:
             raise FileNotFoundError(f"USD file not found: {usd_path}")
         print(f"Loading scene: {usd_path}")
 
+        # USD keeps root layers cached in-process.  This planner mutates
+        # /World/scene below to enter the object-centered planning frame; reload
+        # the layer so a second CuroboPlanner does not start from the first
+        # planner's unsaved transform edits.
+        from pxr import Sdf
+        layer = Sdf.Layer.FindOrOpen(os.path.abspath(usd_path))
+        if layer is not None:
+            layer.Reload()
+
         self.usd_helper.load_stage_from_file(usd_path)
         
         # PRESERVE existing transform in the USD (e.g. Z = -0.12 from prepare_scene.py)
