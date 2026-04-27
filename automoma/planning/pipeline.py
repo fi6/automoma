@@ -46,6 +46,7 @@ class PlanningPipeline:
         self.planning_io = PlanningIO()
 
         self.output_cfg = planner_cfg.get("output", {})
+        self.max_successful_trajectories = self.output_cfg.get("max_successful_trajectories")
 
     # ====================================================================
     # Public API
@@ -110,6 +111,7 @@ class PlanningPipeline:
         robot_name = cfg.get("robot_name", "summit_franka")
 
         all_raw: List[TrajResult] = []
+        planned_success = 0
 
         for g_idx in grasp_ids:
             grasp_output = os.path.join(output_dir, f"grasp_{g_idx:04d}")
@@ -234,7 +236,14 @@ class PlanningPipeline:
                 grasp_start_iks.append(start_ik)
                 grasp_goal_iks.append(goal_ik)
                 grasp_trajs.append(traj_result)
+                planned_success += int(traj_result.success.sum().item())
                 traj_planner.free_cuda_cache()
+                if self._has_enough_successes(planned_success):
+                    print(
+                        f"  Reached max_successful_trajectories="
+                        f"{self.max_successful_trajectories}; stopping early"
+                    )
+                    break
 
             if not grasp_trajs:
                 print(f"  No valid trajectories for grasp {g_idx}, skipping save")
@@ -249,6 +258,8 @@ class PlanningPipeline:
             merged_goal_ik = self.planning_io.save_ik(merged_goal_ik, goal_ik_path)
             merged_traj = self.planning_io.save_traj(merged_traj, final_pt)
             all_raw.append(merged_traj)
+            if self._has_enough_successes(planned_success):
+                break
 
         # ─── merge + 12D conversion ──────────────────────────────────────
         if not all_raw:
@@ -256,6 +267,7 @@ class PlanningPipeline:
             return ""
 
         merged = TrajResult.cat(all_raw)
+        merged = self._limit_successes(merged)
         print(f"\nMerged: {merged.num_samples} trajectories "
               f"({merged.success.sum().item()} successful)")
 
@@ -329,6 +341,19 @@ class PlanningPipeline:
     # ====================================================================
     # Helpers
     # ====================================================================
+
+    def _has_enough_successes(self, count: int) -> bool:
+        limit = self.max_successful_trajectories
+        return limit is not None and int(limit) > 0 and count >= int(limit)
+
+    def _limit_successes(self, result: TrajResult) -> TrajResult:
+        limit = self.max_successful_trajectories
+        if limit is None or int(limit) <= 0:
+            return result
+        success_idx = torch.nonzero(result.success, as_tuple=False).flatten()
+        if success_idx.shape[0] <= int(limit):
+            return result
+        return result[success_idx[: int(limit)]]
 
     def _build_scene_cfg(self, scene_dir: str, scene_name: str) -> Dict[str, Any]:
         scene_cfg_override = self.cfg.get("scene", {})

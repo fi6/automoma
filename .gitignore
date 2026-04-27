@@ -3,6 +3,7 @@ assets/
 outputs/
 tests/
 data/
+data_backup/
 logs/
 
 # agents

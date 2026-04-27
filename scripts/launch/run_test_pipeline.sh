@@ -5,11 +5,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-SCENE_NAME="${SCENE_NAME:-scene_0_seed_0}"
+SCENE_NAME="${SCENE_NAME:-scene_54_seed_54}"
 OBJECT_ID="${OBJECT_ID:-7221}"
 OBJECT_NAME="${OBJECT_NAME:-microwave_${OBJECT_ID}}"
 POLICY="${POLICY:-act}"
-TRAIN_EPISODES="${TRAIN_EPISODES:-1000}"
+BENCHMARK="${BENCHMARK:-lerobot}"
+TRAIN_EPISODES="${TRAIN_EPISODES:-10}"
 EVAL_EPISODES="${EVAL_EPISODES:-50}"
 GRASP_COUNT="${GRASP_COUNT:-20}"
 PLAN_EXTRA_ARGS="${PLAN_EXTRA_ARGS:-}"
@@ -80,8 +81,8 @@ run_normal_pipeline() {
     TEST_TRAJ_FILE="$REPO_ROOT/data/trajs/summit_franka/${OBJECT_NAME}/${scene}/test/traj_data_test.pt"
     TRAIN_HDF5="$REPO_ROOT/data/automoma/summit_franka_open-${OBJECT_NAME}-${scene}-${TRAIN_EPISODES}.hdf5"
     TRAIN_DATASET_DIR="$REPO_ROOT/data/lerobot/automoma/summit_franka_open-${OBJECT_NAME}-${scene}-${TRAIN_EPISODES}"
-    TRAIN_OUTPUT_DIR="$REPO_ROOT/outputs/train/${POLICY}_summit_franka_open-${OBJECT_NAME}-${scene}-${TRAIN_EPISODES}"
-    EVAL_OUTPUT_DIR="$REPO_ROOT/outputs/eval/${POLICY}_summit_franka_open-${OBJECT_NAME}-${scene}-${TRAIN_EPISODES}"
+    TRAIN_OUTPUT_DIR="$REPO_ROOT/outputs/train/${BENCHMARK}/${POLICY}_summit_franka_open-${OBJECT_NAME}-${scene}-${TRAIN_EPISODES}"
+    EVAL_OUTPUT_DIR="$REPO_ROOT/outputs/eval/${BENCHMARK}/${POLICY}_summit_franka_open-${OBJECT_NAME}-${scene}-${TRAIN_EPISODES}"
 
     GRASP_OVERRIDE="$(make_grasp_override "$GRASP_COUNT")"
 
@@ -98,12 +99,12 @@ run_normal_pipeline() {
     run_stage \
         "convert" \
         "$TRAIN_DATASET_DIR" \
-        "cd '$REPO_ROOT' && bash scripts/run_pipeline.sh convert ${OBJECT_NAME} ${scene} ${TRAIN_EPISODES}"
+        "cd '$REPO_ROOT' && bash scripts/run_pipeline.sh convert ${BENCHMARK} ${OBJECT_NAME} ${scene} ${TRAIN_EPISODES}"
 
     run_stage \
         "train" \
         "$TRAIN_OUTPUT_DIR" \
-        "cd '$REPO_ROOT' && bash scripts/run_pipeline.sh train ${POLICY} ${OBJECT_NAME} ${scene} ${TRAIN_EPISODES} ${TRAIN_EXTRA_ARGS}"
+        "cd '$REPO_ROOT' && bash scripts/run_pipeline.sh train ${BENCHMARK} ${POLICY} ${OBJECT_NAME} ${scene} ${TRAIN_EPISODES} ${TRAIN_EXTRA_ARGS}"
 
     run_stage \
         "plan(test)" \
@@ -113,7 +114,7 @@ run_normal_pipeline() {
     run_stage \
         "eval" \
         "$EVAL_OUTPUT_DIR" \
-        "cd '$REPO_ROOT' && bash scripts/run_pipeline.sh eval ${POLICY} ${OBJECT_NAME} ${scene} ${TRAIN_EPISODES} --output_dir=${EVAL_OUTPUT_DIR} --eval.n_episodes=${EVAL_EPISODES} ${EVAL_EXTRA_ARGS}"
+        "cd '$REPO_ROOT' && bash scripts/run_pipeline.sh eval ${BENCHMARK} ${POLICY} ${OBJECT_NAME} ${scene} ${TRAIN_EPISODES} --output_dir=${EVAL_OUTPUT_DIR} --eval.n_episodes=${EVAL_EPISODES} ${EVAL_EXTRA_ARGS}"
 }
 
 # -----------------------------------------------------------------------------
@@ -127,11 +128,11 @@ run_ood_pipeline() {
     TEST_TRAJ_FILE="$REPO_ROOT/data/trajs/summit_franka/${OBJECT_NAME}/${eval_scene}/test/traj_data_test.pt"
 
     # Model from trained_scene
-    TRAIN_OUTPUT_DIR="$REPO_ROOT/outputs/train/${POLICY}_summit_franka_open-${OBJECT_NAME}-${trained_scene}-${TRAIN_EPISODES}"
+    TRAIN_OUTPUT_DIR="$REPO_ROOT/outputs/train/${BENCHMARK}/${POLICY}_summit_franka_open-${OBJECT_NAME}-${trained_scene}-${TRAIN_EPISODES}"
     POLICY_PATH="$TRAIN_OUTPUT_DIR/checkpoints/last/pretrained_model"
 
     # Eval output dir indicates which model was used and on which scene
-    EVAL_OUTPUT_DIR="$REPO_ROOT/outputs/eval/${POLICY}_summit_franka_open-${OBJECT_NAME}-${trained_scene}-${TRAIN_EPISODES}/ood_on_${eval_scene}"
+    EVAL_OUTPUT_DIR="$REPO_ROOT/outputs/eval/${BENCHMARK}/${POLICY}_summit_franka_open-${OBJECT_NAME}-${trained_scene}-${TRAIN_EPISODES}/ood_on_${eval_scene}"
 
     GRASP_OVERRIDE="$(make_grasp_override "$GRASP_COUNT")"
 
@@ -146,7 +147,7 @@ run_ood_pipeline() {
     run_stage \
         "ood_eval(${trained_scene}->${eval_scene})" \
         "$EVAL_OUTPUT_DIR" \
-        "cd '$REPO_ROOT' && bash scripts/run_pipeline.sh eval ${POLICY} ${OBJECT_NAME} ${eval_scene} ${TRAIN_EPISODES} --output_dir=${EVAL_OUTPUT_DIR} --eval.n_episodes=${EVAL_EPISODES} --policy.path=${POLICY_PATH} ${EVAL_EXTRA_ARGS}"
+        "cd '$REPO_ROOT' && bash scripts/run_pipeline.sh eval ${BENCHMARK} ${POLICY} ${OBJECT_NAME} ${eval_scene} ${TRAIN_EPISODES} --output_dir=${EVAL_OUTPUT_DIR} --eval.n_episodes=${EVAL_EPISODES} --policy.path=${POLICY_PATH} ${EVAL_EXTRA_ARGS}"
 }
 
 # -----------------------------------------------------------------------------
@@ -176,6 +177,7 @@ echo "Pipeline complete:"
 echo "  scene=${SCENE_NAME}"
 echo "  object=${OBJECT_NAME}"
 echo "  policy=${POLICY}"
+echo "  benchmark=${BENCHMARK}"
 echo "  grasp_count=${GRASP_COUNT}"
 echo "  train_episodes=${TRAIN_EPISODES}"
 echo "  eval_episodes=${EVAL_EPISODES}"
