@@ -91,8 +91,6 @@ class PlanningPipeline:
         print(f"{'=' * 60}")
 
         self.planner.setup_env(scene_cfg, obj_cfg)
-        traj_planner = CuroboPlanner(self.cfg.get("planner", {}))
-        traj_planner.setup_env(scene_cfg, obj_cfg)
 
         # ─── per-grasp loop ──────────────────────────────────────────────
         obj_meta = cfg["objects"][object_id]
@@ -220,7 +218,7 @@ class PlanningPipeline:
                     "joint_cfg": {joint_name: goal_angle},
                     "enable_collision": self.cfg.get("planner", {}).get("enable_collision", True),
                 }
-                traj_result = traj_planner.plan_traj(
+                traj_result = self.planner.plan_traj(
                     start_with_angle, goal_with_angle,
                     akr_robot_cfg,
                     plan_cfg=traj_cfg_plan,
@@ -228,7 +226,7 @@ class PlanningPipeline:
                 print(f"  TrajOpt raw: {traj_result.success.sum().item()}/{traj_result.num_samples} ok")
 
                 # --- Filtering ---
-                traj_result = traj_planner.filter_traj(
+                traj_result = self.planner.filter_traj(
                     traj_result, akr_robot_cfg,
                 )
                 print(f"  TrajOpt filtered: {traj_result.success.sum().item()}/{traj_result.num_samples} ok")
@@ -237,7 +235,7 @@ class PlanningPipeline:
                 grasp_goal_iks.append(goal_ik)
                 grasp_trajs.append(traj_result)
                 planned_success += int(traj_result.success.sum().item())
-                traj_planner.free_cuda_cache()
+                self.planner.free_cuda_cache()
                 if self._has_enough_successes(planned_success):
                     print(
                         f"  Reached max_successful_trajectories="

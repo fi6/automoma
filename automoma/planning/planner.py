@@ -69,6 +69,10 @@ class CuroboPlanner:
         self.world_collision_config = None
         self.collision_type = None
         self.expanded_object_cuboid = None
+        self.world_voxel_collision_ik = None
+        self.world_voxel_collision_traj = None
+        self.motion_gen = None
+        self.motion_gen_akr = None
 
     # ====================================================================
     # Environment setup
@@ -82,6 +86,8 @@ class CuroboPlanner:
         """Load scene, object, and build the collision world."""
         self.scene_cfg = scene_cfg
         self.object_cfg = object_cfg
+        self.motion_gen = None
+        self.motion_gen_akr = None
 
         self._init_root_pose(object_cfg["pose"], scene_cfg["pose"])
         self._load_object()
@@ -201,71 +207,112 @@ class CuroboPlanner:
             self.tensor_args,
         )
 
-        if not self.cfg.get("enable_collision", True):
-            self.world_collision_config = world_collision_config
-            return
-
-        # Build ESDF
-        world_voxel = WorldVoxelCollision(world_collision_config)
-        support = WorldConfig.create_collision_support_world(self.collision)
-        mesh_cfg = WorldCollisionConfig(self.tensor_args, world_model=support)
-        world_mesh = WorldMeshCollision(mesh_cfg)
-
-        voxel_grid = world_voxel.get_voxel_grid("base")
-        self.esdf = world_mesh.get_esdf_in_bounding_box(
-            Cuboid(name="base", pose=voxel_grid.pose, dims=voxel_grid.dims),
-            voxel_size=voxel_grid.voxel_size,
-        )
-
-        # Expanded cuboid — mark object region as free space
-        exp = (np.array(self.object_cfg["dimensions"]) + expanded_dims).tolist()
-        self.expanded_object_cuboid = Cuboid(
-            name=f"{self.object_cfg['asset_type']}_{self.object_cfg['asset_id']}_expanded",
-            pose=self.object_pose,
-            dims=exp,
-            tensor_args=self.tensor_args,
-        )
-
-        # Optional collision visualization (before clearing object region)
-        if self.cfg.get("visualize_collision", False):
-            from automoma.utils.visual_utils import visualize_voxel_grid_with_cuboid
-            print("Visualizing collision BEFORE marking cuboid as empty...")
-            visualize_voxel_grid_with_cuboid(
-                self.expanded_object_cuboid, self.esdf,
-                mesh_obstacle=self.object_mesh,
-            )
-
-        self.esdf = mark_cuboid_as_empty(self.esdf, self.expanded_object_cuboid)
-
-        # Optional collision visualization (after clearing object region)
-        if self.cfg.get("visualize_collision", False):
-            from automoma.utils.visual_utils import visualize_voxel_grid_with_cuboid
-            print("Visualizing collision AFTER marking cuboid as empty...")
-            visualize_voxel_grid_with_cuboid(
-                self.expanded_object_cuboid, self.esdf,
-                mesh_obstacle=self.object_mesh,
-            )
-
-        if self.collision_type == CollisionCheckerType.MESH:
-            mesh = self.usd_helper.voxel_to_mesh(self.esdf, pitch=voxel_size)
-            self.usd_helper.add_mesh_to_stage(mesh, "/World/esdf")
-            self.esdf = voxel_grid
-            world_collision_config.world_model["mesh"] = [mesh]
-
         self.world_collision_config = world_collision_config
+        enable_collision = self.cfg.get("enable_collision", True)
+
+        if enable_collision:
+            # Build ESDF once, then clone it into two independent voxel checkers
+            # for IK and trajectory planning. This mirrors tests/planner_cvpr26.py.
+            world_voxel = WorldVoxelCollision(world_collision_config)
+            support = WorldConfig.create_collision_support_world(self.collision)
+            mesh_cfg = WorldCollisionConfig(self.tensor_args, world_model=support)
+            world_mesh = WorldMeshCollision(mesh_cfg)
+
+            voxel_grid = world_voxel.get_voxel_grid("base")
+            self.esdf = world_mesh.get_esdf_in_bounding_box(
+                Cuboid(name="base", pose=voxel_grid.pose, dims=voxel_grid.dims),
+                voxel_size=voxel_grid.voxel_size,
+            )
+
+            # Expanded cuboid — mark object region as free space
+            exp = (np.array(self.object_cfg["dimensions"]) + expanded_dims).tolist()
+            self.expanded_object_cuboid = Cuboid(
+                name=f"{self.object_cfg['asset_type']}_{self.object_cfg['asset_id']}_expanded",
+                pose=self.object_pose,
+                dims=exp,
+                tensor_args=self.tensor_args,
+            )
+
+            # Optional collision visualization (before clearing object region)
+            if self.cfg.get("visualize_collision", False):
+                from automoma.utils.visual_utils import visualize_voxel_grid_with_cuboid
+                print("Visualizing collision BEFORE marking cuboid as empty...")
+                visualize_voxel_grid_with_cuboid(
+                    self.expanded_object_cuboid, self.esdf,
+                    mesh_obstacle=self.object_mesh,
+                )
+
+            self.esdf = mark_cuboid_as_empty(self.esdf, self.expanded_object_cuboid)
+
+            # Optional collision visualization (after clearing object region)
+            if self.cfg.get("visualize_collision", False):
+                from automoma.utils.visual_utils import visualize_voxel_grid_with_cuboid
+                print("Visualizing collision AFTER marking cuboid as empty...")
+                visualize_voxel_grid_with_cuboid(
+                    self.expanded_object_cuboid, self.esdf,
+                    mesh_obstacle=self.object_mesh,
+                )
+
+            if self.collision_type == CollisionCheckerType.MESH:
+                mesh = self.usd_helper.voxel_to_mesh(self.esdf, pitch=voxel_size)
+                self.usd_helper.add_mesh_to_stage(mesh, "/World/esdf")
+                self.esdf = voxel_grid
+                world_collision_config.world_model["mesh"] = [mesh]
+
+        self._init_collision_checkers(
+            world_collision_config,
+            disable_collision=not enable_collision,
+        )
 
     # ====================================================================
     # Motion-gen initialisation
     # ====================================================================
 
-    def _init_collision_checker(self, enable_collision: bool = True):
-        wcc = WorldVoxelCollision(self.world_collision_config)
-        if enable_collision and self.esdf is not None:
-            wcc.clear_voxelization_cache()
-            wcc.clear_cache()
-            wcc.update_voxel_data(self.esdf)
-            torch.cuda.synchronize()
-        return wcc
+    def _init_collision_checkers(
+        self,
+        world_collision_config: WorldCollisionConfig,
+        *,
+        disable_collision: bool = False,
+    ) -> None:
+        """Initialise independent voxel checkers for IK and trajectory planning."""
+        self.world_voxel_collision_ik = WorldVoxelCollision(world_collision_config)
+        self.world_voxel_collision_traj = WorldVoxelCollision(world_collision_config)
+
+        if disable_collision or self.esdf is None:
+            return
+
+        for checker in (self.world_voxel_collision_ik, self.world_voxel_collision_traj):
+            checker.clear_voxelization_cache()
+            if getattr(checker, "cache", None) is not None:
+                checker.clear_cache()
+            checker.update_voxel_data(self.esdf)
+        torch.cuda.synchronize()
+
+    def _get_collision_checker(
+        self,
+        *,
+        fixed_base: bool,
+        enable_collision: bool,
+        collision_role: Optional[str] = None,
+    ) -> WorldVoxelCollision:
+        if self.world_collision_config is None:
+            raise RuntimeError("setup_env() must be called before init_motion_gen().")
+
+        if not enable_collision:
+            return WorldVoxelCollision(self.world_collision_config)
+
+        if collision_role is None:
+            collision_role = "traj" if fixed_base else "ik"
+        checker = self.world_voxel_collision_traj if collision_role == "traj" else self.world_voxel_collision_ik
+        if checker is None:
+            checker = WorldVoxelCollision(self.world_collision_config)
+            if self.esdf is not None:
+                checker.clear_voxelization_cache()
+                if getattr(checker, "cache", None) is not None:
+                    checker.clear_cache()
+                checker.update_voxel_data(self.esdf)
+                torch.cuda.synchronize()
+        return checker
 
     def free_cuda_cache(self) -> None:
         gc.collect()
@@ -279,14 +326,22 @@ class CuroboPlanner:
         *,
         fixed_base: bool = False,
         enable_collision: bool = True,
+        collision_role: Optional[str] = None,
     ) -> MotionGen:
         """Create a cuRobo MotionGen instance with the current collision world."""
         robot_cfg = load_robot_cfg(robot_cfg)
 
-        grad_file = "gradient_trajopt_fixbase.yml" if fixed_base else "gradient_trajopt.yml"
-        coll = self._init_collision_checker(enable_collision)
-
         traj_cfg = self.cfg.get("traj", {})
+        grad_file = traj_cfg.get(
+            "gradient_trajopt_file",
+            "gradient_trajopt_fixbase.yml" if fixed_base else "gradient_trajopt.yml",
+        )
+        coll = self._get_collision_checker(
+            fixed_base=fixed_base,
+            enable_collision=enable_collision,
+            collision_role=collision_role,
+        )
+
         mg_config = MotionGenConfig.load_from_robot_config(
             robot_cfg,
             WorldConfig(),
@@ -369,7 +424,17 @@ class CuroboPlanner:
         robot_cfg = load_robot_cfg(robot_cfg)
 
         if motion_gen is None:
-            motion_gen = self.init_motion_gen(robot_cfg)
+            if self.motion_gen is None:
+                self.motion_gen = self.init_motion_gen(
+                    robot_cfg,
+                    fixed_base=False,
+                    collision_role="ik",
+                    enable_collision=plan_cfg.get(
+                        "enable_collision",
+                        self.cfg.get("enable_collision", True),
+                    ),
+                )
+            motion_gen = self.motion_gen
 
         joint_cfg = plan_cfg.get("joint_cfg")
         enable_coll = plan_cfg.get("enable_collision", self.cfg.get("enable_collision", True))
@@ -449,7 +514,7 @@ class CuroboPlanner:
         ``plan_cfg`` keys:
             - ``batch_size`` (int): GPU batch size.
             - ``expand_to_pairs`` (bool): create Cartesian product of start/goal.
-            - ``joint_cfg`` / ``enable_collision``: passed to world update.
+            - ``joint_cfg`` / ``enable_collision``: passed to optional world update.
         """
         if plan_cfg is None:
             plan_cfg = {}
@@ -481,20 +546,28 @@ class CuroboPlanner:
         )
 
         if motion_gen is None:
-            # Trajectory planning uses the AKR joint-space model, which should
-            # follow cuAKR's fixed-base trajopt configuration.
-            motion_gen = self.init_motion_gen(
-                robot_cfg,
-                fixed_base=True,
-                enable_collision=enable_coll,
+            # AKR robot configs are grasp-specific, so initialise the trajectory
+            # MotionGen for every plan_traj call and reuse it for the matching
+            # filter_traj call. This mirrors tests/planner_cvpr26.py.
+            fixed_base = plan_cfg.get(
+                "fixed_base",
+                self.cfg.get("traj", {}).get("fixed_base", False),
             )
+            self.motion_gen_akr = self.init_motion_gen(
+                robot_cfg,
+                fixed_base=fixed_base,
+                enable_collision=enable_coll,
+                collision_role="traj",
+            )
+            motion_gen = self.motion_gen_akr
 
-        self._update_world_collision(
-            motion_gen,
-            joint_cfg,
-            enable_coll,
-            include_object_mesh=include_object_mesh,
-        )
+        if plan_cfg.get("update_world_collision", False) or include_object_mesh:
+            self._update_world_collision(
+                motion_gen,
+                joint_cfg,
+                enable_coll,
+                include_object_mesh=include_object_mesh,
+            )
 
         batch_size = plan_cfg.get("batch_size", self.cfg.get("traj", {}).get("batch_size", 20))
         start_batches = torch.split(start_iks, batch_size)
@@ -561,11 +634,14 @@ class CuroboPlanner:
 
         robot_cfg = load_robot_cfg(robot_cfg)
         if motion_gen is None:
-            motion_gen = self.init_motion_gen(
-                robot_cfg,
-                fixed_base=True,
-                enable_collision=self.cfg.get("enable_collision", True),
-            )
+            if self.motion_gen_akr is None:
+                self.motion_gen_akr = self.init_motion_gen(
+                    robot_cfg,
+                    fixed_base=self.cfg.get("traj", {}).get("fixed_base", False),
+                    enable_collision=self.cfg.get("enable_collision", True),
+                    collision_role="traj",
+                )
+            motion_gen = self.motion_gen_akr
 
         start_state = traj_result.start_states
         goal_state = traj_result.goal_states

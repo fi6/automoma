@@ -53,6 +53,7 @@ planner:
   # Trajectory optimisation
   traj:
     batch_size: 20
+    fixed_base: true
     num_trajopt_seeds: 12
     num_graph_seeds: 12
     interpolation_dt: 0.05

@@ -62,6 +62,10 @@ class PlanningIO:
         return merged
 
     def _merge_ik(self, existing: IKResult, new: IKResult, path: str) -> IKResult:
+        if existing.iks.shape[0] == 0:
+            return new
+        if new.iks.shape[0] == 0:
+            return existing
         self._require_same_rank(existing.target_poses, new.target_poses, path, "target_poses")
         self._require_same_shape(existing.target_poses, new.target_poses, path, "target_poses")
         self._require_same_rank(existing.iks, new.iks, path, "iks")
@@ -71,6 +75,10 @@ class PlanningIO:
         return IKResult.cat([existing, new])
 
     def _merge_traj(self, existing: TrajResult, new: TrajResult, path: str) -> TrajResult:
+        if existing.success.shape[0] == 0:
+            return new
+        if new.success.shape[0] == 0:
+            return existing
         self._require_same_rank(existing.start_states, new.start_states, path, "start_states")
         self._require_same_shape(existing.start_states, new.start_states, path, "start_states")
         self._require_same_rank(existing.goal_states, new.goal_states, path, "goal_states")
@@ -103,6 +111,11 @@ class PlanningIO:
         missing = [key for key in keys if key not in existing or key not in new]
         if missing:
             raise ValueError(f"Cannot append converted payload at {path}: missing keys {missing}")
+
+        if all(existing[key].shape[0] == 0 for key in keys):
+            return new
+        if all(new[key].shape[0] == 0 for key in keys):
+            return existing
 
         merged: dict[str, torch.Tensor] = {}
         for key in keys:
