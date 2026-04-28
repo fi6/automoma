@@ -143,4 +143,9 @@ lerobot-dataset-viz \
     --episode-index 0 \
     --video-backend pyav
 
-python scripts/automoma_dataset_viz.py data/automoma/summit_franka_open-microwave_7221-scene_0_seed_0-10.hdf5
+python scripts/dataset/automoma_dataset_viz.py data/automoma/summit_franka_open-microwave_7221-scene_0_seed_0-10.hdf5
+
+# For automoma-30k-convert
+python scripts/dataset/automoma_dataset_viz.py /home/xinhai/projects/lerobot-arena/data/automoma_30scenes/automoma-30k-convert/scene_0_seed_0/episode000000.hdf5
+
+rclone copy "123pan:/automoma_30scenes" /media/xinhai/GIANT/Research/AutoMoMa/dataset/automoma_30scenes -P
