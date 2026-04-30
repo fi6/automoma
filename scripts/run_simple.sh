@@ -154,7 +154,7 @@ rclone copy "123pan:/automoma_30scenes" /media/xinhai/GIANT/Research/AutoMoMa/da
 # Optional record diagnostics
 bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 10 \
   --interpolated 4 \
-  --record_init_steps 100 \
+  --init_steps 100 \
   --debug_joint_tracking \
   --debug_joint_tracking_steps 1 \
   --debug_joint_tracking_interval 20
