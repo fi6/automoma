@@ -10,7 +10,7 @@ authors = [
 description = "A Python package for robot trajectory generation using curobo as planner"
 readme = "README.md"
 license = {file = "LICENSE"}
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -25,7 +25,7 @@ classifiers = [
 ]
 dependencies = [
     "numpy>=1.26.0",
-    "torch>=2.2.1",
+    "torch==2.7.0",
     "scipy>=1.10.0",
     "PyYAML>=6.0",
     "h5py>=3.10",
@@ -46,21 +46,26 @@ plan = [
     "ninja>=1.11.0",
     "setuptools>=71.0.0",
     # curobo must be installed separately after setting CUDA_HOME:
-    # pip install -e "./third_party/curobo [isaacsim]" --no-build-isolation
+    # pip install -e "./third_party/curobo[isaacsim]" --no-build-isolation
 ]
 
 # Sim mode: plan + isaacsim + IsaacLab + IsaacLab-Arena
 sim = [
-    "plan",
     "isaacsim[all,extscache]==5.1.0",
     "numpy==1.26.0",
+    "tomli>=2.0.0",
+    "wheel>=0.40.0",
+    "ninja>=1.11.0",
+    "setuptools>=71.0.0",
+    "torchvision==0.22.0",
     "lightwheel-sdk==1.0.1",
     "onnxruntime==1.23.2",
 ]
 
-# Train mode: sim + LeRobot with ACT, DP policies
+# Train mode: LeRobot conversion/training dependencies.
+# Combine with sim for the full local record/convert/train/eval pipeline:
+# pip install -e ".[sim,train]"
 train = [
-    "sim",
     "datasets>=4.0.0,<4.2.0",
     "diffusers>=0.27.2,<0.36.0",
     "huggingface-hub[hf-transfer,cli]>=0.34.2,<0.36.0",
@@ -87,9 +92,8 @@ train = [
     "fpsample>=1.0.0,<2.0.0",
 ]
 
-# Dev mode: train + development tools (currently same as train)
+# Dev mode: development tools. Combine with other extras as needed.
 dev = [
-    "train",
     "pytest>=6.0",
     "pytest-cov>=2.0",
     "black>=22.0",

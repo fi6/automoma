@@ -70,34 +70,64 @@ Whole-body mobile manipulation requires robots to coordinate mobile base and arm
 
 - NVIDIA GPU with CUDA support
 - Linux (Ubuntu 22.04 / 24.04)
-- Python 3.12
-- CUDA 12.8 recommended (for GPU acceleration)
+- Python 3.11
+- CUDA 12.8 recommended for CUDA extensions and PyTorch cu128
+
+Isaac Sim 5.1 and IsaacLab require Python 3.11. Do not use Python 3.12 for the full local pipeline.
 
 ### Installation Steps
 
 **1) Create and activate conda environment**
 ```bash
-conda create -y -n automoma python=3.12
+conda create -y -n automoma python=3.11
 conda activate automoma
+
+cd /path/to/lerobot-arena
 ```
 
-**2) Install dependencies (choose A/B/C)**
+**2) Install common build tools and CUDA compiler**
+```bash
+python -m pip install -U pip setuptools wheel
+conda install -y -c conda-forge ninja
+conda install -y -c nvidia "cuda-nvcc=12.8.*"
+
+export CUDA_HOME="$CONDA_PREFIX"
+export PATH="$CUDA_HOME/bin:$PATH"
+export OMNI_KIT_ACCEPT_EULA=YES
+```
+
+Optional but recommended: persist the environment variables on every `conda activate automoma`.
+```bash
+mkdir -p "$CONDA_PREFIX/etc/conda/activate.d"
+cat > "$CONDA_PREFIX/etc/conda/activate.d/automoma.sh" <<'EOF'
+export CUDA_HOME="$CONDA_PREFIX"
+export PATH="$CUDA_HOME/bin:$PATH"
+export OMNI_KIT_ACCEPT_EULA=YES
+EOF
+```
+
+**3) Install CUDA-enabled PyTorch**
+```bash
+pip install torch==2.7.0 torchvision==0.22.0 --index-url https://download.pytorch.org/whl/cu128
+```
+
+**4) Install AutoMoMa base package**
+```bash
+pip install -e .
+```
+
+**5) Install mode-specific dependencies**
+
+For full local usage (`plan`, `record`, `convert`, `train`, `eval`, and `debug`), run both **B** and **C**.
 
 **A) Plan-only dependencies (curobo)**
 ```bash
 # Initialize submodules (once)
 git submodule update --init --recursive third_party/curobo
 
-# Optional but recommended: faster builds
-conda install -c conda-forge ninja
-
-# CUDA toolkit for curobo build (nvcc)
-conda install cuda-nvcc=12.8.* -c nvidia
-export CUDA_HOME=$CONDA_PREFIX
-export PATH=$CUDA_HOME/bin:$PATH
-
-# Build/install curobo
-pip install -e "./third_party/curobo [isaacsim]" --no-build-isolation
+# Install AutoMoMa plan extras and build/install curobo
+pip install -e ".[plan]"
+pip install -e "./third_party/curobo[isaacsim]" --no-build-isolation
 ```
 
 **B) Sim dependencies (curobo + Isaac Sim + IsaacLab)**
@@ -105,27 +135,18 @@ pip install -e "./third_party/curobo [isaacsim]" --no-build-isolation
 # Initialize submodules (once)
 git submodule update --init --recursive third_party/curobo third_party/IsaacLab-Arena
 
-# Optional but recommended: faster builds
-conda install -c conda-forge ninja
-
-# CUDA toolkit for curobo build (nvcc)
-conda install cuda-nvcc=12.8.* -c nvidia
-export CUDA_HOME=$CONDA_PREFIX
-export PATH=$CUDA_HOME/bin:$PATH
-
-# Build/install curobo
-pip install -e "./third_party/curobo [isaacsim]" --no-build-isolation
-
-# Isaac Sim 5.1.0 (recommended: pip install), then link into IsaacLab
-pip install "isaacsim[all,extscache]==5.1.0" --extra-index-url https://pypi.nvidia.com
+# Install AutoMoMa sim extras and build/install curobo
+pip install -e ".[sim]" --extra-index-url https://pypi.nvidia.com
+pip install -e "./third_party/curobo[isaacsim]" --no-build-isolation
 
 # Create link for IsaacLab (pip default path)
 cd third_party/IsaacLab-Arena/submodules/IsaacLab
-ln -sf "$CONDA_PREFIX/lib/python3.12/site-packages/isaacsim" _isaac_sim
+ln -sf "$CONDA_PREFIX/lib/python3.11/site-packages/isaacsim" _isaac_sim
 # If Isaac Sim is installed elsewhere, update the path above accordingly.
 
 # Install IsaacLab + Arena
 ./isaaclab.sh -i
+cd /path/to/lerobot-arena
 pip install -e ./third_party/IsaacLab-Arena
 
 # Auto-configure environment hooks
@@ -137,32 +158,41 @@ automoma install-hooks
 # Initialize submodules (once)
 git submodule update --init --recursive third_party/lerobot
 
-# Install LeRobot
-cd third_party/lerobot
-pip install -e .
-cd ../..
+# Install AutoMoMa train extras and LeRobot
+pip install -e ".[train]"
+pip install -e ./third_party/lerobot
 ```
 
-**3) Install AutoMoMa (choose your mode)**
+**6) Verify setup**
 ```bash
-pip install -e ".[plan]"   # plan-only
-pip install -e ".[sim]"    # sim
-pip install -e ".[train]"  # train
-pip install -e ".[dev]"    # dev
+python --version
+nvcc --version
+
+python - <<'PY'
+import torch
+print("torch", torch.__version__)
+print("torch cuda", torch.version.cuda)
+print("cuda available", torch.cuda.is_available())
+if torch.cuda.is_available():
+    print(torch.cuda.get_device_name(0))
+PY
+
+automoma check
 ```
 
 **Environment Notes**
 - `automoma install-hooks` sets env vars on `conda activate` (no manual sourcing).
-- Verify setup with: `automoma check`
+- `pip install -e ".[sim]" --extra-index-url https://pypi.nvidia.com` installs Isaac Sim 5.1.0 from NVIDIA's PyPI index as declared in `pyproject.toml`.
+- `pip install -e ".[train]"` installs conversion/training dependencies, but LeRobot itself is installed from `third_party/lerobot`.
 
 ### Mode Dependencies
 
 | Mode | Description |
 |------|-------------|
 | **plan** | Base + curobo (GPU motion planning) |
-| **sim** | plan + Isaac Sim 5.1.0 + IsaacLab + IsaacLab-Arena |
-| **train** | sim + LeRobot / RoboTwin training dependencies (ACT, DP, DP3, GR00T, etc.) |
-| **dev** | train + development tools (same as train for now) |
+| **sim** | plan build deps + Isaac Sim 5.1.0 + IsaacLab + IsaacLab-Arena |
+| **train** | LeRobot conversion/training dependencies (ACT, DP, dataset conversion, etc.) |
+| **dev** | development tools; combine with other extras as needed |
 
 ### Training a Policy
 
@@ -191,7 +221,7 @@ They are included in `.[train]` in `pyproject.toml`.
 
 ### Note
 
-If you encounter `ValueError: mutable default` errors when importing curobo, the included patches in `third_party/curobo/src/curobo/rollout/rollout_base.py` and `third_party/curobo/src/curobo/util/sample_lib.py` fix this for Python 3.12+.
+If you encounter `ValueError: mutable default` errors when importing curobo, the included patches in `third_party/curobo/src/curobo/rollout/rollout_base.py` and `third_party/curobo/src/curobo/util/sample_lib.py` fix this for newer Python versions.
 
 If you need to clean curobo build artifacts before rebuilding, use:
 ```bash
