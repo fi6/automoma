@@ -45,6 +45,7 @@ plan = [
     "wheel>=0.40.0",
     "ninja>=1.11.0",
     "setuptools>=71.0.0",
+    "usd-core",
     # curobo must be installed separately after setting CUDA_HOME:
     # pip install -e "./third_party/curobo[isaacsim]" --no-build-isolation
 ]
