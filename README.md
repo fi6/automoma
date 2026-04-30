@@ -72,6 +72,8 @@ Whole-body mobile manipulation requires robots to coordinate mobile base and arm
 - Linux (Ubuntu 22.04 / 24.04)
 - Python 3.11
 - CUDA 12.8 recommended for CUDA extensions and PyTorch cu128
+- NVIDIA driver R580 is recommended for Isaac Sim 5.1 camera rendering. Driver R590
+  can segfault in headless `--enable_cameras` runs during RTX renderer startup.
 
 Isaac Sim 5.1 and IsaacLab require Python 3.11. Do not use Python 3.12 for the full local pipeline.
 
@@ -87,7 +89,8 @@ cd /path/to/lerobot-arena
 
 **2) Install common build tools and CUDA compiler**
 ```bash
-python -m pip install -U pip setuptools wheel
+python -m pip install -U pip wheel
+pip install "setuptools>=71,<81"
 conda install -y -c conda-forge ninja
 conda install -y -c nvidia "cuda-nvcc=12.8.*"
 
@@ -145,12 +148,18 @@ ln -sf "$CONDA_PREFIX/lib/python3.11/site-packages/isaacsim" _isaac_sim
 # If Isaac Sim is installed elsewhere, update the path above accordingly.
 
 # Install IsaacLab + Arena
+# flatdict 4.0.1 needs the non-isolated build env with setuptools<81.
+pip install "flatdict==4.0.1" --no-build-isolation
 ./isaaclab.sh -i
 cd /path/to/lerobot-arena
+pip install -e ./third_party/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab --no-build-isolation
 pip install -e ./third_party/IsaacLab-Arena
 
 # Auto-configure environment hooks
 automoma install-hooks
+
+# Keep Isaac Sim and Ray on a compatible click version
+pip install "click==8.1.7"
 ```
 
 **C) Train-only dependencies (no sim, no curobo)**
@@ -226,6 +235,35 @@ If you encounter `ValueError: mutable default` errors when importing curobo, the
 If you need to clean curobo build artifacts before rebuilding, use:
 ```bash
 ./scripts/clean_curobo_build.sh
+```
+
+### Isaac Sim Headless Camera Crash
+
+If `record` or `eval` crashes in headless mode with `--enable_cameras` and a
+backtrace in `librtx.scenedb.plugin.so` / `libcarb.scenerenderer-rtx.plugin.so`,
+check the NVIDIA driver version:
+
+```bash
+nvidia-smi
+```
+
+Isaac Sim 5.1 camera rendering is known to be unstable with the R590 driver
+branch in headless mode. Use one of these workarounds:
+
+```bash
+# Preferred long-term fix: use an R580 production driver such as 580.65.06.
+
+# Short-term workaround on a local workstation with an active X session:
+export DISPLAY=:1
+bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 30 --no-headless
+```
+
+Also make sure no old planning or simulation process is still occupying GPU
+memory before starting camera recording:
+
+```bash
+nvidia-smi
+kill <stale-python-pid>
 ```
 
 ## Quick Start

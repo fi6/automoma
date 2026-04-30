@@ -44,7 +44,8 @@ plan = [
     "tomli>=2.0.0",
     "wheel>=0.40.0",
     "ninja>=1.11.0",
-    "setuptools>=71.0.0",
+    "setuptools>=71.0.0,<81.0.0",
+    "click==8.1.7",
     "usd-core",
     # curobo must be installed separately after setting CUDA_HOME:
     # pip install -e "./third_party/curobo[isaacsim]" --no-build-isolation
@@ -57,8 +58,9 @@ sim = [
     "tomli>=2.0.0",
     "wheel>=0.40.0",
     "ninja>=1.11.0",
-    "setuptools>=71.0.0",
+    "setuptools>=71.0.0,<81.0.0",
     "torchvision==0.22.0",
+    "click==8.1.7",
     "lightwheel-sdk==1.0.1",
     "onnxruntime==1.23.2",
 ]
