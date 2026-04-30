@@ -16,6 +16,16 @@ export AUTOMOMA_OBJECT_ROOT="$REPO_ROOT/assets/object"
 export AUTOMOMA_SCENE_ROOT="$REPO_ROOT/assets/scene/infinigen/kitchen_1130"
 export AUTOMOMA_ROBOT_ROOT="$REPO_ROOT/assets/robot"
 
+# Isaac Sim loads Python extension dependencies through the process dynamic
+# linker. Keep the conda runtime first so packages built against the conda C++
+# runtime do not accidentally bind to the older system libstdc++.
+if [[ -n "${CONDA_PREFIX:-}" && -d "$CONDA_PREFIX/lib" ]]; then
+    case ":${LD_LIBRARY_PATH:-}:" in
+        *":$CONDA_PREFIX/lib:"*) ;;
+        *) export LD_LIBRARY_PATH="$CONDA_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ;;
+    esac
+fi
+
 echo "Using AUTOMOMA_OBJECT_ROOT=$AUTOMOMA_OBJECT_ROOT"
 echo "Using AUTOMOMA_SCENE_ROOT=$AUTOMOMA_SCENE_ROOT"
 echo "Using AUTOMOMA_ROBOT_ROOT=$AUTOMOMA_ROBOT_ROOT"
@@ -118,6 +128,8 @@ do_record() {
     local traj_file="$REPO_ROOT/data/trajs/summit_franka/${object_name}/${scene_name}/train/traj_data_train.pt"
     local dataset_file="$REPO_ROOT/data/automoma/${name}.hdf5"
     local headless_flag=""
+    local record_interpolated="${RECORD_INTERPOLATED:-1}"
+    local auto_debug_tracking="${RECORD_AUTO_DEBUG_TRACKING:-0}"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -130,8 +142,41 @@ do_record() {
             *) break ;;
         esac
     done
+    if [[ "$dataset_file" != /* ]]; then
+        dataset_file="$REPO_ROOT/$dataset_file"
+    fi
 
     setup_log record "$object_name" "$scene_name"
+
+    local add_default_interpolated="true"
+    local has_debug_joint_tracking="false"
+    local has_debug_joint_tracking_steps="false"
+    local has_debug_joint_tracking_interval="false"
+    local has_debug_joint_tracking_topk="false"
+    local has_debug_joint_tracking_fk_link="false"
+    local arg
+    for arg in "$@"; do
+        case "$arg" in
+            --interpolated|--interpolated=*)
+                add_default_interpolated="false"
+                ;;
+            --debug_joint_tracking)
+                has_debug_joint_tracking="true"
+                ;;
+            --debug_joint_tracking_steps|--debug_joint_tracking_steps=*)
+                has_debug_joint_tracking_steps="true"
+                ;;
+            --debug_joint_tracking_interval|--debug_joint_tracking_interval=*)
+                has_debug_joint_tracking_interval="true"
+                ;;
+            --debug_joint_tracking_topk|--debug_joint_tracking_topk=*)
+                has_debug_joint_tracking_topk="true"
+                ;;
+            --debug_joint_tracking_fk_link|--debug_joint_tracking_fk_link=*)
+                has_debug_joint_tracking_fk_link="true"
+                ;;
+        esac
+    done
 
     local -a cmd=(
         python isaaclab_arena/scripts/record_automoma_demos.py
@@ -144,6 +189,26 @@ do_record() {
 
     if [[ -n "$headless_flag" ]]; then
         cmd+=("$headless_flag")
+    fi
+    if [[ "$add_default_interpolated" == "true" ]]; then
+        cmd+=(--interpolated "$record_interpolated")
+    fi
+    if [[ "$auto_debug_tracking" == "1" ]]; then
+        if [[ "$has_debug_joint_tracking" != "true" ]]; then
+            cmd+=(--debug_joint_tracking)
+        fi
+        if [[ "$has_debug_joint_tracking_steps" != "true" ]]; then
+            cmd+=(--debug_joint_tracking_steps 0)
+        fi
+        if [[ "$has_debug_joint_tracking_interval" != "true" ]]; then
+            cmd+=(--debug_joint_tracking_interval 0)
+        fi
+        if [[ "$has_debug_joint_tracking_topk" != "true" ]]; then
+            cmd+=(--debug_joint_tracking_topk 12)
+        fi
+        if [[ "$has_debug_joint_tracking_fk_link" != "true" ]]; then
+            cmd+=(--debug_joint_tracking_fk_link ee_link)
+        fi
     fi
 
     cmd+=(
@@ -449,6 +514,7 @@ do_eval() {
         local traj_file="$REPO_ROOT/data/trajs/summit_franka/${object_name}/${scene_name}/test/traj_data_test.pt"
         local traj_seed="${EVAL_TRAJ_SEED:-42}"
         local env_headless="false"
+        local eval_episode_length="${EVAL_EPISODE_LENGTH:-300}"
 
         while [[ $# -gt 0 ]]; do
             case "$1" in
@@ -501,7 +567,7 @@ do_eval() {
             --env.action_dim=12
             --env.camera_height=240
             --env.camera_width=320
-            --env.episode_length=300
+            --env.episode_length="$eval_episode_length"
             "--env.kwargs=$env_kwargs"
             "--rename_map=$rename_map"
             --trust_remote_code=true

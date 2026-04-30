@@ -114,7 +114,7 @@ python isaaclab_arena_gr00t/data_utils/convert_hdf5_to_lerobot_v30.py \
 # 2. RECORD — replay trajectories in IsaacLab-Arena
 # =============================================================================
 python scripts/prepare_object.py --object_type Microwave --object_id 7221
-bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 100 --set_state
+bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 10 --set_state
 bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 10 --headless
 bash scripts/run_pipeline.sh record microwave_7221 scene_1_seed_1 10 --interpolated 2
 bash scripts/run_pipeline.sh convert microwave_7221 scene_0_seed_0 10
@@ -149,3 +149,12 @@ python scripts/dataset/automoma_dataset_viz.py data/automoma/summit_franka_open-
 python scripts/dataset/automoma_dataset_viz.py /home/xinhai/projects/lerobot-arena/data/automoma_30scenes/automoma-30k-convert/scene_0_seed_0/episode000000.hdf5
 
 rclone copy "123pan:/automoma_30scenes" /media/xinhai/GIANT/Research/AutoMoMa/dataset/automoma_30scenes -P
+
+
+# Optional record diagnostics
+bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 10 \
+  --interpolated 4 \
+  --record_init_steps 100 \
+  --debug_joint_tracking \
+  --debug_joint_tracking_steps 1 \
+  --debug_joint_tracking_interval 20
