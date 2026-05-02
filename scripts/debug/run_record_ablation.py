@@ -33,6 +33,7 @@ DEFAULT_TRYOUT_ROOT = REPO_ROOT / "data" / "automoma" / "ablation_study_tryout"
 @dataclass(frozen=True)
 class Experiment:
     interpolated: int
+    interpolation_type: str
     decimation: int
     init_steps: int
     trajectory_len: int
@@ -108,12 +109,13 @@ def _run_one(
     extra_args: list[str],
     dry_run: bool,
     force: bool,
+    include_type_in_path: bool,
 ) -> int:
     traj_file = _traj_file(object_name, scene_name, exp.trajectory_len)
     if not traj_file.exists():
         raise FileNotFoundError(traj_file)
 
-    exp_dir = output_root / exp.name
+    exp_dir = output_root / exp.interpolation_type / exp.name if include_type_in_path else output_root / exp.name
     exp_dir.mkdir(parents=True, exist_ok=True)
     dataset_stem = (
         f"summit_franka_open-{object_name}-{scene_name}-{num_episodes}-{exp.name}"
@@ -136,7 +138,7 @@ def _run_one(
                 "handle_csv": str(handle_csv),
             },
         )
-        print(f"[skip] {exp.name}", flush=True)
+        print(f"[skip] {exp.interpolation_type}/{exp.name}", flush=True)
         return 0
 
     cmd = [
@@ -153,6 +155,8 @@ def _run_one(
         str(traj_file),
         "--interpolated",
         str(exp.interpolated),
+        "--interpolation_type",
+        exp.interpolation_type,
         "--decimation",
         str(exp.decimation),
         "--init_steps",
@@ -173,7 +177,7 @@ def _run_one(
     }
     _write_json(status_path, run_info)
     _append_jsonl(output_root / "manifest.jsonl", run_info)
-    print(f"[run] {exp.name}", flush=True)
+    print(f"[run] {exp.interpolation_type}/{exp.name}", flush=True)
 
     if dry_run:
         print(" ".join(cmd), flush=True)
@@ -211,7 +215,11 @@ def _run_one(
     }
     _write_json(status_path, final_status)
     _append_jsonl(output_root / "manifest.jsonl", final_status)
-    print(f"[{final_status['status']}] {exp.name} rc={proc.returncode} elapsed={elapsed_s:.1f}s", flush=True)
+    print(
+        f"[{final_status['status']}] {exp.interpolation_type}/{exp.name} "
+        f"rc={proc.returncode} elapsed={elapsed_s:.1f}s",
+        flush=True,
+    )
     return int(proc.returncode)
 
 
@@ -223,6 +231,7 @@ def main() -> int:
     parser.add_argument("--output_root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--tryout", type=str, default="", help="Write into ablation_study_tryout/<name> instead.")
     parser.add_argument("--interpolated", default="2,3,4,5,10")
+    parser.add_argument("--interpolation_types", default="linear")
     parser.add_argument("--decimation", default="1,4")
     parser.add_argument("--init_steps", default="1,2,3,5,10,100")
     parser.add_argument("--trajectory_lens", default="36,38,40")
@@ -239,10 +248,14 @@ def main() -> int:
         output_root = DEFAULT_TRYOUT_ROOT / args.tryout
     output_root.mkdir(parents=True, exist_ok=True)
 
+    interpolation_types = [item.strip() for item in args.interpolation_types.split(",") if item.strip()]
+    include_type_in_path = len(interpolation_types) > 1 or interpolation_types != ["linear"]
+
     experiments = [
-        Experiment(interpolated=i, decimation=d, init_steps=s, trajectory_len=l)
-        for i, d, s, l in itertools.product(
+        Experiment(interpolated=i, interpolation_type=t, decimation=d, init_steps=s, trajectory_len=l)
+        for i, t, d, s, l in itertools.product(
             _parse_int_list(args.interpolated),
+            interpolation_types,
             _parse_int_list(args.decimation),
             _parse_int_list(args.init_steps),
             _parse_int_list(args.trajectory_lens),
@@ -250,7 +263,10 @@ def main() -> int:
     ]
 
     if args.start_at:
-        names = [exp.name for exp in experiments]
+        names = [
+            f"{exp.interpolation_type}/{exp.name}" if include_type_in_path else exp.name
+            for exp in experiments
+        ]
         if args.start_at not in names:
             raise ValueError(f"--start_at {args.start_at!r} not in grid")
         experiments = experiments[names.index(args.start_at) :]
@@ -261,6 +277,8 @@ def main() -> int:
         "num_episodes": args.num_episodes,
         "output_root": str(output_root),
         "grid_size": len(experiments),
+        "interpolation_types": interpolation_types,
+        "include_type_in_path": include_type_in_path,
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
     }
     _write_json(output_root / "ablation_config.json", metadata)
@@ -268,7 +286,8 @@ def main() -> int:
     failures = 0
     launched = 0
     for exp in experiments:
-        before = _load_status(output_root / exp.name / "status.json")
+        exp_dir = output_root / exp.interpolation_type / exp.name if include_type_in_path else output_root / exp.name
+        before = _load_status(exp_dir / "status.json")
         free_gb = shutil.disk_usage(output_root).free / (1024**3)
         if not args.dry_run and free_gb < args.min_free_gb:
             print(
@@ -287,8 +306,9 @@ def main() -> int:
             extra_args=args.extra_args,
             dry_run=args.dry_run,
             force=args.force,
+            include_type_in_path=include_type_in_path,
         )
-        after = _load_status(output_root / exp.name / "status.json")
+        after = _load_status(exp_dir / "status.json")
         if after.get("status") not in {"skipped_complete", "dry_run"} or before.get("status") != after.get("status"):
             launched += 1
         failures += int(rc != 0)

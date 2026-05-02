@@ -158,3 +158,7 @@ bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 10 \
   --debug_joint_tracking \
   --debug_joint_tracking_steps 1 \
   --debug_joint_tracking_interval 20
+
+# Recommended record interpolation setting from the type ablation:
+# bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 10 \
+#   --interpolated 5 --interpolation_type cubic --decimation 1 --init_steps 5
