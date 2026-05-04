@@ -55,6 +55,22 @@ require_arg() {
         usage
     fi
 }
+resolve_repo_path() {
+    local path="$1"
+    if [[ "$path" = /* ]]; then
+        echo "$path"
+    else
+        echo "$REPO_ROOT/$path"
+    fi
+}
+require_eval_traj_file() {
+    local traj_file="$1"
+    if [[ ! -f "$traj_file" ]]; then
+        echo "Error: Eval trajectory file not found: $traj_file" >&2
+        echo "Eval requires the source IK/test trajectory. Run planning first or pass --traj_file to an existing traj_data_test.pt." >&2
+        exit 1
+    fi
+}
 
 setup_log() {
     local mode="$1" obj="$2" scene="$3"
@@ -532,8 +548,8 @@ do_eval() {
                 --no-headless) env_headless="false"; shift ;;
                 --policy.path=*) policy_path="${1#*=}"; shift ;;
                 --policy.path) policy_path="$2"; shift 2 ;;
-                --traj_file=*) traj_file="${1#*=}"; shift ;;
-                --traj_file) traj_file="$2"; shift 2 ;;
+                --traj_file=*) traj_file="$(resolve_repo_path "${1#*=}")"; shift ;;
+                --traj_file) traj_file="$(resolve_repo_path "$2")"; shift 2 ;;
                 --traj_seed=*) traj_seed="${1#*=}"; shift ;;
                 --traj_seed) traj_seed="$2"; shift 2 ;;
                 --output_dir=*) output_dir="${1#*=}"; shift ;;
@@ -546,6 +562,7 @@ do_eval() {
             esac
         done
 
+        require_eval_traj_file "$traj_file"
         setup_log eval "$object_name" "$scene_name"
 
         rm -f "$output_dir/per_episode_results.csv" "$output_dir/eval_info.json"
@@ -641,42 +658,101 @@ PY
     local ckpt_setting="$scene_name"
     local checkpoint_root="$REPO_ROOT/outputs/train/robotwin/${policy}_${name}"
     local output_dir="$REPO_ROOT/outputs/eval/robotwin/${policy}_${name}"
+    local traj_file="$REPO_ROOT/data/trajs/summit_franka/${object_name}/${scene_name}/test/traj_data_test.pt"
     local use_rgb=""
+    local legacy_cvpr26="false"
+    local seed_explicit="false"
+    local checkpoint_root_explicit="false"
+    local output_dir_explicit="false"
     local -a passthrough=()
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --seed=*) seed="${1#*=}"; shift ;;
-            --seed) seed="$2"; shift 2 ;;
+            --seed=*) seed="${1#*=}"; seed_explicit="true"; shift ;;
+            --seed) seed="$2"; seed_explicit="true"; shift 2 ;;
             --gpu_id=*) gpu_id="${1#*=}"; shift ;;
             --gpu_id) gpu_id="$2"; shift 2 ;;
             --ckpt_setting=*) ckpt_setting="${1#*=}"; shift ;;
             --ckpt_setting) ckpt_setting="$2"; shift 2 ;;
-            --checkpoint_root=*) checkpoint_root="${1#*=}"; shift ;;
-            --checkpoint_root) checkpoint_root="$2"; shift 2 ;;
-            --output_dir=*) output_dir="${1#*=}"; shift ;;
-            --output_dir) output_dir="$2"; shift 2 ;;
+            --checkpoint_root=*) checkpoint_root="${1#*=}"; checkpoint_root_explicit="true"; shift ;;
+            --checkpoint_root) checkpoint_root="$2"; checkpoint_root_explicit="true"; shift 2 ;;
+            --output_dir=*) output_dir="${1#*=}"; output_dir_explicit="true"; shift ;;
+            --output_dir) output_dir="$2"; output_dir_explicit="true"; shift 2 ;;
+            --traj_file=*)
+                traj_file="$(resolve_repo_path "${1#*=}")"
+                shift
+                ;;
+            --traj_file)
+                traj_file="$(resolve_repo_path "$2")"
+                shift 2
+                ;;
             --use_rgb=*) use_rgb="${1#*=}"; shift ;;
             --use_rgb) use_rgb="$2"; shift 2 ;;
+            --legacy_cvpr26)
+                legacy_cvpr26="true"
+                shift
+                ;;
+            --legacy_cvpr26=*)
+                local legacy_value="${1#*=}"
+                case "${legacy_value,,}" in
+                    1|true|yes|y|on) legacy_cvpr26="true" ;;
+                    *) legacy_cvpr26="false" ;;
+                esac
+                shift
+                ;;
             *) passthrough+=("$1"); shift ;;
         esac
     done
 
+    if [[ "$legacy_cvpr26" == "true" ]]; then
+        if [[ "$seed_explicit" == "false" ]]; then
+            seed="0"
+        fi
+        if [[ "$checkpoint_root_explicit" == "false" ]]; then
+            checkpoint_root="$REPO_ROOT/outputs/train/debug_eval/robotwin/${policy}"
+        fi
+        if [[ "$output_dir_explicit" == "false" ]]; then
+            output_dir="$REPO_ROOT/outputs/eval/debug_eval/robotwin/${policy}_${name}"
+        fi
+    fi
+
+    require_eval_traj_file "$traj_file"
+    passthrough=(--traj_file "$traj_file" "${passthrough[@]}")
     local eval_wrapper="$REPO_ROOT/scripts/robotwin_eval.sh"
     local task_name="$object_name"
     local task_config="$scene_name"
-    local -a cmd=(
-        bash "$eval_wrapper"
-        "$policy_name_upper"
-        "$task_name"
-        "$task_config"
-        "$num_episodes"
-        "$ckpt_setting"
-        "$seed"
-        "$gpu_id"
-        "$checkpoint_root"
-        "$output_dir"
-    )
+    local -a cmd=()
+    if [[ "$legacy_cvpr26" == "true" ]]; then
+        if [[ "$policy_name_upper" != "DP3" ]]; then
+            echo "Error: --legacy_cvpr26 is only supported for RoboTwin DP3 eval." >&2
+            exit 1
+        fi
+        cmd=(
+            python "$REPO_ROOT/scripts/cvpr26/robotwin_dp3_eval.py"
+            --task_name "$task_name"
+            --task_config "$task_config"
+            --expert_data_num "$num_episodes"
+            --ckpt_setting "$ckpt_setting"
+            --seed "$seed"
+            --gpu_id "$gpu_id"
+            --checkpoint_root "$checkpoint_root"
+            --output_dir "$output_dir"
+            --legacy_cvpr26
+        )
+    else
+        cmd=(
+            bash "$eval_wrapper"
+            "$policy_name_upper"
+            "$task_name"
+            "$task_config"
+            "$num_episodes"
+            "$ckpt_setting"
+            "$seed"
+            "$gpu_id"
+            "$checkpoint_root"
+            "$output_dir"
+        )
+    fi
     if [[ -n "$use_rgb" ]]; then
         cmd+=(--use_rgb "$use_rgb")
     fi
