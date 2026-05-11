@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import copy
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -16,12 +18,14 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DP3_ROOT = REPO_ROOT / "third_party" / "RoboTwin" / "policy" / "DP3"
 DP3_DIFFUSION_ROOT = DP3_ROOT / "3D-Diffusion-Policy"
 ISAAC_ENV_ROOT = REPO_ROOT / "third_party" / "IsaacLab-Arena" / "isaaclab-arena-envs"
+ISAAC_ARENA_ROOT = REPO_ROOT / "third_party" / "IsaacLab-Arena"
 LEROBOT_SRC_ROOT = REPO_ROOT / "third_party" / "lerobot" / "src"
 
 for path in (
     str(DP3_ROOT),
     str(DP3_ROOT / "scripts"),
     str(DP3_DIFFUSION_ROOT),
+    str(ISAAC_ARENA_ROOT),
     str(ISAAC_ENV_ROOT),
     str(LEROBOT_SRC_ROOT),
 ):
@@ -30,6 +34,7 @@ for path in (
 
 from automoma_dp3_utils import PointCloudConfig, rgbd_to_pointcloud
 from diffusion_policy_3d.env_runner.robot_runner import RobotRunner
+from isaaclab_arena.utils.action_execution import InterpolatedActionExecutor
 from lerobot.utils.io_utils import write_video
 from train_dp3 import TrainDP3Workspace
 
@@ -48,6 +53,20 @@ PER_EPISODE_CSV_COLUMNS = [
     "preclose_diagnostics_path",
     "steps",
     "video_path",
+]
+
+ACTION_TRACE_CSV_COLUMNS = [
+    "episode_ix",
+    "policy_step_ix",
+    "sim_trace_step_ix",
+    "sim_substep_ix",
+    "sim_substeps_for_policy",
+    "is_policy_action_sample",
+    "joint_ix",
+    "joint_name",
+    "policy_action_abs",
+    "interpolated_action_abs",
+    "sim_joint_pos_after",
 ]
 
 
@@ -79,8 +98,6 @@ SUMMIT_FRANKA_ACTION_JOINT_NAMES = (
 
 
 def append_per_episode_csv_row(csv_path: Path, row: dict[str, object]) -> None:
-    import csv
-
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     write_header = not csv_path.exists()
     with csv_path.open("a", newline="") as f:
@@ -88,6 +105,64 @@ def append_per_episode_csv_row(csv_path: Path, row: dict[str, object]) -> None:
         if write_header:
             writer.writeheader()
         writer.writerow({key: row.get(key, "") for key in PER_EPISODE_CSV_COLUMNS})
+
+
+def debug_progress(message: str) -> None:
+    progress_path = os.environ.get("DEBUG_EVAL_PROGRESS")
+    if not progress_path:
+        return
+    with Path(progress_path).open("a") as f:
+        f.write(f"{time.time():.3f} {message}\n")
+
+
+class ActionTraceLogger:
+    def __init__(self, csv_path: Path, joint_names: list[str]):
+        self.csv_path = csv_path
+        self.joint_names = joint_names
+        self.sim_trace_step_ix = 0
+        self.csv_path.parent.mkdir(parents=True, exist_ok=True)
+        self._file = self.csv_path.open("w", newline="")
+        self._writer = csv.DictWriter(self._file, fieldnames=ACTION_TRACE_CSV_COLUMNS)
+        self._writer.writeheader()
+
+    def close(self) -> None:
+        self._file.close()
+
+    def write_substep(
+        self,
+        *,
+        episode_ix: int,
+        policy_step_ix: int,
+        sim_substep_ix: int,
+        sim_substeps_for_policy: int,
+        policy_action_abs: np.ndarray,
+        interpolated_action_abs: np.ndarray,
+        sim_joint_pos_after: np.ndarray,
+    ) -> None:
+        width = min(
+            len(self.joint_names),
+            int(policy_action_abs.shape[0]),
+            int(interpolated_action_abs.shape[0]),
+            int(sim_joint_pos_after.shape[0]),
+        )
+        is_policy_action_sample = sim_substep_ix == sim_substeps_for_policy - 1
+        for joint_ix in range(width):
+            self._writer.writerow(
+                {
+                    "episode_ix": episode_ix,
+                    "policy_step_ix": policy_step_ix,
+                    "sim_trace_step_ix": self.sim_trace_step_ix,
+                    "sim_substep_ix": sim_substep_ix,
+                    "sim_substeps_for_policy": sim_substeps_for_policy,
+                    "is_policy_action_sample": int(is_policy_action_sample),
+                    "joint_ix": joint_ix,
+                    "joint_name": self.joint_names[joint_ix],
+                    "policy_action_abs": float(policy_action_abs[joint_ix]),
+                    "interpolated_action_abs": float(interpolated_action_abs[joint_ix]),
+                    "sim_joint_pos_after": float(sim_joint_pos_after[joint_ix]),
+                }
+            )
+        self.sim_trace_step_ix += 1
 
 
 def str2bool(value: str | bool) -> bool:
@@ -180,6 +255,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--preclose_lock_base_arm", type=str2bool, default=None)
     parser.add_argument("--obs_gripper_value", type=float, default=None)
     parser.add_argument("--action_gripper_value", type=float, default=None)
+    parser.add_argument("--debug_action_trace", type=str2bool, default=False)
+    parser.add_argument("--action_trace_csv", type=str, default=None)
     return parser.parse_args()
 
 
@@ -404,7 +481,8 @@ def build_env(args: argparse.Namespace):
         raise ValueError("--init_steps must be >= 1.")
     traj_file = Path(args.traj_file) if args.traj_file else REPO_ROOT / "data" / "trajs" / "summit_franka" / object_name / scene_name / "test" / "traj_data_test.pt"
     preclose_steps = max(int(args.preclose_steps or 0), 0)
-    episode_length = int(args.max_steps) + preclose_steps
+    policy_env_interpolation_factor = args.interpolated if args.interpolation_type != "none" else 1
+    episode_length = (int(args.max_steps) + preclose_steps) * max(int(policy_env_interpolation_factor), 1)
     cfg = SimpleEnvConfig(
         environment="summit_franka_open_door_eval",
         headless=args.headless,
@@ -779,7 +857,7 @@ def run_preclose(
                 "gripper_after": np.asarray(joint_pos_after[-2:], dtype=np.float32).tolist() if joint_pos_after.shape[0] >= 2 else [],
             })
             if episode_ix < args.max_episodes_rendered:
-                frame = render_frame(env)
+                frame = frame_from_obs(obs, args.camera_view)
                 if frame is not None:
                     frames.append(frame)
     finally:
@@ -831,15 +909,31 @@ def base_arm_max_abs_delta(obs: dict, reference_joint_pos: np.ndarray) -> float:
     return float(np.max(np.abs(joint_pos[:freeze_dim] - reference_joint_pos[:freeze_dim])))
 
 
-def render_frame(env) -> np.ndarray | None:
-    frame = env.render()
-    if isinstance(frame, list):
-        if not frame:
-            return None
-        frame = frame[0]
+def frame_from_obs(obs: dict, camera_view: str) -> np.ndarray | None:
+    camera_obs = obs.get("camera_obs")
+    if not isinstance(camera_obs, dict):
+        return None
+    frame = camera_obs.get(f"{camera_view}_rgb")
     if frame is None:
         return None
-    return np.asarray(frame)
+    if isinstance(frame, torch.Tensor):
+        frame = frame.detach().cpu().numpy()
+    frame = np.asarray(frame)
+    if frame.ndim == 4:
+        frame = frame[0]
+    if frame.ndim == 3 and frame.shape[0] in {3, 4} and frame.shape[-1] not in {3, 4}:
+        frame = np.moveaxis(frame, 0, -1)
+    if frame.ndim != 3:
+        return None
+    if frame.shape[-1] == 4:
+        frame = frame[..., :3]
+    if frame.dtype != np.uint8:
+        if np.issubdtype(frame.dtype, np.floating):
+            max_value = float(np.nanmax(frame)) if frame.size else 0.0
+            if max_value <= 1.0:
+                frame = frame * 255.0
+        frame = np.clip(frame, 0, 255).astype(np.uint8)
+    return np.ascontiguousarray(frame)
 
 
 def main() -> None:
@@ -858,6 +952,7 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     csv_path = output_dir / "per_episode_results.csv"
     videos_dir = output_dir / "videos"
+    action_trace_path = Path(args.action_trace_csv) if args.action_trace_csv else output_dir / "action_trace_joint_states.csv"
     start_time = time.time()
 
     if csv_path.exists():
@@ -880,23 +975,36 @@ def main() -> None:
     per_episode: list[dict[str, object]] = []
     all_successes: list[bool] = []
     video_paths: list[str] = []
+    action_trace_logger = ActionTraceLogger(action_trace_path, list(SUMMIT_FRANKA_ACTION_JOINT_NAMES)) if args.debug_action_trace else None
+    if action_trace_logger is not None:
+        print(f"writing action trace to {action_trace_path}", flush=True)
+    executor_kwargs = {
+        "interpolation_factor": args.interpolated,
+        "interpolation_type": args.interpolation_type,
+        "state_fn": (lambda step_obs: extract_sim_joint_pos(env, step_obs)) if action_trace_logger is not None else None,
+    }
+    if hasattr(env, "make_action_executor"):
+        action_executor = env.make_action_executor(**executor_kwargs)
+    else:
+        action_executor = InterpolatedActionExecutor(env, **executor_kwargs)
 
     try:
         for episode_ix in range(args.n_episodes):
             episode_seed = args.seed + episode_ix
+            debug_progress(f"episode {episode_ix} reset begin")
             obs, _info = env.reset(seed=episode_seed)
+            debug_progress(f"episode {episode_ix} reset done")
             env_runner.reset_obs()
+            action_executor.reset()
             settled_obs = settle_initial_state(env, args.init_steps)
             if settled_obs is not None:
                 obs = settled_obs
+            debug_progress(f"episode {episode_ix} settle done")
 
             frames: list[np.ndarray] = []
-            if episode_ix < args.max_episodes_rendered:
-                frame = render_frame(env)
-                if frame is not None:
-                    frames.append(frame)
 
             preclose_reference_joint_pos = extract_joint_pos(obs)
+            debug_progress(f"episode {episode_ix} preclose begin")
             obs, preclose_count, final_info, preclose_diagnostics = run_preclose(
                 env,
                 obs,
@@ -905,6 +1013,7 @@ def main() -> None:
                 episode_ix,
                 preclose_reference_joint_pos,
             )
+            debug_progress(f"episode {episode_ix} preclose done")
             done = False
             preclose_gripper_left, preclose_gripper_right = gripper_values_from_obs(obs)
             preclose_base_arm_delta = base_arm_max_abs_delta(obs, preclose_reference_joint_pos)
@@ -914,7 +1023,9 @@ def main() -> None:
             })
 
             policy_steps = 0
+            policy_sim_steps = 0
             while not done and policy_steps < args.max_steps:
+                debug_progress(f"episode {episode_ix} policy loop begin step={policy_steps}")
                 dp3_obs = make_dp3_obs(
                     obs,
                     args.camera_view,
@@ -929,26 +1040,55 @@ def main() -> None:
                     actions = env_runner.get_action(policy)
                 else:
                     actions = env_runner.get_action(policy, dp3_obs)
+                debug_progress(f"episode {episode_ix} got action chunk size={len(actions)}")
                 for action in actions:
                     env_action = policy_action_to_env_action(action, env_action_dim, args.action_gripper_value)
-                    obs, _reward, terminated, truncated, info = env.step(env_action[None, :])
-                    policy_steps += 1
-                    done = bool(terminated[0] or truncated[0])
-                    final_info = info.get("final_info", final_info)
-                    if episode_ix < args.max_episodes_rendered:
-                        frame = render_frame(env)
-                        if frame is not None:
-                            frames.append(frame)
-                    env_runner.update_obs(
-                        make_dp3_obs(
-                            obs,
-                            args.camera_view,
-                            pc_cfg,
-                            rng,
-                            policy_state_dim,
-                            args.obs_gripper_value,
-                        )
+                    debug_progress(f"episode {episode_ix} execute action policy_step={policy_steps}")
+                    step_results = action_executor.execute(env_action[None, :])
+                    debug_progress(
+                        f"episode {episode_ix} execute done policy_step={policy_steps} substeps={len(step_results)}"
                     )
+                    for step_result in step_results:
+                        policy_sim_steps += 1
+                        obs = step_result.obs
+                        terminated = step_result.terminated
+                        truncated = step_result.truncated
+                        info = step_result.info
+                        done = step_result.done
+                        final_info = info.get("final_info", final_info)
+
+                        if action_trace_logger is not None:
+                            sim_state_after = step_result.sim_state_after
+                            if sim_state_after is None:
+                                sim_state_after = extract_sim_joint_pos(env, obs)
+                            action_trace_logger.write_substep(
+                                episode_ix=episode_ix,
+                                policy_step_ix=policy_steps,
+                                sim_substep_ix=step_result.sim_substep_ix,
+                                sim_substeps_for_policy=step_result.sim_substeps_for_policy,
+                                policy_action_abs=step_result.policy_action,
+                                interpolated_action_abs=step_result.interpolated_action,
+                                sim_joint_pos_after=sim_state_after,
+                            )
+
+                        if episode_ix < args.max_episodes_rendered:
+                            frame = frame_from_obs(obs, args.camera_view)
+                            if frame is not None:
+                                frames.append(frame)
+                        env_runner.update_obs(
+                            make_dp3_obs(
+                                obs,
+                                args.camera_view,
+                                pc_cfg,
+                                rng,
+                                policy_state_dim,
+                                args.obs_gripper_value,
+                            )
+                        )
+                        if done:
+                            break
+
+                    policy_steps += 1
                     if done or policy_steps >= args.max_steps:
                         break
 
@@ -983,7 +1123,7 @@ def main() -> None:
                 "preclose_gripper_right": maybe_scalar(preclose_gripper_right),
                 "preclose_base_arm_max_abs_delta": maybe_scalar(preclose_base_arm_delta),
                 "preclose_diagnostics_path": preclose_diagnostics_path,
-                "steps": f"pre={preclose_count},policy={policy_steps}/{env_runner.n_action_steps}",
+                "steps": f"pre={preclose_count},policy={policy_steps}/{env_runner.n_action_steps},sim={policy_sim_steps}",
                 "video_path": video_path,
             }
             append_per_episode_csv_row(csv_path, row)
@@ -1017,8 +1157,16 @@ def main() -> None:
                 "preclose_lock_base_arm": bool(args.preclose_lock_base_arm),
                 "obs_gripper_value": args.obs_gripper_value,
                 "action_gripper_value": args.action_gripper_value,
+                "debug_action_trace": bool(args.debug_action_trace),
+                "action_trace_csv": str(action_trace_path) if args.debug_action_trace else "",
+                "interpolated": args.interpolated,
+                "interpolation_type": args.interpolation_type,
+                "decimation": args.decimation,
+                "init_steps": args.init_steps,
+                "policy_env_interpolation_factor": max(int(args.interpolated), 1) if args.interpolation_type != "none" else 1,
                 "max_steps": args.max_steps,
-                "episode_length_steps": int(args.max_steps) + max(int(args.preclose_steps or 0), 0),
+                "episode_length_steps": (int(args.max_steps) + max(int(args.preclose_steps or 0), 0))
+                * (max(int(args.interpolated), 1) if args.interpolation_type != "none" else 1),
                 "episode_length_s": float(getattr(getattr(env, "_env", None), "max_episode_length_s", np.nan)),
             },
         }
@@ -1030,6 +1178,8 @@ def main() -> None:
 
         print(f"saved eval results to {csv_path}")
     finally:
+        if action_trace_logger is not None:
+            action_trace_logger.close()
         env.close()
 
 

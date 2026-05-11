@@ -34,7 +34,7 @@ usage() {
     cat <<'EOF'
 Usage:
   bash scripts/run_pipeline.sh plan    <object_id> <scene_name> <split> [overrides...]
-  bash scripts/run_pipeline.sh record  <object_name> <scene_name> <num_ep> [--headless|--no-headless] [overrides...]
+  bash scripts/run_pipeline.sh record  <object_name> <scene_name> <num_ep> [--headless|--no-headless] [--validate_record_success] [overrides...]
   bash scripts/run_pipeline.sh convert <benchmark> <object_name> <scene_name> <num_ep> [--policy=POLICY] [overrides...]
   bash scripts/run_pipeline.sh train   <benchmark> <policy> <object_name> <scene_name> <num_ep> [overrides...]
   bash scripts/run_pipeline.sh eval    <benchmark> <policy> <object_name> <scene_name> <num_ep> [--headless|--no-headless] [overrides...]

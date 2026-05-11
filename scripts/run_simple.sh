@@ -119,6 +119,15 @@ bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 10 --headless
 bash scripts/run_pipeline.sh record microwave_7221 scene_1_seed_1 10 --interpolated 2
 bash scripts/run_pipeline.sh convert microwave_7221 scene_0_seed_0 10
 
+# Record with eval-style success validation enabled.
+# Only demos satisfying final_door_open && final_handle_distance <= 0.1 are kept in HDF5.
+bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 1000 \
+  --headless \
+  --validate_record_success \
+  --interpolated 5 \
+  --interpolation_type cubic \
+  --decimation 1 \
+  --init_steps 5
 
 
 python scripts/prepare_object.py --object_type Dishwasher --object_id 11622
@@ -162,3 +171,5 @@ bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 10 \
 # Recommended record interpolation setting from the type ablation:
 # bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 10 \
 #   --interpolated 5 --interpolation_type cubic --decimation 1 --init_steps 5
+#
+# Add --validate_record_success to filter HDF5 demos with the eval success rule.
