@@ -34,6 +34,7 @@ JOINT_NAMES = (
     "panda_finger_joint1",
     "panda_finger_joint2",
 )
+BASE_JOINT_NAMES = set(JOINT_NAMES[:3])
 
 
 def parse_args() -> argparse.Namespace:
@@ -158,9 +159,27 @@ def rows_by_episode(trace_rows: list[dict[str, str]]) -> dict[int, list[dict[str
     return grouped
 
 
+def hdf5_action_abs_from_row(row: dict[str, str]) -> float:
+    raw_action = to_float(row.get("dataset_action_raw", ""))
+    if row.get("joint_name") in BASE_JOINT_NAMES:
+        record_obs = to_float(row.get("record_obs_joint_pos", ""))
+        return raw_action + record_obs if np.isfinite(raw_action) and np.isfinite(record_obs) else np.nan
+    return raw_action
+
+
+def rows_with_abs_actions(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    output: list[dict[str, str]] = []
+    for row in rows:
+        enriched = dict(row)
+        enriched["hdf5_action_abs"] = fmt_float(hdf5_action_abs_from_row(row), ndigits=8)
+        output.append(enriched)
+    return output
+
+
 def write_trace_subset(path: Path, rows: list[dict[str, str]]) -> None:
     if not rows:
         return
+    rows = rows_with_abs_actions(rows)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
@@ -185,14 +204,22 @@ def trace_arrays(rows: list[dict[str, str]]) -> dict[str, dict[str, np.ndarray]]
         joint_rows = sorted(joint_rows, key=lambda r: (int(r["sim_trace_step_ix"]), int(r["joint_ix"])))
         raw_steps = np.asarray([int(r["sim_trace_step_ix"]) for r in joint_rows], dtype=np.int32)
         local_steps = raw_steps - int(raw_steps.min()) if raw_steps.size else raw_steps
+        dataset_action_raw = np.asarray([to_float(r["dataset_action_raw"]) for r in joint_rows])
+        record_obs_joint_pos = np.asarray([to_float(r["record_obs_joint_pos"]) for r in joint_rows])
+        if joint_name in BASE_JOINT_NAMES:
+            dataset_action_abs = dataset_action_raw + record_obs_joint_pos
+        else:
+            dataset_action_abs = dataset_action_raw.copy()
+
         data[joint_name] = {
             "step": local_steps,
             "global_step": raw_steps,
-            "dataset_action_raw": np.asarray([to_float(r["dataset_action_raw"]) for r in joint_rows]),
+            "dataset_action_raw": dataset_action_raw,
+            "dataset_action_abs": dataset_action_abs,
             "prepared_action_abs": np.asarray([to_float(r["prepared_action_abs"]) for r in joint_rows]),
             "interpolated_action_abs": np.asarray([to_float(r["interpolated_action_abs"]) for r in joint_rows]),
             "eval_sim_joint_pos_after": np.asarray([to_float(r["eval_sim_joint_pos_after"]) for r in joint_rows]),
-            "record_obs_joint_pos": np.asarray([to_float(r["record_obs_joint_pos"]) for r in joint_rows]),
+            "record_obs_joint_pos": record_obs_joint_pos,
             "record_state_joint_pos": np.asarray([to_float(r["record_state_joint_pos"]) for r in joint_rows]),
             "abs_eval_vs_record_state": np.asarray([to_float(r["abs_eval_vs_record_state"]) for r in joint_rows]),
         }
@@ -208,7 +235,8 @@ def summarize_trace_data(data: dict[str, dict[str, np.ndarray]]) -> dict[str, An
             continue
         eval_record = joint["eval_sim_joint_pos_after"] - joint["record_state_joint_pos"]
         prepared_record = joint["prepared_action_abs"] - joint["record_state_joint_pos"]
-        raw_prepared = joint["prepared_action_abs"] - joint["dataset_action_raw"]
+        record_action_prepared = joint["prepared_action_abs"] - joint["dataset_action_abs"]
+        record_action_record = joint["dataset_action_abs"] - joint["record_state_joint_pos"]
         executed_eval = joint["eval_sim_joint_pos_after"] - joint["interpolated_action_abs"]
         abs_eval_record = np.abs(eval_record)
         all_errors.extend(abs_eval_record[np.isfinite(abs_eval_record)].tolist())
@@ -221,7 +249,9 @@ def summarize_trace_data(data: dict[str, dict[str, np.ndarray]]) -> dict[str, An
                 "final_signed_eval_record": float(eval_record[final_ix]),
                 "final_abs_eval_record": float(abs_eval_record[final_ix]),
                 "max_abs_prepared_record": float(np.nanmax(np.abs(prepared_record))),
-                "max_abs_raw_prepared": float(np.nanmax(np.abs(raw_prepared))),
+                "max_abs_hdf5_action_record": float(np.nanmax(np.abs(record_action_record))),
+                "max_abs_hdf5_action_prepared": float(np.nanmax(np.abs(record_action_prepared))),
+                "max_abs_raw_prepared": float(np.nanmax(np.abs(joint["prepared_action_abs"] - joint["dataset_action_raw"]))),
                 "max_abs_executed_eval": float(np.nanmax(np.abs(executed_eval))),
             }
         )
@@ -248,14 +278,20 @@ def plot_action_grid(data: dict[str, dict[str, np.ndarray]], path: Path) -> None
         ax = axes[row_ix, 0]
         diff_ax = axes[row_ix, 1]
         joint = data.get(joint_name)
-        ax.set_title(f"{joint_name}: action values")
-        diff_ax.set_title(f"{joint_name}: action transforms / tracking deltas")
+        ax.set_title(f"{joint_name}: absolute action targets")
+        diff_ax.set_title(f"{joint_name}: absolute target differences")
         if joint is None:
             ax.text(0.5, 0.5, "missing", transform=ax.transAxes, ha="center", va="center")
             diff_ax.text(0.5, 0.5, "missing", transform=diff_ax.transAxes, ha="center", va="center")
             continue
         x = joint["step"]
-        ax.plot(x, joint["dataset_action_raw"], label="HDF5 raw action", linewidth=1.2, color=colors["raw"])
+        ax.plot(
+            x,
+            joint["dataset_action_abs"],
+            label="HDF5 action absolute target",
+            linewidth=1.4,
+            color=colors["raw"],
+        )
         ax.plot(
             x,
             joint["prepared_action_abs"],
@@ -274,8 +310,8 @@ def plot_action_grid(data: dict[str, dict[str, np.ndarray]], path: Path) -> None
         diff_ax.axhline(0.0, color=colors["zero"], linewidth=0.7, alpha=0.65)
         diff_ax.plot(
             x,
-            joint["prepared_action_abs"] - joint["dataset_action_raw"],
-            label="prepared_abs - raw",
+            joint["prepared_action_abs"] - joint["dataset_action_abs"],
+            label="eval_prepared_abs - HDF5_abs",
             linewidth=1.2,
             color=colors["diff"],
         )
@@ -295,7 +331,7 @@ def plot_action_grid(data: dict[str, dict[str, np.ndarray]], path: Path) -> None
     handles, labels = axes[0, 0].get_legend_handles_labels()
     handles2, labels2 = axes[0, 1].get_legend_handles_labels()
     fig.legend(handles + handles2, labels + labels2, loc="upper center", ncol=5)
-    fig.suptitle("Action comparison: base raw is relative delta, prepared/executed are absolute eval targets")
+    fig.suptitle("Action comparison: base HDF5 deltas are converted to absolute targets before plotting")
     fig.tight_layout(rect=(0, 0, 1, 0.975))
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=150)
@@ -323,7 +359,16 @@ def plot_joint_grid(data: dict[str, dict[str, np.ndarray]], path: Path) -> None:
             continue
         x = joint["step"]
         ax.plot(x, joint["record_state_joint_pos"], label="HDF5 record sim state", linewidth=1.5, color=colors["record"])
-        ax.plot(x, joint["record_obs_joint_pos"], label="HDF5 obs joint", linewidth=1.0, alpha=0.65, color=colors["obs"])
+        ax.plot(x, joint["record_obs_joint_pos"], label="HDF5 obs joint", linewidth=1.0, alpha=0.55, color=colors["obs"])
+        ax.plot(
+            x,
+            joint["dataset_action_abs"],
+            label="HDF5 action absolute target",
+            linewidth=1.0,
+            linestyle=":",
+            alpha=0.9,
+            color="#d97706",
+        )
         ax.plot(x, joint["prepared_action_abs"], label="eval prepared target", linewidth=1.0, alpha=0.8, color=colors["target"])
         ax.plot(x, joint["eval_sim_joint_pos_after"], label="eval sim state after step", linewidth=1.4, color=colors["eval"])
         err_ax.axhline(0.0, color=colors["obs"], linewidth=0.7, alpha=0.65)
@@ -341,6 +386,14 @@ def plot_joint_grid(data: dict[str, dict[str, np.ndarray]], path: Path) -> None:
             color=colors["target"],
             linewidth=1.0,
             label="prepared_target - record_state",
+        )
+        err_ax.plot(
+            x,
+            joint["prepared_action_abs"] - joint["dataset_action_abs"],
+            color="#d97706",
+            linewidth=1.0,
+            linestyle=":",
+            label="prepared_target - HDF5_abs_action",
         )
         ax.grid(True, alpha=0.25)
         err_ax.grid(True, alpha=0.25)
@@ -456,9 +509,17 @@ def plot_episode_summary(data: dict[str, dict[str, np.ndarray]], path: Path) -> 
     for ax, (joint_name, joint) in zip(base_axes, base_series[:3], strict=False):
         x = joint["step"]
         ax.plot(x, joint["record_state_joint_pos"], label="record state", color="#111827", linewidth=1.8)
+        ax.plot(
+            x,
+            joint["dataset_action_abs"],
+            label="record action abs",
+            color="#d97706",
+            linewidth=1.4,
+            linestyle=":",
+        )
         ax.plot(x, joint["eval_sim_joint_pos_after"], label="eval state", color="#2563eb", linewidth=1.6)
         ax.plot(x, joint["prepared_action_abs"], label="eval target", color="#059669", linewidth=1.1, alpha=0.85)
-        ax.set_title(f"{joint_name}: record vs eval vs target")
+        ax.set_title(f"{joint_name}: record/eval absolute values")
         ax.set_xlabel("episode step")
         ax.grid(True, alpha=0.25)
         ax.legend()
@@ -600,6 +661,7 @@ def make_html_index(
             f"<td>{fmt_float(j['max_abs_eval_record'])}</td>"
             f"<td>{fmt_float(j['mean_abs_eval_record'])}</td>"
             f"<td>{fmt_float(j['final_abs_eval_record'])}</td>"
+            f"<td>{fmt_float(j['max_abs_hdf5_action_prepared'])}</td>"
             f"<td>{fmt_float(j['max_abs_prepared_record'])}</td>"
             f"<td>{fmt_float(j['max_abs_executed_eval'])}</td>"
             "</tr>"
@@ -624,13 +686,13 @@ def make_html_index(
               <details>
                 <summary>展开完整 action / joint / heatmap 细节图</summary>
                 <div class="plot-grid">
-                  <figure><img src="{action}" alt="action comparison"><figcaption>Action：左侧画 raw / prepared / executed；右侧只画差值。base 的 raw 是相对增量，prepared 是绝对目标。</figcaption></figure>
-                  <figure><img src="{joints}" alt="joint state comparison"><figcaption>Joint：左侧画 record/eval/target，右侧画 signed error。绿色线是 target 与 record state 的差，红色面积是 eval state 与 record state 的差。</figcaption></figure>
+                  <figure><img src="{action}" alt="action comparison"><figcaption>Action：左侧全部是 absolute target。base 的 HDF5 raw delta 已先加回 record obs，变成 HDF5 action absolute target；右侧直接画 eval prepared target 与 HDF5 absolute target 的差。</figcaption></figure>
+                  <figure><img src="{joints}" alt="joint state comparison"><figcaption>Joint：左侧画 record state、HDF5 absolute action target、eval prepared target 和 eval state；右侧画 signed error。橙色虚线用于检查 eval target 是否已经偏离 HDF5 absolute action。</figcaption></figure>
                   <figure><img src="{heatmap}" alt="error heatmap"><figcaption>绝对误差热力图：颜色越亮，eval replay 和 HDF5 record state 差异越大。</figcaption></figure>
                 </div>
               </details>
               <table class="joint-table">
-                <thead><tr><th>Top joint</th><th>max |eval-record|</th><th>mean |eval-record|</th><th>final |eval-record|</th><th>max |prepared-record|</th><th>max |eval-executed_target|</th></tr></thead>
+                <thead><tr><th>Top joint</th><th>max |eval-record|</th><th>mean |eval-record|</th><th>final |eval-record|</th><th>max |eval_target-HDF5_abs|</th><th>max |prepared-record|</th><th>max |eval-executed_target|</th></tr></thead>
                 <tbody>{top_rows}</tbody>
               </table>
             </section>
@@ -707,8 +769,8 @@ def make_html_index(
     <section class="panel">
       <h2>先看结论</h2>
       <p>这份 HDF5 检测到的 record sim 参数是 <code>dt={html.escape(str(record_sim_args.get('dt', 'unknown')))}</code>、<code>decimation={html.escape(str(record_sim_args.get('decimation', 'unknown')))}</code>、<code>render_interval={html.escape(str(record_sim_args.get('render_interval', 'unknown')))}</code>。当前 replay 使用 <code>decimation={html.escape(str(record_cfg.get('decimation', 'unknown')))}</code>，来源是 <code>{html.escape(str(record_cfg.get('decimation_source', 'unknown')))}</code>。</p>
-      <p>不要把 <code>base_x/y/z</code> 的 <code>HDF5 raw action</code> 和 <code>eval prepared_abs</code> 直接当成同一量比较。record 后处理把 base action 存成相对增量，eval 的 <code>prepare_action()</code> 会把它加到当前 base state 上，变成绝对 joint target。因此 base 的 raw 与 prepared_abs 大幅不同是预期行为。</p>
-      <p>真正关键的是两条差值：<code>prepared_abs - record_state</code> 和 <code>eval_state_after - record_state</code>。如果绿色 target 差值小、红色 eval 差值大，是物理执行跟踪问题；如果绿色本身也变大，是 base delta 用当前 eval state 积分后已经偏离 record 轨迹。</p>
+      <p>报告中的 action 图已经把 <code>base_x/y/z</code> 的 HDF5 raw delta 转成 absolute target：<code>HDF5_abs = record_obs_base + HDF5_delta</code>。arm / gripper 本来就是 absolute action，保持原值。因此 action 图里所有曲线现在都在同一个 absolute joint target 坐标系里。</p>
+      <p>真正关键的是三条差值：<code>eval_prepared_abs - HDF5_abs_action</code>、<code>prepared_abs - record_state</code> 和 <code>eval_state_after - record_state</code>。如果第一条接近 0，说明 eval target 与 record action 对齐；如果后两条仍大，说明 record action target 本身和 record state 有差，或 eval_state 闭环积分/物理执行产生了偏移。</p>
       <div class="callout">
         当前默认报告使用 <code>base_relative_reference=eval_state</code>，这是普通 policy eval 的真实语义。它会暴露闭环 delta action 的漂移风险。
       </div>
@@ -719,8 +781,8 @@ def make_html_index(
 
     <section class="panel">
       <h2>怎么读图</h2>
-      <p>每个 sample 先看 summary 图。左上柱状图告诉你哪个 joint 最大；右上按 base / arm / gripper 分组画误差随时间变化；下面两张只看 base 的 record state、eval state 和 eval target。只有需要追细节时再展开完整图。</p>
-      <p>经验判断：arm/finger 误差在 0.01 到 0.05 rad 级别通常已经说明 action 和 joint 顺序基本对齐；base 如果后段变大，要看绿色 target 是否也偏了。绿色偏了通常是 relative base delta 基于 eval 当前状态积分导致，属于闭环 replay 的累计偏差。</p>
+      <p>每个 sample 先看 summary 图。左上柱状图告诉你哪个 joint 最大；右上按 base / arm / gripper 分组画误差随时间变化；下面三张只看 base 的 record state、record action abs、eval state 和 eval target。只有需要追细节时再展开完整图。</p>
+      <p>经验判断：arm/finger 误差在 0.01 到 0.05 rad 级别通常已经说明 action 和 joint 顺序基本对齐；base 如果后段变大，先看橙色 record action abs 和绿色 eval target 是否一致。不一致通常是 relative base delta 基于 eval 当前状态积分导致，属于闭环 replay 的累计偏差。</p>
     </section>
 
     <section class="panel">
