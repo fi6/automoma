@@ -2,7 +2,7 @@
 # =============================================================================
 # run_pipeline.sh — Unified pipeline for the lerobot-arena project.
 #
-# Supports: plan, record, convert, train, eval, debug
+# Supports: plan, record, convert, train, eval, record_dataset_eval, debug
 # =============================================================================
 
 set -euo pipefail
@@ -38,6 +38,7 @@ Usage:
   bash scripts/run_pipeline.sh convert <benchmark> <object_name> <scene_name> <num_ep> [--policy=POLICY] [overrides...]
   bash scripts/run_pipeline.sh train   <benchmark> <policy> <object_name> <scene_name> <num_ep> [overrides...]
   bash scripts/run_pipeline.sh eval    <benchmark> <policy> <object_name> <scene_name> <num_ep> [--headless|--no-headless] [overrides...]
+  bash scripts/run_pipeline.sh record_dataset_eval <object_name> <scene_name> <num_ep> [--headless|--no-headless] [overrides...]
   bash scripts/run_pipeline.sh debug   <object_name> <scene_name> [overrides...]
 
 Benchmarks:
@@ -765,6 +766,121 @@ PY
     popd > /dev/null
 }
 
+do_record_dataset_eval() {
+    local object_name="$1"; shift
+    local scene_name="$1"; shift
+    local num_episodes="$1"; shift
+
+    local name; name="$(mk_exp_name "$object_name" "$scene_name" "$num_episodes")"
+    local dataset_file="$REPO_ROOT/data/automoma/${name}.hdf5"
+    local output_dir="$REPO_ROOT/outputs/eval/record_dataset/${name}"
+    local traj_file="$REPO_ROOT/data/trajs/summit_franka/${object_name}/${scene_name}/test/traj_data_test.pt"
+    local traj_seed="${EVAL_TRAJ_SEED:-42}"
+    local env_headless="false"
+    local eval_episode_length="${EVAL_EPISODE_LENGTH:-}"
+    local eval_interpolated="${EVAL_INTERPOLATED:-1}"
+    local eval_interpolation_type="${EVAL_INTERPOLATION_TYPE:-linear}"
+    local eval_decimation="${EVAL_DECIMATION:-}"
+    local eval_init_steps="${EVAL_INIT_STEPS:-1}"
+    local action_key="${RECORD_DATASET_EVAL_ACTION_KEY:-actions}"
+    local max_episodes_rendered="${MAX_EPISODES_RENDERED:-10}"
+    local -a passthrough=()
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --headless) env_headless="true"; shift ;;
+            --no-headless) env_headless="false"; shift ;;
+            --dataset_file=*) dataset_file="$(resolve_repo_path "${1#*=}")"; shift ;;
+            --dataset_file) dataset_file="$(resolve_repo_path "$2")"; shift 2 ;;
+            --traj_file=*) traj_file="$(resolve_repo_path "${1#*=}")"; shift ;;
+            --traj_file) traj_file="$(resolve_repo_path "$2")"; shift 2 ;;
+            --traj_seed=*) traj_seed="${1#*=}"; shift ;;
+            --traj_seed) traj_seed="$2"; shift 2 ;;
+            --output_dir=*) output_dir="$(resolve_repo_path "${1#*=}")"; shift ;;
+            --output_dir) output_dir="$(resolve_repo_path "$2")"; shift 2 ;;
+            --action_key=*) action_key="${1#*=}"; shift ;;
+            --action_key) action_key="$2"; shift 2 ;;
+            --max_episodes_rendered=*) max_episodes_rendered="${1#*=}"; shift ;;
+            --max_episodes_rendered) max_episodes_rendered="$2"; shift 2 ;;
+            --init_steps=*) eval_init_steps="${1#*=}"; shift ;;
+            --init_steps) eval_init_steps="$2"; shift 2 ;;
+            --interpolated=*) eval_interpolated="${1#*=}"; shift ;;
+            --interpolated) eval_interpolated="$2"; shift 2 ;;
+            --interpolation_type=*) eval_interpolation_type="${1#*=}"; shift ;;
+            --interpolation_type) eval_interpolation_type="$2"; shift 2 ;;
+            --decimation=*) eval_decimation="${1#*=}"; shift ;;
+            --decimation) eval_decimation="$2"; shift 2 ;;
+            --env.episode_length=*) eval_episode_length="${1#*=}"; shift ;;
+            --env.episode_length) eval_episode_length="$2"; shift 2 ;;
+            *) passthrough+=("$1"); shift ;;
+        esac
+    done
+
+    if [[ ! -f "$dataset_file" ]]; then
+        echo "Error: Record dataset HDF5 not found: $dataset_file" >&2
+        exit 1
+    fi
+
+    setup_log record_dataset_eval "$object_name" "$scene_name"
+
+    rm -f "$output_dir/per_episode_results.csv" "$output_dir/eval_info.json" "$output_dir/action_trace_joint_states.csv"
+    rm -rf "$output_dir/videos"
+
+    local openness_threshold="${OPENNESS_THRESHOLD:-0.3}"
+    local proximity_threshold="${PROXIMITY_THRESHOLD:-0.12}"
+    local proximity_window_steps="${PROXIMITY_WINDOW_STEPS:-8}"
+    local proximity_required_steps="${PROXIMITY_REQUIRED_STEPS:-5}"
+    local use_fingertips="${USE_FINGERTIP_PROXIMITY:-true}"
+    local disable_fingertip_proximity="false"
+    [[ "$use_fingertips" == "false" ]] && disable_fingertip_proximity="true"
+
+    local debug_visualize_handle="${DEBUG_VISUALIZE_HANDLE:-false}"
+    local debug_record_handle_diagnostics="${DEBUG_RECORD_HANDLE_DIAGNOSTICS:-false}"
+    local debug_marker_scale="${DEBUG_MARKER_SCALE:-1.0}"
+
+    local -a cmd=(
+        python "$REPO_ROOT/scripts/record_dataset_eval.py"
+        --dataset_file="$dataset_file"
+        --output_dir="$output_dir"
+        --object_name="$object_name"
+        --scene_name="$scene_name"
+        --traj_seed="$traj_seed"
+        --headless="$env_headless"
+        --init_steps="$eval_init_steps"
+        --interpolated="$eval_interpolated"
+        --interpolation_type="$eval_interpolation_type"
+        --action_key="$action_key"
+        --openness_threshold="$openness_threshold"
+        --proximity_threshold="$proximity_threshold"
+        --proximity_window_steps="$proximity_window_steps"
+        --proximity_required_steps="$proximity_required_steps"
+        --disable_fingertip_proximity="$disable_fingertip_proximity"
+        --debug_visualize_handle="$debug_visualize_handle"
+        --debug_record_handle_diagnostics="$debug_record_handle_diagnostics"
+        --debug_marker_scale="$debug_marker_scale"
+        --max_episodes_rendered="$max_episodes_rendered"
+        --eval.n_episodes="$num_episodes"
+    )
+    if [[ -n "$eval_decimation" ]]; then
+        cmd+=(--decimation="$eval_decimation")
+    fi
+    if [[ -n "$eval_episode_length" ]]; then
+        cmd+=(--env.episode_length="$eval_episode_length")
+    fi
+    if [[ -f "$traj_file" ]]; then
+        cmd+=(--traj_file="$traj_file")
+    else
+        echo "Warning: Eval trajectory file not found; relying on HDF5 initial state only: $traj_file"
+    fi
+    cmd+=("${passthrough[@]}")
+
+    echo "Command: ${cmd[*]}"
+    echo ""
+    pushd "$ISAACLAB_ARENA" > /dev/null
+    run_logged "${cmd[@]}"
+    popd > /dev/null
+}
+
 [[ $# -lt 1 ]] && usage
 MODE="$1"; shift
 
@@ -803,6 +919,12 @@ case "$MODE" in
         require_arg "${4:-}" "scene_name"
         require_arg "${5:-}" "num_episodes"
         do_eval "$1" "$2" "$3" "$4" "$5" "${@:6}"
+        ;;
+    record_dataset_eval)
+        require_arg "${1:-}" "object_name"
+        require_arg "${2:-}" "scene_name"
+        require_arg "${3:-}" "num_episodes"
+        do_record_dataset_eval "$1" "$2" "$3" "${@:4}"
         ;;
     debug)
         require_arg "${1:-}" "object_name"
