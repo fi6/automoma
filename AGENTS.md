@@ -57,6 +57,9 @@ outputs/
 - Asset roots and path assumptions exported by `scripts/run_pipeline.sh` are part of the operational contract unless intentionally migrated everywhere that depends on them.
 - Changes to 11D/12D trajectory handling, object-joint sign conventions, gripper open/close state encoding, or lift offsets are cross-system changes, not local refactors.
 
+## Debug Artifacts
+When the user asks to debug and explicitly asks to record debug information, keep detailed traces under a dated task folder in `debug/`: use `AGENTS.md` for debug-specific prompts/plans, `README.md` for the final summary, `assets/` for copied inputs/resources, `docs/` for notes/reports, `output/` for debug outputs, and `scripts/` for new one-off debug scripts. Do not place debug outputs in normal project output directories unless requested.
+
 ## Working Rules
 - Read the relevant implementation before changing behavior. Do not infer workflow details from filenames alone.
 - Prefer editing first-party code in `automoma/`, `scripts/`, and `configs/`.

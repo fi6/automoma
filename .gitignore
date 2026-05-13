@@ -5,6 +5,7 @@ tests/
 data/
 data_backup/
 logs/
+/debug/
 
 # agents
 .claude/
