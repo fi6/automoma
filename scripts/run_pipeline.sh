@@ -147,6 +147,8 @@ do_record() {
     local headless_flag=""
     local record_interpolated="${RECORD_INTERPOLATED:-1}"
     local record_interpolation_type="${RECORD_INTERPOLATION_TYPE:-linear}"
+    local record_decimation="${RECORD_DECIMATION:-}"
+    local record_init_steps="${RECORD_INIT_STEPS:-}"
     local auto_debug_tracking="${RECORD_AUTO_DEBUG_TRACKING:-0}"
 
     while [[ $# -gt 0 ]]; do
@@ -168,6 +170,8 @@ do_record() {
 
     local add_default_interpolated="true"
     local add_default_interpolation_type="true"
+    local add_default_decimation="true"
+    local add_default_init_steps="true"
     local has_debug_joint_tracking="false"
     local has_debug_joint_tracking_steps="false"
     local has_debug_joint_tracking_interval="false"
@@ -181,6 +185,12 @@ do_record() {
                 ;;
             --interpolation_type|--interpolation_type=*)
                 add_default_interpolation_type="false"
+                ;;
+            --decimation|--decimation=*)
+                add_default_decimation="false"
+                ;;
+            --init_steps|--init_steps=*)
+                add_default_init_steps="false"
                 ;;
             --debug_joint_tracking)
                 has_debug_joint_tracking="true"
@@ -217,6 +227,12 @@ do_record() {
     fi
     if [[ "$add_default_interpolation_type" == "true" ]]; then
         cmd+=(--interpolation_type "$record_interpolation_type")
+    fi
+    if [[ "$add_default_decimation" == "true" && -n "$record_decimation" ]]; then
+        cmd+=(--decimation "$record_decimation")
+    fi
+    if [[ "$add_default_init_steps" == "true" && -n "$record_init_steps" ]]; then
+        cmd+=(--init_steps "$record_init_steps")
     fi
     if [[ "$auto_debug_tracking" == "1" ]]; then
         if [[ "$has_debug_joint_tracking" != "true" ]]; then
@@ -542,6 +558,8 @@ do_eval() {
         local eval_episode_length="${EVAL_EPISODE_LENGTH:-300}"
         local eval_interpolated="${EVAL_INTERPOLATED:-1}"
         local eval_interpolation_type="${EVAL_INTERPOLATION_TYPE:-linear}"
+        local eval_decimation="${EVAL_DECIMATION:-1}"
+        local eval_init_steps="${EVAL_INIT_STEPS:-5}"
 
         while [[ $# -gt 0 ]]; do
             case "$1" in
@@ -553,8 +571,8 @@ do_eval() {
                 --traj_file) traj_file="$(resolve_repo_path "$2")"; shift 2 ;;
                 --traj_seed=*) traj_seed="${1#*=}"; shift ;;
                 --traj_seed) traj_seed="$2"; shift 2 ;;
-                --output_dir=*) output_dir="${1#*=}"; shift ;;
-                --output_dir) output_dir="$2"; shift 2 ;;
+                --output_dir=*) output_dir="$(resolve_repo_path "${1#*=}")"; shift ;;
+                --output_dir) output_dir="$(resolve_repo_path "$2")"; shift 2 ;;
                 --interpolated=*) eval_interpolated="${1#*=}"; shift ;;
                 --interpolated) eval_interpolated="$2"; shift 2 ;;
                 --interpolation_type=*) eval_interpolation_type="${1#*=}"; shift ;;
@@ -581,29 +599,28 @@ do_eval() {
         local debug_record_handle_diagnostics="${DEBUG_RECORD_HANDLE_DIAGNOSTICS:-false}"
         local debug_marker_scale="${DEBUG_MARKER_SCALE:-1.0}"
 
-        local env_kwargs="{\"object_name\": \"${object_name}\", \"scene_name\": \"${scene_name}\", \"object_center\": true, \"mobile_base_relative\": true, \"traj_file\": \"${traj_file}\", \"traj_seed\": ${traj_seed}, \"interpolated\": ${eval_interpolated}, \"interpolation_type\": \"${eval_interpolation_type}\", \"openness_threshold\": ${openness_threshold}, \"proximity_threshold\": ${proximity_threshold}, \"proximity_window_steps\": ${proximity_window_steps}, \"proximity_required_steps\": ${proximity_required_steps}, \"disable_fingertip_proximity\": ${disable_fingertip_proximity}, \"debug_visualize_handle\": ${debug_visualize_handle}, \"debug_record_handle_diagnostics\": ${debug_record_handle_diagnostics}, \"debug_marker_scale\": ${debug_marker_scale}}"
-        local rename_map='{"observation.images.ego_topdown_rgb": "observation.images.ego_topdown", "observation.images.ego_wrist_rgb": "observation.images.ego_wrist", "observation.images.fix_local_rgb": "observation.images.fix_local"}'
-
         local -a cmd=(
-            lerobot-eval
+            python "$REPO_ROOT/scripts/lerobot_eval_aligned.py"
             --policy.path="$policy_path"
             --policy.device=cuda
-            --env.type=isaaclab_arena
-            --env.hub_path="$ISAACLAB_ARENA/isaaclab-arena-envs"
-            --env.environment=summit_franka_open_door_eval
-            "--env.headless=${env_headless}"
-            --env.enable_cameras=true
-            --env.state_keys=joint_pos
-            --env.camera_keys=ego_topdown_rgb,ego_wrist_rgb,fix_local_rgb
-            --env.state_dim=12
-            --env.action_dim=12
-            --env.camera_height=240
-            --env.camera_width=320
+            --object_name="$object_name"
+            --scene_name="$scene_name"
+            --traj_file="$traj_file"
+            --traj_seed="$traj_seed"
+            --headless="$env_headless"
             --env.episode_length="$eval_episode_length"
-            "--env.kwargs=$env_kwargs"
-            "--rename_map=$rename_map"
-            --trust_remote_code=true
-            --eval.batch_size=1
+            --decimation="$eval_decimation"
+            --init_steps="$eval_init_steps"
+            --interpolated="$eval_interpolated"
+            --interpolation_type="$eval_interpolation_type"
+            --openness_threshold="$openness_threshold"
+            --proximity_threshold="$proximity_threshold"
+            --proximity_window_steps="$proximity_window_steps"
+            --proximity_required_steps="$proximity_required_steps"
+            --disable_fingertip_proximity="$disable_fingertip_proximity"
+            --debug_visualize_handle="$debug_visualize_handle"
+            --debug_record_handle_diagnostics="$debug_record_handle_diagnostics"
+            --debug_marker_scale="$debug_marker_scale"
             --eval.n_episodes=50
             --output_dir="$output_dir"
             "$@"
