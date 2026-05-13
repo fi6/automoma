@@ -54,11 +54,18 @@ ACTION_TRACE_CSV_COLUMNS = [
     "sim_substep_ix",
     "sim_substeps_for_policy",
     "is_policy_action_sample",
+    "terminated",
+    "truncated",
     "joint_ix",
     "joint_name",
+    "raw_policy_action",
     "policy_action_abs",
     "interpolated_action_abs",
+    "sim_joint_pos_before",
     "sim_joint_pos_after",
+    "raw_policy_step_delta_abs",
+    "policy_action_step_delta_abs",
+    "sim_joint_step_delta_abs",
 ]
 
 SUMMIT_FRANKA_ACTION_JOINT_NAMES = (
@@ -109,6 +116,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--init_steps", type=int, default=1)
     parser.add_argument("--interpolated", type=int, default=1)
     parser.add_argument("--interpolation_type", default="linear")
+    parser.add_argument("--mobile_base_relative", type=str2bool, default=True)
     parser.add_argument("--openness_threshold", type=float, default=0.3)
     parser.add_argument("--proximity_threshold", type=float, default=0.12)
     parser.add_argument("--proximity_window_steps", type=int, default=8)
@@ -131,6 +139,15 @@ class ActionTraceLogger:
         self._file = self.csv_path.open("w", newline="")
         self._writer = csv.DictWriter(self._file, fieldnames=ACTION_TRACE_CSV_COLUMNS)
         self._writer.writeheader()
+        self._last_raw_policy_action: dict[int, np.ndarray] = {}
+        self._last_policy_action: dict[int, np.ndarray] = {}
+        self._last_sim_joint_pos_after: dict[int, np.ndarray] = {}
+        self.max_raw_policy_step_delta_abs = 0.0
+        self.max_policy_action_step_delta_abs = 0.0
+        self.max_sim_joint_step_delta_abs = 0.0
+        self.max_raw_policy_base_step_delta_abs = 0.0
+        self.max_policy_action_base_step_delta_abs = 0.0
+        self.max_sim_base_step_delta_abs = 0.0
 
     def close(self) -> None:
         self._file.close()
@@ -142,17 +159,43 @@ class ActionTraceLogger:
         policy_step_ix: int,
         sim_substep_ix: int,
         sim_substeps_for_policy: int,
+        terminated: bool,
+        truncated: bool,
+        raw_policy_action: np.ndarray,
         policy_action_abs: np.ndarray,
         interpolated_action_abs: np.ndarray,
+        sim_joint_pos_before: np.ndarray,
         sim_joint_pos_after: np.ndarray,
     ) -> None:
         width = min(
             len(self.joint_names),
+            int(raw_policy_action.shape[0]),
             int(policy_action_abs.shape[0]),
             int(interpolated_action_abs.shape[0]),
+            int(sim_joint_pos_before.shape[0]),
             int(sim_joint_pos_after.shape[0]),
         )
         is_policy_action_sample = sim_substep_ix == sim_substeps_for_policy - 1
+        prev_raw = self._last_raw_policy_action.get(episode_ix)
+        prev_policy = self._last_policy_action.get(episode_ix)
+        prev_sim = self._last_sim_joint_pos_after.get(episode_ix)
+        raw_delta = (
+            np.abs(raw_policy_action[:width] - prev_raw[:width])
+            if prev_raw is not None and prev_raw.shape[0] >= width
+            else np.full(width, np.nan, dtype=np.float32)
+        )
+        policy_delta = (
+            np.abs(policy_action_abs[:width] - prev_policy[:width])
+            if prev_policy is not None and prev_policy.shape[0] >= width
+            else np.full(width, np.nan, dtype=np.float32)
+        )
+        sim_delta = (
+            np.abs(sim_joint_pos_after[:width] - prev_sim[:width])
+            if prev_sim is not None and prev_sim.shape[0] >= width
+            else np.full(width, np.nan, dtype=np.float32)
+        )
+        if not (terminated or truncated):
+            self._update_delta_summary(raw_delta, policy_delta, sim_delta)
         for joint_ix in range(width):
             self._writer.writerow(
                 {
@@ -162,14 +205,63 @@ class ActionTraceLogger:
                     "sim_substep_ix": sim_substep_ix,
                     "sim_substeps_for_policy": sim_substeps_for_policy,
                     "is_policy_action_sample": int(is_policy_action_sample),
+                    "terminated": int(terminated),
+                    "truncated": int(truncated),
                     "joint_ix": joint_ix,
                     "joint_name": self.joint_names[joint_ix],
+                    "raw_policy_action": float(raw_policy_action[joint_ix]),
                     "policy_action_abs": float(policy_action_abs[joint_ix]),
                     "interpolated_action_abs": float(interpolated_action_abs[joint_ix]),
+                    "sim_joint_pos_before": float(sim_joint_pos_before[joint_ix]),
                     "sim_joint_pos_after": float(sim_joint_pos_after[joint_ix]),
+                    "raw_policy_step_delta_abs": "" if np.isnan(raw_delta[joint_ix]) else float(raw_delta[joint_ix]),
+                    "policy_action_step_delta_abs": ""
+                    if np.isnan(policy_delta[joint_ix])
+                    else float(policy_delta[joint_ix]),
+                    "sim_joint_step_delta_abs": "" if np.isnan(sim_delta[joint_ix]) else float(sim_delta[joint_ix]),
                 }
             )
+        self._last_raw_policy_action[episode_ix] = raw_policy_action.copy()
+        self._last_policy_action[episode_ix] = policy_action_abs.copy()
+        self._last_sim_joint_pos_after[episode_ix] = sim_joint_pos_after.copy()
         self.sim_trace_step_ix += 1
+
+    def _update_delta_summary(
+        self,
+        raw_delta: np.ndarray,
+        policy_delta: np.ndarray,
+        sim_delta: np.ndarray,
+    ) -> None:
+        for attr, values in (
+            ("max_raw_policy_step_delta_abs", raw_delta),
+            ("max_policy_action_step_delta_abs", policy_delta),
+            ("max_sim_joint_step_delta_abs", sim_delta),
+        ):
+            finite = values[np.isfinite(values)]
+            if finite.size:
+                setattr(self, attr, max(float(getattr(self, attr)), float(np.max(finite))))
+        base_width = min(3, raw_delta.shape[0], policy_delta.shape[0], sim_delta.shape[0])
+        if base_width <= 0:
+            return
+        for attr, values in (
+            ("max_raw_policy_base_step_delta_abs", raw_delta[:base_width]),
+            ("max_policy_action_base_step_delta_abs", policy_delta[:base_width]),
+            ("max_sim_base_step_delta_abs", sim_delta[:base_width]),
+        ):
+            finite = values[np.isfinite(values)]
+            if finite.size:
+                setattr(self, attr, max(float(getattr(self, attr)), float(np.max(finite))))
+
+    def summary(self) -> dict[str, float | str]:
+        return {
+            "csv_path": str(self.csv_path),
+            "max_raw_policy_step_delta_abs": self.max_raw_policy_step_delta_abs,
+            "max_policy_action_step_delta_abs": self.max_policy_action_step_delta_abs,
+            "max_sim_joint_step_delta_abs": self.max_sim_joint_step_delta_abs,
+            "max_raw_policy_base_step_delta_abs": self.max_raw_policy_base_step_delta_abs,
+            "max_policy_action_base_step_delta_abs": self.max_policy_action_base_step_delta_abs,
+            "max_sim_base_step_delta_abs": self.max_sim_base_step_delta_abs,
+        }
 
 
 def make_isaaclab_arena_cfg(args: argparse.Namespace) -> IsaaclabArenaEnv:
@@ -177,7 +269,7 @@ def make_isaaclab_arena_cfg(args: argparse.Namespace) -> IsaaclabArenaEnv:
         "object_name": args.object_name,
         "scene_name": args.scene_name,
         "object_center": True,
-        "mobile_base_relative": True,
+        "mobile_base_relative": args.mobile_base_relative,
         "traj_file": str(Path(args.traj_file).resolve()),
         "traj_seed": args.traj_seed,
         "interpolated": args.interpolated,
@@ -440,6 +532,8 @@ def run_episode(
         action = postprocessor(action)
         action_transition = env_postprocessor({ACTION: action})
         action_np = action_transition[ACTION].to("cpu").numpy()
+        raw_policy_action = action_np[0].astype(np.float32) if action_np.ndim == 2 else action_np.astype(np.float32)
+        sim_state_before = extract_sim_joint_pos(env, observation) if action_trace_logger is not None else None
 
         step_results = action_executor.execute(action_np)
         policy_steps += 1
@@ -453,15 +547,22 @@ def run_episode(
                 sim_state_after = step_result.sim_state_after
                 if sim_state_after is None:
                     sim_state_after = extract_sim_joint_pos(env, observation)
+                if sim_state_before is None:
+                    sim_state_before = sim_state_after
                 action_trace_logger.write_substep(
                     episode_ix=episode_ix,
                     policy_step_ix=policy_steps - 1,
                     sim_substep_ix=step_result.sim_substep_ix,
                     sim_substeps_for_policy=step_result.sim_substeps_for_policy,
+                    terminated=bool(step_result.terminated[0]),
+                    truncated=bool(step_result.truncated[0]),
+                    raw_policy_action=raw_policy_action,
                     policy_action_abs=step_result.policy_action,
                     interpolated_action_abs=step_result.interpolated_action,
+                    sim_joint_pos_before=sim_state_before,
                     sim_joint_pos_after=sim_state_after,
                 )
+                sim_state_before = sim_state_after
             if render_video:
                 frame = render_env(env)
                 if frame is not None:
@@ -624,12 +725,15 @@ def main() -> None:
             "init_steps": args.init_steps,
             "interpolated": args.interpolated,
             "interpolation_type": args.interpolation_type,
+            "mobile_base_relative": bool(args.mobile_base_relative),
             "traj_file": str(Path(args.traj_file).resolve()),
             "traj_seed": args.traj_seed,
             "debug_action_trace": bool(args.debug_action_trace),
             "action_trace_csv": str(action_trace_path) if args.debug_action_trace else "",
         },
     }
+    if action_trace_logger is not None:
+        info["action_trace_summary"] = action_trace_logger.summary()
     eval_info_path.write_text(json.dumps(info, indent=2))
     print(json.dumps(info["aggregated"], indent=2), flush=True)
 

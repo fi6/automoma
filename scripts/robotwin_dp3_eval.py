@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import sys
 import time
@@ -43,6 +44,37 @@ PER_EPISODE_CSV_COLUMNS = [
     "video_path",
 ]
 
+ACTION_TRACE_CSV_COLUMNS = [
+    "episode_ix",
+    "policy_step_ix",
+    "terminated",
+    "truncated",
+    "joint_ix",
+    "joint_name",
+    "raw_policy_action",
+    "prepared_action_abs",
+    "sim_joint_pos_before",
+    "sim_joint_pos_after",
+    "raw_policy_step_delta_abs",
+    "prepared_action_step_delta_abs",
+    "sim_joint_step_delta_abs",
+]
+
+SUMMIT_FRANKA_ACTION_JOINT_NAMES = (
+    "base_x",
+    "base_y",
+    "base_z",
+    "panda_joint1",
+    "panda_joint2",
+    "panda_joint3",
+    "panda_joint4",
+    "panda_joint5",
+    "panda_joint6",
+    "panda_joint7",
+    "panda_finger_joint1",
+    "panda_finger_joint2",
+)
+
 
 def load_module(module_name: str, file_path: Path):
     spec = __import__("importlib.util").util.spec_from_file_location(module_name, file_path)
@@ -78,6 +110,128 @@ def str2bool(value: str | bool) -> bool:
     if lowered in {"0", "false", "no", "n", "off"}:
         return False
     raise argparse.ArgumentTypeError(f"Invalid boolean value: {value}")
+
+
+class ActionTraceLogger:
+    def __init__(self, csv_path: Path, joint_names: list[str]) -> None:
+        self.csv_path = csv_path
+        self.joint_names = joint_names
+        self.csv_path.parent.mkdir(parents=True, exist_ok=True)
+        self._file = self.csv_path.open("w", newline="")
+        self._writer = csv.DictWriter(self._file, fieldnames=ACTION_TRACE_CSV_COLUMNS)
+        self._writer.writeheader()
+        self._last_raw_policy_action: dict[int, np.ndarray] = {}
+        self._last_prepared_action: dict[int, np.ndarray] = {}
+        self._last_sim_joint_pos_after: dict[int, np.ndarray] = {}
+        self.max_raw_policy_step_delta_abs = 0.0
+        self.max_prepared_action_step_delta_abs = 0.0
+        self.max_sim_joint_step_delta_abs = 0.0
+        self.max_raw_policy_base_step_delta_abs = 0.0
+        self.max_prepared_action_base_step_delta_abs = 0.0
+        self.max_sim_base_step_delta_abs = 0.0
+
+    def close(self) -> None:
+        self._file.close()
+
+    def write_step(
+        self,
+        *,
+        episode_ix: int,
+        policy_step_ix: int,
+        terminated: bool,
+        truncated: bool,
+        raw_policy_action: np.ndarray,
+        prepared_action_abs: np.ndarray,
+        sim_joint_pos_before: np.ndarray,
+        sim_joint_pos_after: np.ndarray,
+    ) -> None:
+        width = min(
+            len(self.joint_names),
+            int(raw_policy_action.shape[0]),
+            int(prepared_action_abs.shape[0]),
+            int(sim_joint_pos_before.shape[0]),
+            int(sim_joint_pos_after.shape[0]),
+        )
+        prev_raw = self._last_raw_policy_action.get(episode_ix)
+        prev_prepared = self._last_prepared_action.get(episode_ix)
+        prev_sim = self._last_sim_joint_pos_after.get(episode_ix)
+        raw_delta = (
+            np.abs(raw_policy_action[:width] - prev_raw[:width])
+            if prev_raw is not None and prev_raw.shape[0] >= width
+            else np.full(width, np.nan, dtype=np.float32)
+        )
+        prepared_delta = (
+            np.abs(prepared_action_abs[:width] - prev_prepared[:width])
+            if prev_prepared is not None and prev_prepared.shape[0] >= width
+            else np.full(width, np.nan, dtype=np.float32)
+        )
+        sim_delta = (
+            np.abs(sim_joint_pos_after[:width] - prev_sim[:width])
+            if prev_sim is not None and prev_sim.shape[0] >= width
+            else np.full(width, np.nan, dtype=np.float32)
+        )
+        if not (terminated or truncated):
+            self._update_delta_summary(raw_delta, prepared_delta, sim_delta)
+        for joint_ix in range(width):
+            self._writer.writerow(
+                {
+                    "episode_ix": episode_ix,
+                    "policy_step_ix": policy_step_ix,
+                    "terminated": int(terminated),
+                    "truncated": int(truncated),
+                    "joint_ix": joint_ix,
+                    "joint_name": self.joint_names[joint_ix],
+                    "raw_policy_action": float(raw_policy_action[joint_ix]),
+                    "prepared_action_abs": float(prepared_action_abs[joint_ix]),
+                    "sim_joint_pos_before": float(sim_joint_pos_before[joint_ix]),
+                    "sim_joint_pos_after": float(sim_joint_pos_after[joint_ix]),
+                    "raw_policy_step_delta_abs": "" if np.isnan(raw_delta[joint_ix]) else float(raw_delta[joint_ix]),
+                    "prepared_action_step_delta_abs": ""
+                    if np.isnan(prepared_delta[joint_ix])
+                    else float(prepared_delta[joint_ix]),
+                    "sim_joint_step_delta_abs": "" if np.isnan(sim_delta[joint_ix]) else float(sim_delta[joint_ix]),
+                }
+            )
+        self._last_raw_policy_action[episode_ix] = raw_policy_action.copy()
+        self._last_prepared_action[episode_ix] = prepared_action_abs.copy()
+        self._last_sim_joint_pos_after[episode_ix] = sim_joint_pos_after.copy()
+
+    def _update_delta_summary(
+        self,
+        raw_delta: np.ndarray,
+        prepared_delta: np.ndarray,
+        sim_delta: np.ndarray,
+    ) -> None:
+        for attr, values in (
+            ("max_raw_policy_step_delta_abs", raw_delta),
+            ("max_prepared_action_step_delta_abs", prepared_delta),
+            ("max_sim_joint_step_delta_abs", sim_delta),
+        ):
+            finite = values[np.isfinite(values)]
+            if finite.size:
+                setattr(self, attr, max(float(getattr(self, attr)), float(np.max(finite))))
+        base_width = min(3, raw_delta.shape[0], prepared_delta.shape[0], sim_delta.shape[0])
+        if base_width <= 0:
+            return
+        for attr, values in (
+            ("max_raw_policy_base_step_delta_abs", raw_delta[:base_width]),
+            ("max_prepared_action_base_step_delta_abs", prepared_delta[:base_width]),
+            ("max_sim_base_step_delta_abs", sim_delta[:base_width]),
+        ):
+            finite = values[np.isfinite(values)]
+            if finite.size:
+                setattr(self, attr, max(float(getattr(self, attr)), float(np.max(finite))))
+
+    def summary(self) -> dict[str, float | str]:
+        return {
+            "csv_path": str(self.csv_path),
+            "max_raw_policy_step_delta_abs": self.max_raw_policy_step_delta_abs,
+            "max_prepared_action_step_delta_abs": self.max_prepared_action_step_delta_abs,
+            "max_sim_joint_step_delta_abs": self.max_sim_joint_step_delta_abs,
+            "max_raw_policy_base_step_delta_abs": self.max_raw_policy_base_step_delta_abs,
+            "max_prepared_action_base_step_delta_abs": self.max_prepared_action_base_step_delta_abs,
+            "max_sim_base_step_delta_abs": self.max_sim_base_step_delta_abs,
+        }
 
 
 class SimpleEnvConfig:
@@ -141,8 +295,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--headless", type=str2bool, default=True)
     parser.add_argument("--env.headless", dest="headless", type=str2bool)
     parser.add_argument("--max_episodes_rendered", type=int, default=10)
+    parser.add_argument("--mobile_base_relative", type=str2bool, default=True)
     parser.add_argument("--debug_visualize_handle", type=str2bool, default=False)
     parser.add_argument("--debug_record_handle_diagnostics", type=str2bool, default=False)
+    parser.add_argument("--debug_action_trace", type=str2bool, default=False)
+    parser.add_argument("--action_trace_csv", type=str, default=None)
     parser.add_argument("--handle_distance_threshold", type=float, default=0.1)
     return parser.parse_args()
 
@@ -206,7 +363,7 @@ def build_env(args: argparse.Namespace):
         object_name=object_name,
         scene_name=scene_name,
         object_center=True,
-        mobile_base_relative=True,
+        mobile_base_relative=args.mobile_base_relative,
         traj_file=str(traj_file),
         traj_seed=args.traj_seed,
         openness_threshold=0.3,
@@ -240,6 +397,30 @@ def extract_joint_pos(obs: dict) -> np.ndarray:
     if isinstance(joint_pos, torch.Tensor):
         joint_pos = joint_pos.detach().cpu().numpy()
     return joint_pos[0].astype(np.float32) if joint_pos.ndim == 2 else joint_pos.astype(np.float32)
+
+
+def tensor_action_to_numpy(action: torch.Tensor) -> np.ndarray:
+    action_np = action.detach().cpu().numpy()
+    return action_np[0].astype(np.float32) if action_np.ndim == 2 else action_np.astype(np.float32)
+
+
+def prepare_env_action(env, action: np.ndarray) -> tuple[torch.Tensor | np.ndarray, np.ndarray]:
+    batched_action = action[None, :]
+    if hasattr(env, "prepare_action"):
+        prepared_action = env.prepare_action(batched_action)
+    else:
+        prepared_action = batched_action
+    if isinstance(prepared_action, torch.Tensor):
+        prepared_action_np = tensor_action_to_numpy(prepared_action)
+    else:
+        prepared_action_np = prepared_action[0].astype(np.float32) if prepared_action.ndim == 2 else prepared_action.astype(np.float32)
+    return prepared_action, prepared_action_np
+
+
+def step_prepared_env_action(env, prepared_action):
+    if hasattr(env, "step_prepared_action"):
+        return env.step_prepared_action(prepared_action)
+    return env.step(prepared_action)
 
 
 def get_success_metrics(final_info: dict) -> dict[str, float | bool]:
@@ -297,6 +478,14 @@ def main() -> None:
 
     if csv_path.exists():
         csv_path.unlink()
+    action_trace_path = Path(args.action_trace_csv) if args.action_trace_csv else output_dir / "action_trace_joint_states.csv"
+    if args.debug_action_trace and action_trace_path.exists():
+        action_trace_path.unlink()
+    action_trace_logger = (
+        ActionTraceLogger(action_trace_path, list(SUMMIT_FRANKA_ACTION_JOINT_NAMES))
+        if args.debug_action_trace
+        else None
+    )
 
     pc_cfg = PointCloudConfig(
         n_points=args.n_points,
@@ -345,10 +534,25 @@ def main() -> None:
                 else:
                     actions = env_runner.get_action(policy, dp3_obs)
                 for action in actions:
-                    obs, _reward, terminated, truncated, info = env.step(action[None, :])
+                    raw_policy_action = np.asarray(action, dtype=np.float32).reshape(-1)
+                    sim_joint_pos_before = extract_joint_pos(obs)
+                    prepared_action, prepared_action_np = prepare_env_action(env, raw_policy_action)
+                    obs, _reward, terminated, truncated, info = step_prepared_env_action(env, prepared_action)
                     steps += 1
                     done = bool(terminated[0] or truncated[0])
                     final_info = info.get("final_info", final_info)
+                    sim_joint_pos_after = extract_joint_pos(obs)
+                    if action_trace_logger is not None:
+                        action_trace_logger.write_step(
+                            episode_ix=episode_ix,
+                            policy_step_ix=steps - 1,
+                            terminated=bool(terminated[0]),
+                            truncated=bool(truncated[0]),
+                            raw_policy_action=raw_policy_action,
+                            prepared_action_abs=prepared_action_np,
+                            sim_joint_pos_before=sim_joint_pos_before,
+                            sim_joint_pos_after=sim_joint_pos_after,
+                        )
                     if episode_ix < args.max_episodes_rendered:
                         frame = render_frame(env)
                         if frame is not None:
@@ -414,12 +618,23 @@ def main() -> None:
         }
         if video_paths:
             eval_info["video_paths"] = video_paths
+        eval_info["alignment"] = {
+            "mobile_base_relative": bool(args.mobile_base_relative),
+            "traj_file": str(Path(args.traj_file).resolve()) if args.traj_file else "",
+            "traj_seed": args.traj_seed,
+            "debug_action_trace": bool(args.debug_action_trace),
+            "action_trace_csv": str(action_trace_path) if args.debug_action_trace else "",
+        }
+        if action_trace_logger is not None:
+            eval_info["action_trace_summary"] = action_trace_logger.summary()
 
         with (output_dir / "eval_info.json").open("w") as f:
             json.dump(eval_info, f, indent=2)
 
         print(f"saved eval results to {csv_path}")
     finally:
+        if action_trace_logger is not None:
+            action_trace_logger.close()
         env.close()
 
 

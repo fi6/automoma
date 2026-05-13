@@ -560,6 +560,7 @@ do_eval() {
         local eval_interpolation_type="${EVAL_INTERPOLATION_TYPE:-linear}"
         local eval_decimation="${EVAL_DECIMATION:-1}"
         local eval_init_steps="${EVAL_INIT_STEPS:-5}"
+        local eval_mobile_base_relative="${EVAL_MOBILE_BASE_RELATIVE:-true}"
 
         while [[ $# -gt 0 ]]; do
             case "$1" in
@@ -577,6 +578,8 @@ do_eval() {
                 --interpolated) eval_interpolated="$2"; shift 2 ;;
                 --interpolation_type=*) eval_interpolation_type="${1#*=}"; shift ;;
                 --interpolation_type) eval_interpolation_type="$2"; shift 2 ;;
+                --mobile_base_relative=*) eval_mobile_base_relative="${1#*=}"; shift ;;
+                --mobile_base_relative) eval_mobile_base_relative="$2"; shift 2 ;;
                 *) break ;;
             esac
         done
@@ -613,6 +616,7 @@ do_eval() {
             --init_steps="$eval_init_steps"
             --interpolated="$eval_interpolated"
             --interpolation_type="$eval_interpolation_type"
+            --mobile_base_relative="$eval_mobile_base_relative"
             --openness_threshold="$openness_threshold"
             --proximity_threshold="$proximity_threshold"
             --proximity_window_steps="$proximity_window_steps"
@@ -679,6 +683,7 @@ PY
     local traj_file="$REPO_ROOT/data/trajs/summit_franka/${object_name}/${scene_name}/test/traj_data_test.pt"
     local use_rgb=""
     local legacy_cvpr26="false"
+    local eval_mobile_base_relative="${EVAL_MOBILE_BASE_RELATIVE:-true}"
     local seed_explicit="false"
     local checkpoint_root_explicit="false"
     local output_dir_explicit="false"
@@ -706,6 +711,8 @@ PY
                 ;;
             --use_rgb=*) use_rgb="${1#*=}"; shift ;;
             --use_rgb) use_rgb="$2"; shift 2 ;;
+            --mobile_base_relative=*) eval_mobile_base_relative="${1#*=}"; shift ;;
+            --mobile_base_relative) eval_mobile_base_relative="$2"; shift 2 ;;
             --legacy_cvpr26)
                 legacy_cvpr26="true"
                 shift
@@ -735,7 +742,7 @@ PY
     fi
 
     require_eval_traj_file "$traj_file"
-    passthrough=(--traj_file "$traj_file" "${passthrough[@]}")
+    passthrough=(--traj_file "$traj_file" --mobile_base_relative "$eval_mobile_base_relative" "${passthrough[@]}")
     local eval_wrapper="$REPO_ROOT/scripts/robotwin_eval.sh"
     local task_name="$object_name"
     local task_config="$scene_name"

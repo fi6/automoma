@@ -243,6 +243,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--interpolation_type", type=str, default="linear")
     parser.add_argument("--decimation", type=int, default=None)
     parser.add_argument("--init_steps", type=int, default=1)
+    parser.add_argument("--mobile_base_relative", type=str2bool, default=True)
     parser.add_argument("--headless", type=str2bool, default=True)
     parser.add_argument("--env.headless", dest="headless", type=str2bool)
     parser.add_argument("--max_episodes_rendered", type=int, default=10)
@@ -497,7 +498,7 @@ def build_env(args: argparse.Namespace):
         object_name=object_name,
         scene_name=scene_name,
         object_center=True,
-        mobile_base_relative=True,
+        mobile_base_relative=args.mobile_base_relative,
         traj_file=str(traj_file),
         traj_seed=args.traj_seed,
         interpolated=args.interpolated,
