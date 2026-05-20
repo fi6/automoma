@@ -311,6 +311,14 @@ class PlanningPipeline:
 
         def _traj(t: torch.Tensor):
             B, T, _ = t.shape
+            if B == 0:
+                pull_steps = int(self.cfg.get("planner", {}).get("traj", {}).get("trajopt_tsteps", T))
+                total_steps = prepend_steps + pull_steps
+                return (
+                    t.new_empty((0, total_steps, 12)),
+                    t.new_empty((0, total_steps, 1)),
+                )
+
             arm, obj = _split(t)
 
             # Grasp phase: hold frame-0, close gripper linearly

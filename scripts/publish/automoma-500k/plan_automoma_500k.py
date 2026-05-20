@@ -55,6 +55,19 @@ def object_name(cfg: dict[str, Any], object_id: str) -> str:
     return f"{obj_cfg['asset_type'].lower()}_{object_id}"
 
 
+def scene_has_object(scene_dir: Path, scene_name: str, obj_cfg: dict[str, Any], object_id: str) -> bool:
+    metadata_path = scene_dir / scene_name / "info" / "metadata.json"
+    if not metadata_path.exists():
+        raise FileNotFoundError(f"Scene metadata not found: {metadata_path}")
+    metadata = json.loads(metadata_path.read_text())
+    target_type = obj_cfg["asset_type"]
+    target_id = str(object_id)
+    return any(
+        item.get("asset_type") == target_type and str(item.get("asset_id")) == target_id
+        for item in metadata.get("static_objects", {}).values()
+    )
+
+
 def discover_scenes(scene_dir: Path) -> list[str]:
     if not scene_dir.exists():
         return []
@@ -124,11 +137,16 @@ def validate_compatible(existing: dict[str, torch.Tensor], new: dict[str, torch.
 def merge_successes(canonical: Path, round_file: Path, max_add: int) -> dict[str, Any]:
     round_payload = filter_successful(load_payload(round_file), max_add)
     added = int(round_payload["traj_success"].shape[0])
+    replaced_empty_canonical = False
 
     if canonical.exists():
         base_payload = filter_successful(load_payload(canonical))
-        validate_compatible(base_payload, round_payload, f"merge {round_file} into {canonical}")
-        merged = {key: torch.cat([base_payload[key], round_payload[key]], dim=0).cpu() for key in TRAJ_KEYS}
+        if int(base_payload["traj_success"].shape[0]) == 0:
+            merged = round_payload
+            replaced_empty_canonical = True
+        else:
+            validate_compatible(base_payload, round_payload, f"merge {round_file} into {canonical}")
+            merged = {key: torch.cat([base_payload[key], round_payload[key]], dim=0).cpu() for key in TRAJ_KEYS}
     else:
         merged = round_payload
 
@@ -152,6 +170,7 @@ def merge_successes(canonical: Path, round_file: Path, max_add: int) -> dict[str
         "round_file": str(round_file),
         "added_successful": added,
         "canonical_successful": int(merged["traj_success"].shape[0]),
+        "replaced_empty_canonical": replaced_empty_canonical,
         "shapes": shape_report(merged),
     }
 
@@ -256,8 +275,20 @@ def self_test() -> int:
         }
         round_file.parent.mkdir(parents=True)
         torch.save(payload, round_file)
+        canonical.parent.mkdir(parents=True)
+        stale_empty = {
+            "start_robot": torch.zeros(0, 12),
+            "start_obj": torch.zeros(0, 1),
+            "goal_robot": torch.zeros(0, 12),
+            "goal_obj": torch.zeros(0, 1),
+            "traj_robot": torch.zeros(0, 5, 12),
+            "traj_obj": torch.zeros(0, 5, 1),
+            "traj_success": torch.zeros(0, dtype=torch.bool),
+        }
+        torch.save(stale_empty, canonical)
         report = merge_successes(canonical, round_file, max_add=2)
         assert report["added_successful"] == 2, report
+        assert report["replaced_empty_canonical"], report
         assert count_successes(canonical) == 2
         report = merge_successes(canonical, round_file, max_add=1)
         assert report["canonical_successful"] == 3, report
@@ -275,6 +306,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--target-per-object", type=int, default=100_000)
     parser.add_argument("--per-scene-target", default="auto")
     parser.add_argument("--max-rounds-per-object", type=int, default=50)
+    parser.add_argument(
+        "--max-stalled-scene-rounds",
+        type=int,
+        default=3,
+        help=(
+            "After this many consecutive low-yield rounds for an underfilled scene, "
+            "skip that scene and allow other scenes to overfill until the object target is met."
+        ),
+    )
+    parser.add_argument(
+        "--stalled-scene-min-success-rate",
+        type=float,
+        default=0.05,
+        help=(
+            "Minimum added/requested success ratio that resets the stalled-scene counter. "
+            "Set to 0 to only count zero-success rounds as stalled."
+        ),
+    )
     parser.add_argument("--objects", nargs="+", default=None, help="Object ids. Defaults to all objects in plan.yaml.")
     parser.add_argument("--scenes", nargs="+", default=None, help="Scene names. Defaults to all directories under scene-dir.")
     parser.add_argument("--round-root", type=Path, default=REPO_ROOT / "data" / "trajs" / "_automoma_500k_rounds")
@@ -310,7 +359,6 @@ def main() -> int:
             f"No scenes found. Checked {scene_dir}. Pass --scenes explicitly after scene assets are available."
         )
 
-    per_scene_target = parse_per_scene_target(args.per_scene_target, args.target_per_object, len(scenes))
     extra_overrides = list(args.plan_overrides)
     if extra_overrides and extra_overrides[0] == "--":
         extra_overrides = extra_overrides[1:]
@@ -323,7 +371,7 @@ def main() -> int:
         "robot_name": robot_name,
         "split": args.split,
         "target_per_object": args.target_per_object,
-        "per_scene_target": per_scene_target,
+        "per_scene_target": args.per_scene_target,
         "objects": object_ids,
         "scenes": scenes,
         "dry_run": args.dry_run,
@@ -333,48 +381,109 @@ def main() -> int:
     manifest_path = args.statistics_dir / f"plan_manifest_{run_id}.json"
     write_json(manifest_path, manifest)
     print(f"Plan manifest: {manifest_path}")
-    print(f"Scenes: {len(scenes)} | per-scene target: {per_scene_target} | object target: {args.target_per_object}")
+    print(f"Scenes: {len(scenes)} | per-scene target: {args.per_scene_target} | object target: {args.target_per_object}")
 
     for object_id in object_ids:
         obj_name = object_name(cfg, object_id)
+        obj_cfg = cfg["objects"][str(object_id)]
+        scene_presence = {
+            scene: scene_has_object(scene_dir, scene, obj_cfg, object_id)
+            for scene in scenes
+        }
+        valid_scenes = [scene for scene in scenes if scene_presence[scene]]
+        missing_scenes = [scene for scene in scenes if not scene_presence[scene]]
+        if not valid_scenes:
+            raise SystemExit(f"No valid scenes contain {obj_name}; cannot plan object target.")
+        per_scene_target = parse_per_scene_target(
+            args.per_scene_target,
+            args.target_per_object,
+            len(valid_scenes),
+        )
+        manifest.setdefault("object_scene_targets", {})[obj_name] = {
+            "valid_scene_count": len(valid_scenes),
+            "missing_scenes": missing_scenes,
+            "per_scene_target": per_scene_target,
+        }
+        write_json(manifest_path, manifest)
         print(f"\n=== Object {object_id} ({obj_name}) ===", flush=True)
+        if missing_scenes:
+            print(
+                f"Skipping {len(missing_scenes)} scenes without {obj_name}: {' '.join(missing_scenes)}",
+                flush=True,
+            )
+        print(
+            f"Valid scenes: {len(valid_scenes)} | per-scene target: {per_scene_target} | "
+            f"object target: {args.target_per_object}",
+            flush=True,
+        )
 
         object_satisfied = False
+        stalled_scene_rounds = {scene: 0 for scene in valid_scenes}
         for round_idx in range(1, args.max_rounds_per_object + 1):
             scene_counts = {
                 scene: count_successes(
                     canonical_traj_file(args.output_root, robot_name, obj_name, scene, args.split)
                 )
-                for scene in scenes
+                for scene in valid_scenes
             }
             object_total = sum(scene_counts.values())
             print(f"Round {round_idx}: current successful={object_total}", flush=True)
-            if object_total >= args.target_per_object and all(canonical_traj_file(args.output_root, robot_name, obj_name, scene, args.split).exists() for scene in scenes):
+            if object_total >= args.target_per_object and all(canonical_traj_file(args.output_root, robot_name, obj_name, scene, args.split).exists() for scene in valid_scenes):
                 print(f"Object target satisfied: {object_total} >= {args.target_per_object}")
                 object_satisfied = True
                 break
 
             progressed = False
-            for scene in scenes:
+            attempted = False
+            blocking_underfilled_scenes = {
+                scene
+                for scene, count in scene_counts.items()
+                if count < per_scene_target and stalled_scene_rounds.get(scene, 0) < args.max_stalled_scene_rounds
+            }
+            stalled_underfilled_scenes = [
+                scene
+                for scene, count in scene_counts.items()
+                if count < per_scene_target and stalled_scene_rounds.get(scene, 0) >= args.max_stalled_scene_rounds
+            ]
+            if stalled_underfilled_scenes and not blocking_underfilled_scenes:
+                print(
+                    "Allowing overfill from productive scenes; stalled underfilled scenes: "
+                    + " ".join(stalled_underfilled_scenes),
+                    flush=True,
+                )
+            for scene in valid_scenes:
                 canonical = canonical_traj_file(args.output_root, robot_name, obj_name, scene, args.split)
                 current_scene = count_successes(canonical)
                 object_total = sum(
                     count_successes(canonical_traj_file(args.output_root, robot_name, obj_name, s, args.split))
-                    for s in scenes
+                    for s in valid_scenes
                 )
                 object_remaining = max(0, args.target_per_object - object_total)
                 scene_remaining = max(0, per_scene_target - current_scene)
 
-                if canonical.exists() and scene_remaining <= 0:
-                    continue
                 if object_remaining <= 0 and canonical.exists():
                     continue
+                if scene_remaining <= 0 and blocking_underfilled_scenes:
+                    continue
 
-                max_successful = scene_remaining
-                if object_remaining > 0:
-                    max_successful = min(max_successful or object_remaining, object_remaining)
+                if scene_remaining > 0:
+                    if stalled_scene_rounds.get(scene, 0) >= args.max_stalled_scene_rounds:
+                        print(
+                            f"Skipping stalled scene {obj_name}/{scene}: "
+                            f"{stalled_scene_rounds[scene]} consecutive low-yield rounds",
+                            flush=True,
+                        )
+                        continue
+                    if object_remaining > 0:
+                        max_successful = min(scene_remaining, object_remaining)
+                    elif not canonical.exists():
+                        max_successful = scene_remaining
+                    else:
+                        max_successful = 0
+                else:
+                    max_successful = object_remaining
                 if max_successful <= 0:
-                    max_successful = 1
+                    continue
 
                 round_dir = args.round_root / run_id / obj_name / scene / args.split / f"round_{round_idx:03d}_{int(time.time())}"
                 round_file = canonical_traj_file(round_dir, robot_name, obj_name, scene, args.split)
@@ -383,6 +492,7 @@ def main() -> int:
                     f"object_total={object_total}, request={max_successful}",
                     flush=True,
                 )
+                attempted = True
                 rc = run_plan_command(
                     config=args.config,
                     scene_dir=scene_dir,
@@ -411,18 +521,45 @@ def main() -> int:
                         raise FileNotFoundError(f"Expected planning output not found: {round_file}")
                     merge_report = merge_successes(canonical, round_file, max_successful)
                     round_report.update(merge_report)
+                    added_successful = int(merge_report["added_successful"])
+                    canonical_successful = int(merge_report["canonical_successful"])
+                    if added_successful > 0:
+                        progressed = True
+
+                    if canonical_successful >= per_scene_target:
+                        stalled_scene_rounds[scene] = 0
+                    elif added_successful <= 0:
+                        stalled_scene_rounds[scene] = stalled_scene_rounds.get(scene, 0) + 1
+                    else:
+                        min_productive = 1
+                        if args.stalled_scene_min_success_rate > 0:
+                            min_productive = max(
+                                1,
+                                int(math.ceil(max_successful * args.stalled_scene_min_success_rate)),
+                            )
+                        if added_successful < min_productive:
+                            stalled_scene_rounds[scene] = stalled_scene_rounds.get(scene, 0) + 1
+                            print(
+                                f"Low-yield scene {obj_name}/{scene}: added {added_successful}/"
+                                f"{max_successful} successes "
+                                f"({stalled_scene_rounds[scene]} consecutive low-yield rounds)",
+                                flush=True,
+                            )
+                        else:
+                            stalled_scene_rounds[scene] = 0
                     if args.cleanup_rounds:
                         shutil.rmtree(round_dir, ignore_errors=True)
                 manifest["rounds"].append(round_report)
                 write_json(manifest_path, manifest)
-                progressed = True
+                if args.dry_run:
+                    progressed = True
 
                 if sum(
                     count_successes(canonical_traj_file(args.output_root, robot_name, obj_name, s, args.split))
-                    for s in scenes
+                    for s in valid_scenes
                 ) >= args.target_per_object and all(
                     canonical_traj_file(args.output_root, robot_name, obj_name, s, args.split).exists()
-                    for s in scenes
+                    for s in valid_scenes
                 ):
                     object_satisfied = True
                     break
@@ -433,7 +570,7 @@ def main() -> int:
             if object_satisfied:
                 print(f"Object target satisfied after round {round_idx}.")
                 break
-            if not progressed:
+            if not progressed and not attempted:
                 raise SystemExit(
                     f"No progress possible for {obj_name}; check scene availability and planner output."
                 )

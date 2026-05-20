@@ -319,7 +319,7 @@ while true; do
   echo "disk=$(df -h . | tail -n 1)"
   if ((live == 0)); then
     echo "workers exited; running final statistics"
-    "${PYTHON_BIN}" scripts/public/automoma-500k/trajectory_statistics.py \
+    "${PYTHON_BIN}" scripts/publish/automoma-500k/trajectory_statistics.py \
       --config "${CONFIG}" \
       --root "${OUTPUT_ROOT}" \
       --output-dir "${STATISTICS_DIR}" \
@@ -342,4 +342,3 @@ EOS
   echo "  log: ${LOG_DIR}/monitor.log"
   echo "  cmd: ${monitor_cmd}"
 fi
-
