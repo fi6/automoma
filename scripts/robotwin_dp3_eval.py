@@ -28,6 +28,7 @@ for path in (
         sys.path.insert(0, path)
 
 from automoma_dp3_utils import PointCloudConfig, rgbd_to_pointcloud
+from ee_pose_trace import EE_TRACE_COLUMNS, ee_trace_values, empty_ee_trace_values, make_ee_fk
 from lerobot.utils.io_utils import write_video
 from train_dp3 import TrainDP3Workspace
 
@@ -58,6 +59,7 @@ ACTION_TRACE_CSV_COLUMNS = [
     "raw_policy_step_delta_abs",
     "prepared_action_step_delta_abs",
     "sim_joint_step_delta_abs",
+    *EE_TRACE_COLUMNS,
 ]
 
 SUMMIT_FRANKA_ACTION_JOINT_NAMES = (
@@ -120,6 +122,7 @@ class ActionTraceLogger:
         self._file = self.csv_path.open("w", newline="")
         self._writer = csv.DictWriter(self._file, fieldnames=ACTION_TRACE_CSV_COLUMNS)
         self._writer.writeheader()
+        self.ee_fk = make_ee_fk(joint_names)
         self._last_raw_policy_action: dict[int, np.ndarray] = {}
         self._last_prepared_action: dict[int, np.ndarray] = {}
         self._last_sim_joint_pos_after: dict[int, np.ndarray] = {}
@@ -172,6 +175,11 @@ class ActionTraceLogger:
         )
         if not (terminated or truncated):
             self._update_delta_summary(raw_delta, prepared_delta, sim_delta)
+        ee_values = (
+            empty_ee_trace_values()
+            if terminated or truncated
+            else ee_trace_values(self.ee_fk, prepared_action_abs[:width], sim_joint_pos_after[:width])
+        )
         for joint_ix in range(width):
             self._writer.writerow(
                 {
@@ -190,6 +198,7 @@ class ActionTraceLogger:
                     if np.isnan(prepared_delta[joint_ix])
                     else float(prepared_delta[joint_ix]),
                     "sim_joint_step_delta_abs": "" if np.isnan(sim_delta[joint_ix]) else float(sim_delta[joint_ix]),
+                    **ee_values,
                 }
             )
         self._last_raw_policy_action[episode_ix] = raw_policy_action.copy()

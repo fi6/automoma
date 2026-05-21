@@ -31,6 +31,8 @@ from lerobot.utils.io_utils import write_video
 from lerobot.utils.random_utils import set_seed
 from lerobot.utils.utils import init_logging
 
+from ee_pose_trace import EE_TRACE_COLUMNS, ee_trace_values, empty_ee_trace_values, make_ee_fk
+
 
 PER_EPISODE_CSV_COLUMNS = [
     "episode_ix",
@@ -61,6 +63,8 @@ ACTION_TRACE_CSV_COLUMNS = [
     "sim_substep_ix",
     "sim_substeps_for_policy",
     "is_policy_action_sample",
+    "terminated",
+    "truncated",
     "joint_ix",
     "joint_name",
     "dataset_action_raw",
@@ -70,6 +74,7 @@ ACTION_TRACE_CSV_COLUMNS = [
     "record_obs_joint_pos",
     "record_state_joint_pos",
     "abs_eval_vs_record_state",
+    *EE_TRACE_COLUMNS,
 ]
 
 SUMMIT_FRANKA_ACTION_JOINT_NAMES = (
@@ -336,6 +341,7 @@ class ActionTraceLogger:
         self._file = self.csv_path.open("w", newline="")
         self._writer = csv.DictWriter(self._file, fieldnames=ACTION_TRACE_CSV_COLUMNS)
         self._writer.writeheader()
+        self.ee_fk = make_ee_fk(joint_names)
         self.abs_errors: list[float] = []
         self.last_step_errors: list[float] = []
 
@@ -350,6 +356,8 @@ class ActionTraceLogger:
         policy_step_ix: int,
         sim_substep_ix: int,
         sim_substeps_for_policy: int,
+        terminated: bool,
+        truncated: bool,
         dataset_action_raw: np.ndarray,
         prepared_action_abs: np.ndarray,
         interpolated_action_abs: np.ndarray,
@@ -366,6 +374,11 @@ class ActionTraceLogger:
         )
         is_policy_action_sample = sim_substep_ix == sim_substeps_for_policy - 1
         step_errors: list[float] = []
+        ee_values = (
+            empty_ee_trace_values()
+            if terminated or truncated
+            else ee_trace_values(self.ee_fk, interpolated_action_abs[:width], eval_sim_joint_pos_after[:width])
+        )
         for joint_ix in range(width):
             record_state_value = np.nan
             abs_error = np.nan
@@ -388,6 +401,8 @@ class ActionTraceLogger:
                     "sim_substep_ix": sim_substep_ix,
                     "sim_substeps_for_policy": sim_substeps_for_policy,
                     "is_policy_action_sample": int(is_policy_action_sample),
+                    "terminated": int(terminated),
+                    "truncated": int(truncated),
                     "joint_ix": joint_ix,
                     "joint_name": self.joint_names[joint_ix],
                     "dataset_action_raw": float(dataset_action_raw[joint_ix]),
@@ -397,6 +412,7 @@ class ActionTraceLogger:
                     "record_obs_joint_pos": record_obs_value,
                     "record_state_joint_pos": record_state_value,
                     "abs_eval_vs_record_state": abs_error,
+                    **ee_values,
                 }
             )
         self.sim_trace_step_ix += 1
@@ -814,6 +830,8 @@ def run_episode(
                     policy_step_ix=policy_steps,
                     sim_substep_ix=step_result.sim_substep_ix,
                     sim_substeps_for_policy=step_result.sim_substeps_for_policy,
+                    terminated=bool(step_result.terminated[0]),
+                    truncated=bool(step_result.truncated[0]),
                     dataset_action_raw=raw_dataset_action,
                     prepared_action_abs=step_result.policy_action,
                     interpolated_action_abs=step_result.interpolated_action,
