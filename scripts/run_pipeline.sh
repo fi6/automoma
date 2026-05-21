@@ -15,6 +15,8 @@ ROBOTWIN_ROOT="$REPO_ROOT/third_party/RoboTwin"
 export AUTOMOMA_OBJECT_ROOT="$REPO_ROOT/assets/object"
 export AUTOMOMA_SCENE_ROOT="$REPO_ROOT/assets/scene/infinigen/kitchen_1130"
 export AUTOMOMA_ROBOT_ROOT="$REPO_ROOT/assets/robot"
+export AUTOMOMA_ROBOT_OBJECT_STATIC_FRICTION="${AUTOMOMA_ROBOT_OBJECT_STATIC_FRICTION:-1.0}"
+export AUTOMOMA_ROBOT_OBJECT_DYNAMIC_FRICTION="${AUTOMOMA_ROBOT_OBJECT_DYNAMIC_FRICTION:-1.0}"
 
 # Isaac Sim loads Python extension dependencies through the process dynamic
 # linker. Keep the conda runtime first so packages built against the conda C++
@@ -29,6 +31,8 @@ fi
 echo "Using AUTOMOMA_OBJECT_ROOT=$AUTOMOMA_OBJECT_ROOT"
 echo "Using AUTOMOMA_SCENE_ROOT=$AUTOMOMA_SCENE_ROOT"
 echo "Using AUTOMOMA_ROBOT_ROOT=$AUTOMOMA_ROBOT_ROOT"
+echo "Using AUTOMOMA_ROBOT_OBJECT_STATIC_FRICTION=$AUTOMOMA_ROBOT_OBJECT_STATIC_FRICTION"
+echo "Using AUTOMOMA_ROBOT_OBJECT_DYNAMIC_FRICTION=$AUTOMOMA_ROBOT_OBJECT_DYNAMIC_FRICTION"
 
 usage() {
     cat <<'EOF'
@@ -70,6 +74,15 @@ require_eval_traj_file() {
         echo "Error: Eval trajectory file not found: $traj_file" >&2
         echo "Eval requires the source IK/test trajectory. Run planning first or pass --traj_file to an existing traj_data_test.pt." >&2
         exit 1
+    fi
+}
+append_robot_object_friction_args() {
+    local -n out_ref=$1
+    if [[ -n "${AUTOMOMA_ROBOT_OBJECT_STATIC_FRICTION:-}" ]]; then
+        out_ref+=(--robot_object_static_friction "$AUTOMOMA_ROBOT_OBJECT_STATIC_FRICTION")
+    fi
+    if [[ -n "${AUTOMOMA_ROBOT_OBJECT_DYNAMIC_FRICTION:-}" ]]; then
+        out_ref+=(--robot_object_dynamic_friction "$AUTOMOMA_ROBOT_OBJECT_DYNAMIC_FRICTION")
     fi
 }
 
@@ -251,6 +264,7 @@ do_record() {
             cmd+=(--debug_joint_tracking_fk_link ee_link)
         fi
     fi
+    append_robot_object_friction_args cmd
 
     cmd+=(
         "$@"
@@ -627,8 +641,9 @@ do_eval() {
             --debug_marker_scale="$debug_marker_scale"
             --eval.n_episodes=50
             --output_dir="$output_dir"
-            "$@"
         )
+        append_robot_object_friction_args cmd
+        cmd+=("$@")
 
         echo "Command: ${cmd[*]}"
         echo ""
@@ -742,7 +757,9 @@ PY
     fi
 
     require_eval_traj_file "$traj_file"
-    passthrough=(--traj_file "$traj_file" --mobile_base_relative "$eval_mobile_base_relative" "${passthrough[@]}")
+    local -a friction_passthrough=()
+    append_robot_object_friction_args friction_passthrough
+    passthrough=(--traj_file "$traj_file" --mobile_base_relative "$eval_mobile_base_relative" "${friction_passthrough[@]}" "${passthrough[@]}")
     local eval_wrapper="$REPO_ROOT/scripts/robotwin_eval.sh"
     local task_name="$object_name"
     local task_config="$scene_name"
@@ -891,6 +908,7 @@ do_record_dataset_eval() {
     if [[ -n "$eval_episode_length" ]]; then
         cmd+=(--env.episode_length="$eval_episode_length")
     fi
+    append_robot_object_friction_args cmd
     if [[ -f "$traj_file" ]]; then
         cmd+=(--traj_file="$traj_file")
     else

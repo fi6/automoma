@@ -125,6 +125,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--debug_visualize_handle", type=str2bool, default=False)
     parser.add_argument("--debug_record_handle_diagnostics", type=str2bool, default=False)
     parser.add_argument("--debug_marker_scale", type=float, default=1.0)
+    parser.add_argument("--robot_object_static_friction", type=float, default=None)
+    parser.add_argument("--robot_object_dynamic_friction", type=float, default=None)
     parser.add_argument("--debug_action_trace", type=str2bool, default=False)
     parser.add_argument("--action_trace_csv", default=None)
     return parser.parse_args()
@@ -283,6 +285,10 @@ def make_isaaclab_arena_cfg(args: argparse.Namespace) -> IsaaclabArenaEnv:
         "debug_record_handle_diagnostics": args.debug_record_handle_diagnostics,
         "debug_marker_scale": args.debug_marker_scale,
     }
+    if args.robot_object_static_friction is not None:
+        kwargs["robot_object_static_friction"] = args.robot_object_static_friction
+    if args.robot_object_dynamic_friction is not None:
+        kwargs["robot_object_dynamic_friction"] = args.robot_object_dynamic_friction
     if args.decimation is not None:
         kwargs["decimation"] = args.decimation
 

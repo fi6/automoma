@@ -148,6 +148,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--debug_visualize_handle", type=str2bool, default=False)
     parser.add_argument("--debug_record_handle_diagnostics", type=str2bool, default=False)
     parser.add_argument("--debug_marker_scale", type=float, default=1.0)
+    parser.add_argument("--robot_object_static_friction", type=float, default=None)
+    parser.add_argument("--robot_object_dynamic_friction", type=float, default=None)
     parser.add_argument(
         "--disable_success_termination",
         type=str2bool,
@@ -463,6 +465,10 @@ def make_isaaclab_arena_cfg(args: argparse.Namespace, episode_length: int) -> Is
         "debug_record_handle_diagnostics": args.debug_record_handle_diagnostics,
         "debug_marker_scale": args.debug_marker_scale,
     }
+    if args.robot_object_static_friction is not None:
+        kwargs["robot_object_static_friction"] = args.robot_object_static_friction
+    if args.robot_object_dynamic_friction is not None:
+        kwargs["robot_object_dynamic_friction"] = args.robot_object_dynamic_friction
     if args.traj_file:
         kwargs["traj_file"] = str(Path(args.traj_file).resolve())
     if args.decimation is not None:

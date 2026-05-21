@@ -310,6 +310,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--debug_action_trace", type=str2bool, default=False)
     parser.add_argument("--action_trace_csv", type=str, default=None)
     parser.add_argument("--handle_distance_threshold", type=float, default=0.1)
+    parser.add_argument("--robot_object_static_friction", type=float, default=None)
+    parser.add_argument("--robot_object_dynamic_friction", type=float, default=None)
     return parser.parse_args()
 
 
@@ -384,6 +386,8 @@ def build_env(args: argparse.Namespace):
         debug_visualize_handle=args.debug_visualize_handle,
         debug_record_handle_diagnostics=args.debug_record_handle_diagnostics,
         debug_marker_scale=1.0,
+        robot_object_static_friction=args.robot_object_static_friction,
+        robot_object_dynamic_friction=args.robot_object_dynamic_friction,
     )
     env_map = env_module.make_env(n_envs=1, cfg=cfg)
     return env_map["summit_franka_open_door_eval"][0]
