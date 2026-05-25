@@ -38,7 +38,7 @@ usage() {
     cat <<'EOF'
 Usage:
   bash scripts/run_pipeline.sh plan    <object_id> <scene_name> <split> [overrides...]
-  bash scripts/run_pipeline.sh record  <object_name> <scene_name> <num_ep> [--headless|--no-headless] [--validate_record_success] [overrides...]
+  bash scripts/run_pipeline.sh record  <object_name> <scene_name> <num_ep> [--record_format full|episodes] [--headless|--no-headless] [--validate_record_success] [overrides...]
   bash scripts/run_pipeline.sh convert <benchmark> <object_name> <scene_name> <num_ep> [--policy=POLICY] [overrides...]
   bash scripts/run_pipeline.sh train   <benchmark> <policy> <object_name> <scene_name> <num_ep> [overrides...]
   bash scripts/run_pipeline.sh eval    <benchmark> <policy> <object_name> <scene_name> <num_ep> [--headless|--no-headless] [overrides...]
@@ -157,6 +157,9 @@ do_record() {
     local name; name="$(mk_exp_name "$object_name" "$scene_name" "$num_episodes")"
     local traj_file="$REPO_ROOT/data/trajs/summit_franka/${object_name}/${scene_name}/train/traj_data_train.pt"
     local dataset_file="$REPO_ROOT/data/automoma/${name}.hdf5"
+    local dataset_file_explicit="false"
+    local record_format="${RECORD_HDF5_FORMAT:-full}"
+    local start_episode="${RECORD_START_EPISODE:-0}"
     local headless_flag=""
     local record_interpolated="${RECORD_INTERPOLATED:-1}"
     local record_interpolation_type="${RECORD_INTERPOLATION_TYPE:-linear}"
@@ -164,17 +167,46 @@ do_record() {
     local record_init_steps="${RECORD_INIT_STEPS:-}"
     local auto_debug_tracking="${RECORD_AUTO_DEBUG_TRACKING:-0}"
 
+    local -a record_overrides=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --headless) headless_flag="--headless"; shift ;;
             --no-headless) headless_flag=""; shift ;;
             --traj_file=*) traj_file="${1#*=}"; shift ;;
             --traj_file) traj_file="$2"; shift 2 ;;
-            --dataset_file=*) dataset_file="${1#*=}"; shift ;;
-            --dataset_file) dataset_file="$2"; shift 2 ;;
-            *) break ;;
+            --dataset_file=*) dataset_file="${1#*=}"; dataset_file_explicit="true"; shift ;;
+            --dataset_file) dataset_file="$2"; dataset_file_explicit="true"; shift 2 ;;
+            --record_format=*) record_format="${1#*=}"; shift ;;
+            --record_format) record_format="$2"; shift 2 ;;
+            --hdf5_format=*) record_format="${1#*=}"; shift ;;
+            --hdf5_format) record_format="$2"; shift 2 ;;
+            --split_episodes) record_format="episodes"; shift ;;
+            --single_hdf5) record_format="full"; shift ;;
+            --start_episode=*) start_episode="${1#*=}"; shift ;;
+            --start_episode) start_episode="$2"; shift 2 ;;
+            *) record_overrides+=("$1"); shift ;;
         esac
     done
+    set -- "${record_overrides[@]}"
+    case "${record_format,,}" in
+        full|merged|single) record_format="full" ;;
+        episodes|split|per_episode|per-episode) record_format="episodes" ;;
+        *)
+            echo "Error: Unsupported record format '$record_format'. Use full or episodes." >&2
+            exit 1
+            ;;
+    esac
+    if ! [[ "$num_episodes" =~ ^[0-9]+$ ]] || (( num_episodes < 1 )); then
+        echo "Error: num_episodes must be a positive integer." >&2
+        exit 1
+    fi
+    if ! [[ "$start_episode" =~ ^[0-9]+$ ]]; then
+        echo "Error: --start_episode must be a non-negative integer." >&2
+        exit 1
+    fi
+    if [[ "$record_format" == "episodes" && "$dataset_file_explicit" == "false" ]]; then
+        dataset_file="$REPO_ROOT/data/automoma/${name}"
+    fi
     if [[ "$dataset_file" != /* ]]; then
         dataset_file="$REPO_ROOT/$dataset_file"
     fi
@@ -223,50 +255,47 @@ do_record() {
         esac
     done
 
-    local -a cmd=(
-        python isaaclab_arena/scripts/record_automoma_demos.py
+    local -a recorder_args=(
         --enable_cameras
         --mobile_base_relative
         --traj_file "$traj_file"
-        --dataset_file "$dataset_file"
-        --num_episodes "$num_episodes"
     )
 
     if [[ -n "$headless_flag" ]]; then
-        cmd+=("$headless_flag")
+        recorder_args+=("$headless_flag")
     fi
     if [[ "$add_default_interpolated" == "true" ]]; then
-        cmd+=(--interpolated "$record_interpolated")
+        recorder_args+=(--interpolated "$record_interpolated")
     fi
     if [[ "$add_default_interpolation_type" == "true" ]]; then
-        cmd+=(--interpolation_type "$record_interpolation_type")
+        recorder_args+=(--interpolation_type "$record_interpolation_type")
     fi
     if [[ "$add_default_decimation" == "true" && -n "$record_decimation" ]]; then
-        cmd+=(--decimation "$record_decimation")
+        recorder_args+=(--decimation "$record_decimation")
     fi
     if [[ "$add_default_init_steps" == "true" && -n "$record_init_steps" ]]; then
-        cmd+=(--init_steps "$record_init_steps")
+        recorder_args+=(--init_steps "$record_init_steps")
     fi
     if [[ "$auto_debug_tracking" == "1" ]]; then
         if [[ "$has_debug_joint_tracking" != "true" ]]; then
-            cmd+=(--debug_joint_tracking)
+            recorder_args+=(--debug_joint_tracking)
         fi
         if [[ "$has_debug_joint_tracking_steps" != "true" ]]; then
-            cmd+=(--debug_joint_tracking_steps 0)
+            recorder_args+=(--debug_joint_tracking_steps 0)
         fi
         if [[ "$has_debug_joint_tracking_interval" != "true" ]]; then
-            cmd+=(--debug_joint_tracking_interval 0)
+            recorder_args+=(--debug_joint_tracking_interval 0)
         fi
         if [[ "$has_debug_joint_tracking_topk" != "true" ]]; then
-            cmd+=(--debug_joint_tracking_topk 12)
+            recorder_args+=(--debug_joint_tracking_topk 12)
         fi
         if [[ "$has_debug_joint_tracking_fk_link" != "true" ]]; then
-            cmd+=(--debug_joint_tracking_fk_link ee_link)
+            recorder_args+=(--debug_joint_tracking_fk_link ee_link)
         fi
     fi
-    append_robot_object_friction_args cmd
+    append_robot_object_friction_args recorder_args
 
-    cmd+=(
+    local -a task_args=(
         "$@"
         summit_franka_open_door
         --object_name "$object_name"
@@ -274,11 +303,56 @@ do_record() {
         --object_center
     )
 
+    local -a cmd=()
+    if [[ "$record_format" == "full" ]]; then
+        cmd=(
+            python isaaclab_arena/scripts/record_automoma_demos.py
+            "${recorder_args[@]}"
+            --dataset_file "$dataset_file"
+            --num_episodes "$num_episodes"
+            --start_episode "$start_episode"
+            "${task_args[@]}"
+        )
+    else
+        mkdir -p "$dataset_file"
+        cmd=(
+            python isaaclab_arena/scripts/record_automoma_demos.py
+            "${recorder_args[@]}"
+            --dataset_file "$dataset_file/episode_000001.hdf5"
+            --num_episodes 1
+            --start_episode "$start_episode"
+            "${task_args[@]}"
+        )
+    fi
+
+    echo "Record format: $record_format"
     echo "Command: ${cmd[*]}"
     echo ""
 
     pushd "$ISAACLAB_ARENA" > /dev/null
-    run_logged "${cmd[@]}"
+    if [[ "$record_format" == "full" ]]; then
+        run_logged "${cmd[@]}"
+    else
+        local ep_idx
+        for ((ep_idx = 0; ep_idx < num_episodes; ep_idx++)); do
+            local episode_number=$((ep_idx + 1))
+            local actual_start=$((start_episode + ep_idx))
+            local episode_file
+            printf -v episode_file "%s/episode_%06d.hdf5" "$dataset_file" "$episode_number"
+            cmd=(
+                python isaaclab_arena/scripts/record_automoma_demos.py
+                "${recorder_args[@]}"
+                --dataset_file "$episode_file"
+                --num_episodes 1
+                --start_episode "$actual_start"
+                "${task_args[@]}"
+            )
+            echo ""
+            echo "[SplitRecord] episode ${episode_number}/${num_episodes}: $episode_file"
+            echo "Command: ${cmd[*]}"
+            run_logged "${cmd[@]}"
+        done
+    fi
     popd > /dev/null
 }
 
@@ -353,14 +427,14 @@ do_convert() {
         case "$1" in
             --policy=*) policy="${1#*=}"; shift ;;
             --policy) policy="$2"; shift 2 ;;
-            --data_root=*) data_root="${1#*=}"; shift ;;
-            --data_root) data_root="$2"; shift 2 ;;
+            --data_root=*) data_root="$(resolve_repo_path "${1#*=}")"; shift ;;
+            --data_root) data_root="$(resolve_repo_path "$2")"; shift 2 ;;
             --hdf5_name=*) hdf5_name="${1#*=}"; shift ;;
             --hdf5_name) hdf5_name="$2"; shift 2 ;;
             --repo_id=*) repo_id="${1#*=}"; shift ;;
             --repo_id) repo_id="$2"; shift 2 ;;
-            --output_dir=*) output_dir="${1#*=}"; shift ;;
-            --output_dir) output_dir="$2"; shift 2 ;;
+            --output_dir=*) output_dir="$(resolve_repo_path "${1#*=}")"; shift ;;
+            --output_dir) output_dir="$(resolve_repo_path "$2")"; shift 2 ;;
             --use_rgb=*) use_rgb="${1#*=}"; shift ;;
             --use_rgb) use_rgb="$2"; shift 2 ;;
             *) break ;;
@@ -370,11 +444,36 @@ do_convert() {
     setup_log convert "$object_name" "$scene_name"
 
     if [[ "$benchmark" == "lerobot" ]]; then
+        local convert_data_root="$data_root"
+        local convert_hdf5_name="$hdf5_name"
+        local conversion_tmp_dir=""
+        local data_root_abs; data_root_abs="$(resolve_repo_path "$data_root")"
+        local hdf5_path="$data_root_abs/$hdf5_name"
+        local split_hdf5_dir=""
+        if [[ -d "$hdf5_path" ]]; then
+            split_hdf5_dir="$hdf5_path"
+        elif [[ "$hdf5_name" == *.hdf5 && -d "$data_root_abs/${hdf5_name%.hdf5}" ]]; then
+            split_hdf5_dir="$data_root_abs/${hdf5_name%.hdf5}"
+        fi
+
+        if [[ -n "$split_hdf5_dir" ]]; then
+            conversion_tmp_dir="$(mktemp -d "$REPO_ROOT/data/automoma/.merge_for_convert.XXXXXX")"
+            local merged_hdf5="$conversion_tmp_dir/$(basename "$split_hdf5_dir").hdf5"
+            python "$REPO_ROOT/scripts/convert_automoma_hdf5_layout.py" \
+                "$split_hdf5_dir" \
+                "$merged_hdf5" \
+                --direction merge \
+                --mode copy \
+                --overwrite
+            convert_data_root="$conversion_tmp_dir"
+            convert_hdf5_name="$(basename "$merged_hdf5")"
+        fi
+
         local -a cmd=(
             python isaaclab_arena_gr00t/data_utils/convert_hdf5_to_lerobot_v30.py
             --yaml_file isaaclab_arena_gr00t/config/summit_franka_manip_config.yaml
-            --data_root "$data_root"
-            --hdf5_name "$hdf5_name"
+            --data_root "$convert_data_root"
+            --hdf5_name "$convert_hdf5_name"
             --repo_id "$repo_id"
             --output_dir "$output_dir"
             "$@"
@@ -383,9 +482,15 @@ do_convert() {
         echo "Command: ${cmd[*]}"
         echo ""
         pushd "$ISAACLAB_ARENA" > /dev/null
+        set +e
         run_logged "${cmd[@]}"
+        local status=$?
+        set -e
         popd > /dev/null
-        return
+        if [[ -n "$conversion_tmp_dir" ]]; then
+            rm -rf "$conversion_tmp_dir"
+        fi
+        return "$status"
     fi
 
     if [[ -z "$policy" ]]; then
@@ -395,11 +500,35 @@ do_convert() {
 
     local policy_name_upper; policy_name_upper="$(capitalize_policy "$policy")"
     local hdf5_path="$data_root/$hdf5_name"
+    local robotwin_tmp_dir=""
     local robotwin_policy_dir="$ROBOTWIN_ROOT/policy/$policy_name_upper"
 
     if [[ ! -d "$robotwin_policy_dir" ]]; then
         echo "Error: RoboTwin policy directory not found: $robotwin_policy_dir" >&2
         exit 1
+    fi
+
+    if [[ -d "$hdf5_path" ]]; then
+        robotwin_tmp_dir="$(mktemp -d "$REPO_ROOT/data/automoma/.merge_for_convert.XXXXXX")"
+        local robotwin_merged_hdf5="$robotwin_tmp_dir/$(basename "$hdf5_path").hdf5"
+        python "$REPO_ROOT/scripts/convert_automoma_hdf5_layout.py" \
+            "$hdf5_path" \
+            "$robotwin_merged_hdf5" \
+            --direction merge \
+            --mode copy \
+            --overwrite
+        hdf5_path="$robotwin_merged_hdf5"
+    elif [[ "$hdf5_name" == *.hdf5 && -d "$data_root/${hdf5_name%.hdf5}" ]]; then
+        local split_hdf5_dir="$data_root/${hdf5_name%.hdf5}"
+        robotwin_tmp_dir="$(mktemp -d "$REPO_ROOT/data/automoma/.merge_for_convert.XXXXXX")"
+        local robotwin_merged_hdf5="$robotwin_tmp_dir/$(basename "$split_hdf5_dir").hdf5"
+        python "$REPO_ROOT/scripts/convert_automoma_hdf5_layout.py" \
+            "$split_hdf5_dir" \
+            "$robotwin_merged_hdf5" \
+            --direction merge \
+            --mode copy \
+            --overwrite
+        hdf5_path="$robotwin_merged_hdf5"
     fi
 
     local -a cmd=(
@@ -417,8 +546,15 @@ do_convert() {
     echo "Command: ${cmd[*]}"
     echo ""
     pushd "$robotwin_policy_dir" > /dev/null
+    set +e
     run_logged "${cmd[@]}"
+    local status=$?
+    set -e
     popd > /dev/null
+    if [[ -n "$robotwin_tmp_dir" ]]; then
+        rm -rf "$robotwin_tmp_dir"
+    fi
+    return "$status"
 }
 
 do_train() {
