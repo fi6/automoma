@@ -160,12 +160,14 @@ do_record() {
     local dataset_file_explicit="false"
     local record_format="${RECORD_HDF5_FORMAT:-full}"
     local start_episode="${RECORD_START_EPISODE:-0}"
+    local episode_file_start="${RECORD_EPISODE_FILE_START:-1}"
     local headless_flag=""
     local record_interpolated="${RECORD_INTERPOLATED:-1}"
     local record_interpolation_type="${RECORD_INTERPOLATION_TYPE:-linear}"
     local record_decimation="${RECORD_DECIMATION:-}"
     local record_init_steps="${RECORD_INIT_STEPS:-}"
     local auto_debug_tracking="${RECORD_AUTO_DEBUG_TRACKING:-0}"
+    local add_cameras="true"
 
     local -a record_overrides=()
     while [[ $# -gt 0 ]]; do
@@ -184,6 +186,17 @@ do_record() {
             --single_hdf5) record_format="full"; shift ;;
             --start_episode=*) start_episode="${1#*=}"; shift ;;
             --start_episode) start_episode="$2"; shift 2 ;;
+            --episode_file_start=*) episode_file_start="${1#*=}"; shift ;;
+            --episode_file_start) episode_file_start="$2"; shift 2 ;;
+            --no_record|--no-record)
+                add_cameras="false"
+                record_overrides+=("$1")
+                shift
+                ;;
+            --disable_cameras|--disable-cameras)
+                add_cameras="false"
+                shift
+                ;;
             *) record_overrides+=("$1"); shift ;;
         esac
     done
@@ -202,6 +215,10 @@ do_record() {
     fi
     if ! [[ "$start_episode" =~ ^[0-9]+$ ]]; then
         echo "Error: --start_episode must be a non-negative integer." >&2
+        exit 1
+    fi
+    if ! [[ "$episode_file_start" =~ ^[0-9]+$ ]] || (( episode_file_start < 1 )); then
+        echo "Error: --episode_file_start must be a positive integer." >&2
         exit 1
     fi
     if [[ "$record_format" == "episodes" && "$dataset_file_explicit" == "false" ]]; then
@@ -256,10 +273,12 @@ do_record() {
     done
 
     local -a recorder_args=(
-        --enable_cameras
         --mobile_base_relative
         --traj_file "$traj_file"
     )
+    if [[ "$add_cameras" == "true" ]]; then
+        recorder_args=(--enable_cameras "${recorder_args[@]}")
+    fi
 
     if [[ -n "$headless_flag" ]]; then
         recorder_args+=("$headless_flag")
@@ -335,7 +354,7 @@ do_record() {
     else
         local ep_idx
         for ((ep_idx = 0; ep_idx < num_episodes; ep_idx++)); do
-            local episode_number=$((ep_idx + 1))
+            local episode_number=$((episode_file_start + ep_idx))
             local actual_start=$((start_episode + ep_idx))
             local episode_file
             printf -v episode_file "%s/episode_%06d.hdf5" "$dataset_file" "$episode_number"
@@ -348,7 +367,7 @@ do_record() {
                 "${task_args[@]}"
             )
             echo ""
-            echo "[SplitRecord] episode ${episode_number}/${num_episodes}: $episode_file"
+            echo "[SplitRecord] episode ${episode_number}/${episode_file_start}+${num_episodes}-1: $episode_file"
             echo "Command: ${cmd[*]}"
             run_logged "${cmd[@]}"
         done
