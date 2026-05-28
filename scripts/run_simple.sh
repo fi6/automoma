@@ -117,7 +117,7 @@ python scripts/prepare_object.py --object_type Microwave --object_id 7221
 bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 10 --set_state
 bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 10 --headless
 bash scripts/run_pipeline.sh record microwave_7221 scene_1_seed_1 10 --interpolated 2
-bash scripts/run_pipeline.sh convert microwave_7221 scene_0_seed_0 10
+bash scripts/run_pipeline.sh convert lerobot microwave_7221 scene_0_seed_0 10
 
 # Record with eval-style success validation enabled.
 # Only demos satisfying final_door_open && final_handle_distance <= 0.1 are kept in HDF5.
@@ -144,7 +144,7 @@ bash scripts/run_pipeline.sh record dishwasher_11622 scene_0_seed_0 30 --set_sta
 bash scripts/run_pipeline.sh record dishwasher_11622 scene_0_seed_0 30 --set_state --disable_collision --headless
 bash scripts/run_pipeline.sh record dishwasher_11622 scene_0_seed_0 30 --set_state --disable_collision --interpolated 1000 --device cpu
 
-bash scripts/run_pipeline.sh convert dishwasher_11622 scene_0_seed_0 30
+bash scripts/run_pipeline.sh convert lerobot dishwasher_11622 scene_0_seed_0 30
 
 lerobot-dataset-viz \
     --repo-id automoma/summit_franka_open-dishwasher_11622-scene_0_seed_0-30 \
@@ -179,21 +179,31 @@ bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 10 \
 # 3. GRASP FILTER DEBUG — GUI replay without recording HDF5
 # =============================================================================
 # Use this on a machine with a working desktop/VNC/NoMachine/DCV display.
-# This reuses the record replay path, but --no_record writes only lightweight
-# metrics CSV. It is useful for visually inspecting why a grasp-filter object
-# failed without spending time or disk on image/HDF5 recording.
+# This uses the replay-only path, so it never writes image/HDF5 recordings.
+# Add --metrics to write a lightweight CSV while visually inspecting why a
+# grasp-filter object failed.
 #
 # Oven examples from the 2-scene grasp-filter run:
 #   - traj 612, 641: door opens substantially, but final engagement is lost.
 #   - traj 1005, 1076: door barely opens, useful for checking early contact/grasp.
 mkdir -p debug/grasp_visual
-bash scripts/run_pipeline.sh record oven_101773 scene_30_seed_30 4 \
+bash scripts/run_pipeline.sh replay oven_101773 scene_30_seed_30 4 \
   --no-headless \
-  --no_record \
-  --metrics debug/grasp_visual/oven_scene30_probe.csv \
+  --metrics \
+  --metrics_file debug/grasp_visual/oven_scene30_probe.csv \
   --episode_indices 612,641,1005,1076 \
-  --validate_record_success \
   --interpolated 5 \
   --interpolation_type cubic \
   --decimation 1 \
   --init_steps 5
+
+# Batch trace probe: 5 objects, one random scene each, 50 random trajectories each.
+python scripts/run_grasp_filter_metrics.py \
+  --max-objects 5 \
+  --scenes-per-object 1 \
+  --max-episodes-per-scene 50 \
+  --interpolated 5 \
+  --interpolation-type cubic \
+  --decimation 1 \
+  --init-steps 5 \
+  --keep-going

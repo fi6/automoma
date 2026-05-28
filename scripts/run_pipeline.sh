@@ -2,7 +2,7 @@
 # =============================================================================
 # run_pipeline.sh — Unified pipeline for the lerobot-arena project.
 #
-# Supports: plan, record, convert, train, eval, record_dataset_eval, debug
+# Supports: plan, record, replay, convert, train, eval, record_dataset_eval, debug
 # =============================================================================
 
 set -euo pipefail
@@ -39,6 +39,7 @@ usage() {
 Usage:
   bash scripts/run_pipeline.sh plan    <object_id> <scene_name> <split> [overrides...]
   bash scripts/run_pipeline.sh record  <object_name> <scene_name> <num_ep> [--record_format full|episodes] [--headless|--no-headless] [--validate_record_success] [overrides...]
+  bash scripts/run_pipeline.sh replay  <object_name> <scene_name> <num_ep> [--metrics [--metrics_file PATH]] [--headless|--no-headless] [overrides...]
   bash scripts/run_pipeline.sh convert <benchmark> <object_name> <scene_name> <num_ep> [--policy=POLICY] [overrides...]
   bash scripts/run_pipeline.sh train   <benchmark> <policy> <object_name> <scene_name> <num_ep> [overrides...]
   bash scripts/run_pipeline.sh eval    <benchmark> <policy> <object_name> <scene_name> <num_ep> [--headless|--no-headless] [overrides...]
@@ -154,6 +155,17 @@ do_record() {
     local scene_name="$1"; shift
     local num_episodes="$1"; shift
 
+    local arg
+    for arg in "$@"; do
+        case "$arg" in
+            --no_record|--no-record)
+                echo "Warning: record --no_record is deprecated; use replay instead. Routing to replay_automoma_demos.py." >&2
+                do_replay "$object_name" "$scene_name" "$num_episodes" "$@"
+                return
+                ;;
+        esac
+    done
+
     local name; name="$(mk_exp_name "$object_name" "$scene_name" "$num_episodes")"
     local traj_file="$REPO_ROOT/data/trajs/summit_franka/${object_name}/${scene_name}/train/traj_data_train.pt"
     local dataset_file="$REPO_ROOT/data/automoma/${name}.hdf5"
@@ -162,10 +174,10 @@ do_record() {
     local start_episode="${RECORD_START_EPISODE:-0}"
     local episode_file_start="${RECORD_EPISODE_FILE_START:-1}"
     local headless_flag=""
-    local record_interpolated="${RECORD_INTERPOLATED:-1}"
-    local record_interpolation_type="${RECORD_INTERPOLATION_TYPE:-linear}"
-    local record_decimation="${RECORD_DECIMATION:-}"
-    local record_init_steps="${RECORD_INIT_STEPS:-}"
+    local record_interpolated="${RECORD_INTERPOLATED:-5}"
+    local record_interpolation_type="${RECORD_INTERPOLATION_TYPE:-cubic}"
+    local record_decimation="${RECORD_DECIMATION:-1}"
+    local record_init_steps="${RECORD_INIT_STEPS:-5}"
     local auto_debug_tracking="${RECORD_AUTO_DEBUG_TRACKING:-0}"
     local add_cameras="true"
 
@@ -188,11 +200,6 @@ do_record() {
             --start_episode) start_episode="$2"; shift 2 ;;
             --episode_file_start=*) episode_file_start="${1#*=}"; shift ;;
             --episode_file_start) episode_file_start="$2"; shift 2 ;;
-            --no_record|--no-record)
-                add_cameras="false"
-                record_overrides+=("$1")
-                shift
-                ;;
             --disable_cameras|--disable-cameras)
                 add_cameras="false"
                 shift
@@ -372,6 +379,157 @@ do_record() {
             run_logged "${cmd[@]}"
         done
     fi
+    popd > /dev/null
+}
+
+do_replay() {
+    local object_name="$1"; shift
+    local scene_name="$1"; shift
+    local num_episodes="$1"; shift
+
+    local traj_file="$REPO_ROOT/data/trajs/summit_franka/${object_name}/${scene_name}/train/traj_data_train.pt"
+    local start_episode="${REPLAY_START_EPISODE:-${RECORD_START_EPISODE:-0}}"
+    local headless_flag=""
+    local replay_interpolated="${REPLAY_INTERPOLATED:-${RECORD_INTERPOLATED:-5}}"
+    local replay_interpolation_type="${REPLAY_INTERPOLATION_TYPE:-${RECORD_INTERPOLATION_TYPE:-cubic}}"
+    local replay_decimation="${REPLAY_DECIMATION:-${RECORD_DECIMATION:-1}}"
+    local replay_init_steps="${REPLAY_INIT_STEPS:-${RECORD_INIT_STEPS:-5}}"
+    local auto_debug_tracking="${REPLAY_AUTO_DEBUG_TRACKING:-${RECORD_AUTO_DEBUG_TRACKING:-0}}"
+    local add_cameras="false"
+    local metrics_enabled="false"
+    local metrics_file=""
+
+    local -a replay_overrides=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --headless) headless_flag="--headless"; shift ;;
+            --no-headless) headless_flag=""; shift ;;
+            --traj_file=*) traj_file="${1#*=}"; shift ;;
+            --traj_file) traj_file="$2"; shift 2 ;;
+            --start_episode=*) start_episode="${1#*=}"; shift ;;
+            --start_episode) start_episode="$2"; shift 2 ;;
+            --metrics)
+                metrics_enabled="true"
+                if [[ $# -gt 1 && "$2" != --* ]]; then
+                    metrics_file="$2"
+                    shift 2
+                else
+                    shift
+                fi
+                ;;
+            --metrics=*) metrics_enabled="true"; metrics_file="${1#*=}"; shift ;;
+            --metrics_file=*) metrics_enabled="true"; metrics_file="${1#*=}"; shift ;;
+            --metrics_file) metrics_enabled="true"; metrics_file="$2"; shift 2 ;;
+            --episode_indices_file=*) replay_overrides+=(--episode_indices_file "$(resolve_repo_path "${1#*=}")"); shift ;;
+            --episode_indices_file) replay_overrides+=(--episode_indices_file "$(resolve_repo_path "$2")"); shift 2 ;;
+            --enable_cameras) add_cameras="true"; shift ;;
+            --disable_cameras|--disable-cameras) add_cameras="false"; shift ;;
+            --no_record|--no-record|--validate_record_success|--keep_failed_record_demos)
+                shift
+                ;;
+            --dataset_file=*) shift ;;
+            --dataset_file) shift 2 ;;
+            --record_format=*|--hdf5_format=*|--split_episodes|--single_hdf5) shift ;;
+            --record_format|--hdf5_format) shift 2 ;;
+            *) replay_overrides+=("$1"); shift ;;
+        esac
+    done
+    set -- "${replay_overrides[@]}"
+
+    if ! [[ "$num_episodes" =~ ^[0-9]+$ ]] || (( num_episodes < 1 )); then
+        echo "Error: num_episodes must be a positive integer." >&2
+        exit 1
+    fi
+    if ! [[ "$start_episode" =~ ^[0-9]+$ ]]; then
+        echo "Error: --start_episode must be a non-negative integer." >&2
+        exit 1
+    fi
+    if [[ "$traj_file" != /* ]]; then
+        traj_file="$REPO_ROOT/$traj_file"
+    fi
+    if [[ -n "$metrics_file" && "$metrics_file" != /* ]]; then
+        metrics_file="$REPO_ROOT/$metrics_file"
+    fi
+
+    setup_log replay "$object_name" "$scene_name"
+
+    local add_default_interpolated="true"
+    local add_default_interpolation_type="true"
+    local add_default_decimation="true"
+    local add_default_init_steps="true"
+    local has_debug_joint_tracking="false"
+    local has_debug_joint_tracking_steps="false"
+    local has_debug_joint_tracking_interval="false"
+    local has_debug_joint_tracking_topk="false"
+    local has_debug_joint_tracking_fk_link="false"
+    local arg
+    for arg in "$@"; do
+        case "$arg" in
+            --interpolated|--interpolated=*) add_default_interpolated="false" ;;
+            --interpolation_type|--interpolation_type=*) add_default_interpolation_type="false" ;;
+            --decimation|--decimation=*) add_default_decimation="false" ;;
+            --init_steps|--init_steps=*) add_default_init_steps="false" ;;
+            --debug_joint_tracking) has_debug_joint_tracking="true" ;;
+            --debug_joint_tracking_steps|--debug_joint_tracking_steps=*) has_debug_joint_tracking_steps="true" ;;
+            --debug_joint_tracking_interval|--debug_joint_tracking_interval=*) has_debug_joint_tracking_interval="true" ;;
+            --debug_joint_tracking_topk|--debug_joint_tracking_topk=*) has_debug_joint_tracking_topk="true" ;;
+            --debug_joint_tracking_fk_link|--debug_joint_tracking_fk_link=*) has_debug_joint_tracking_fk_link="true" ;;
+        esac
+    done
+
+    local -a replay_args=(--traj_file "$traj_file")
+    if [[ "$add_cameras" == "true" ]]; then
+        replay_args=(--enable_cameras "${replay_args[@]}")
+    fi
+    if [[ -n "$headless_flag" ]]; then
+        replay_args+=("$headless_flag")
+    fi
+    if [[ "$metrics_enabled" == "true" ]]; then
+        replay_args+=(--metrics)
+        if [[ -n "$metrics_file" ]]; then
+            replay_args+=(--metrics_file "$metrics_file")
+        fi
+    fi
+    if [[ "$add_default_interpolated" == "true" ]]; then
+        replay_args+=(--interpolated "$replay_interpolated")
+    fi
+    if [[ "$add_default_interpolation_type" == "true" ]]; then
+        replay_args+=(--interpolation_type "$replay_interpolation_type")
+    fi
+    if [[ "$add_default_decimation" == "true" && -n "$replay_decimation" ]]; then
+        replay_args+=(--decimation "$replay_decimation")
+    fi
+    if [[ "$add_default_init_steps" == "true" && -n "$replay_init_steps" ]]; then
+        replay_args+=(--init_steps "$replay_init_steps")
+    fi
+    if [[ "$auto_debug_tracking" == "1" ]]; then
+        [[ "$has_debug_joint_tracking" != "true" ]] && replay_args+=(--debug_joint_tracking)
+        [[ "$has_debug_joint_tracking_steps" != "true" ]] && replay_args+=(--debug_joint_tracking_steps 0)
+        [[ "$has_debug_joint_tracking_interval" != "true" ]] && replay_args+=(--debug_joint_tracking_interval 0)
+        [[ "$has_debug_joint_tracking_topk" != "true" ]] && replay_args+=(--debug_joint_tracking_topk 12)
+        [[ "$has_debug_joint_tracking_fk_link" != "true" ]] && replay_args+=(--debug_joint_tracking_fk_link ee_link)
+    fi
+    append_robot_object_friction_args replay_args
+
+    local -a task_args=(
+        "$@"
+        summit_franka_open_door
+        --object_name "$object_name"
+        --scene_name "$scene_name"
+        --object_center
+    )
+    local -a cmd=(
+        python isaaclab_arena/scripts/replay_automoma_demos.py
+        "${replay_args[@]}"
+        --num_episodes "$num_episodes"
+        --start_episode "$start_episode"
+        "${task_args[@]}"
+    )
+
+    echo "Command: ${cmd[*]}"
+    echo ""
+    pushd "$ISAACLAB_ARENA" > /dev/null
+    run_logged "${cmd[@]}"
     popd > /dev/null
 }
 
@@ -1093,6 +1251,12 @@ case "$MODE" in
         require_arg "${2:-}" "scene_name"
         require_arg "${3:-}" "num_episodes"
         do_record "$1" "$2" "$3" "${@:4}"
+        ;;
+    replay)
+        require_arg "${1:-}" "object_name"
+        require_arg "${2:-}" "scene_name"
+        require_arg "${3:-}" "num_episodes"
+        do_replay "$1" "$2" "$3" "${@:4}"
         ;;
     convert|convert_hdf5_to_lerobot)
         require_arg "${1:-}" "benchmark"

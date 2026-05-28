@@ -103,10 +103,11 @@ If validation is blocked by environment limits, missing assets, GPU requirements
 ## Common Workflows
 - Planning: `python scripts/plan.py`
 - Planning with overrides: `python scripts/plan.py scene_name=... object_id=...`
-- Record/replay demos: `bash scripts/run_pipeline.sh record <object_name> <scene_name> <num_episodes> [overrides...]`
-- Convert HDF5 to LeRobot: `bash scripts/run_pipeline.sh convert <object_name> <scene_name> <num_episodes> [overrides...]`
-- Train a policy: `bash scripts/run_pipeline.sh train <policy> <object_name> <scene_name> <num_episodes> [overrides...]`
-- Evaluate a policy: `bash scripts/run_pipeline.sh eval <policy> <object_name> <scene_name> <num_episodes> [overrides...]`
+- Record HDF5 demos: `bash scripts/run_pipeline.sh record <object_name> <scene_name> <num_episodes> [overrides...]`
+- Replay without HDF5: `bash scripts/run_pipeline.sh replay <object_name> <scene_name> <num_episodes> [--metrics --metrics_file <path>] [overrides...]`
+- Convert HDF5 to LeRobot: `bash scripts/run_pipeline.sh convert lerobot <object_name> <scene_name> <num_episodes> [overrides...]`
+- Train a policy: `bash scripts/run_pipeline.sh train <benchmark> <policy> <object_name> <scene_name> <num_episodes> [overrides...]`
+- Evaluate a policy: `bash scripts/run_pipeline.sh eval <benchmark> <policy> <object_name> <scene_name> <num_episodes> [overrides...]`
 - Debug trajectory replay: `bash scripts/run_pipeline.sh debug <object_name> <scene_name> --debug_file <path>`
 
 Use `scripts/run_simple.sh` as a quick reference for known working command patterns, but verify assumptions against the actual implementation before changing code.

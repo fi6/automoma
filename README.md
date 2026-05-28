@@ -289,18 +289,56 @@ python scripts/plan.py object_id=7221 scene_name=scene_0_seed_0 planner.visualiz
 # Prepare object
 python scripts/prepare_object.py --object_type Microwave --object_id 7221
 
-# Record with 30 episodes
+# Record with 30 episodes.
+# Default replay timing is --interpolated 5 --interpolation_type cubic --decimation 1 --init_steps 5.
 bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 30
 
-# Interpolated recording for smoother trajectories
+# Override interpolation only when doing an ablation/debug run.
 bash scripts/run_pipeline.sh record microwave_7221 scene_1_seed_1 30 --interpolated 2
+```
+
+### 2.1 Replay Trajectories Without Recording HDF5
+
+Use `replay` when you want to inspect planner trajectories or collect lightweight
+metrics without spending time or disk on camera/HDF5 recording.
+
+```bash
+bash scripts/run_pipeline.sh replay microwave_7221 scene_0_seed_0 4 \
+  --metrics \
+  --metrics_file debug/replay_probe/microwave_scene0.csv \
+  --episode_indices 0,1,2,3 \
+  --interpolated 5 \
+  --interpolation_type cubic \
+  --decimation 1 \
+  --init_steps 5
+```
+
+With `--metrics`, replay writes:
+- a per-episode summary CSV at `--metrics_file`;
+- per-step joint target/actual/error and EEF FK target/actual pose under
+  `<metrics_file_parent>/debug_curves/`;
+- joint-value, joint-error, EEF-pose, handle-tracking, and one joint/EEF gap
+  PNG per replayed trajectory.
+
+For the 5-object replay trace probe:
+
+```bash
+python scripts/run_grasp_filter_metrics.py \
+  --max-objects 5 \
+  --scenes-per-object 1 \
+  --max-episodes-per-scene 50 \
+  --interpolated 5 \
+  --interpolation-type cubic \
+  --decimation 1 \
+  --init-steps 5 \
+  --keep-going
 ```
 
 ### 3. Convert to LeRobot Format
 
 ```bash
 # Convert recorded trajectories to LeRobot dataset
-bash scripts/run_pipeline.sh convert microwave_7221 scene_0_seed_0 30
+bash scripts/run_pipeline.sh convert lerobot microwave_7221 scene_0_seed_0 30
 
 # Visualize converted LeRobot dataset
 lerobot-dataset-viz \
@@ -374,7 +412,7 @@ Each eval run writes a live CSV to `<output_dir>/per_episode_results.csv` with p
 Handle/robot debug markers are optional and remain off by default. Enable them for eval/debug runs with:
 
 ```bash
-DEBUG_VISUALIZE_HANDLE=true bash scripts/run_pipeline.sh eval act microwave_7221 scene_7_seed_7 1000 \
+DEBUG_VISUALIZE_HANDLE=true bash scripts/run_pipeline.sh eval lerobot act microwave_7221 scene_7_seed_7 1000 \
   --output_dir=/path/to/eval_dir \
   --eval.n_episodes=10 \
   --env.headless=true
@@ -388,7 +426,7 @@ DEBUG_VISUALIZE_HANDLE=true bash scripts/run_pipeline.sh eval act microwave_7221
 # Prepare and record dishwasher trajectories
 python scripts/prepare_object.py --object_type Dishwasher --object_id 11622
 bash scripts/run_pipeline.sh record dishwasher_11622 scene_0_seed_0 30 --set_state --disable_collision
-bash scripts/run_pipeline.sh convert dishwasher_11622 scene_0_seed_0 30
+bash scripts/run_pipeline.sh convert lerobot dishwasher_11622 scene_0_seed_0 30
 ```
 
 ### Debugging Trajectories

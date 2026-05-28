@@ -2,8 +2,8 @@
 """Run metrics-only AutoMoMa replay for grasp filtering.
 
 This script samples planned trajectories from data/trajs/summit_franka, replays
-them through the existing record pipeline with --metrics --no_record, and keeps
-only lightweight CSV/JSON/PNG outputs.
+them through the dedicated replay pipeline with --metrics, and keeps only
+lightweight CSV/JSON/PNG outputs.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ import argparse
 import csv
 import hashlib
 import json
+import math
 import os
 import random
 import subprocess
@@ -91,7 +92,6 @@ def infer_grasp_map(object_name: str, scene_name: str, total: int, config_grasps
 
 
 def discover_work(args: argparse.Namespace) -> list[dict[str, Any]]:
-    rng = random.Random(args.seed)
     selected_scene_names: dict[str, set[str]] = defaultdict(set)
     if args.scene_list_file is not None:
         with args.scene_list_file.open(newline="", encoding="utf-8") as f:
@@ -116,7 +116,11 @@ def discover_work(args: argparse.Namespace) -> list[dict[str, Any]]:
 
     config_grasps = load_grasp_ids_from_config(args.config)
     work: list[dict[str, Any]] = []
-    for object_name, scenes in sorted(by_object.items()):
+    object_items = sorted(by_object.items())
+    if args.max_objects is not None:
+        object_items = object_items[: args.max_objects]
+
+    for object_name, scenes in object_items:
         scenes = sorted(scenes)
         if selected_scene_names:
             requested = selected_scene_names.get(object_name, set())
@@ -199,12 +203,132 @@ def read_csv(path: Path) -> list[dict[str, str]]:
 def write_csv(path: Path, rows: list[dict[str, Any]], fieldnames: list[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
 
 
+def union_fieldnames(rows: list[dict[str, Any]], preferred: list[str] | None = None) -> list[str]:
+    fields: list[str] = []
+    for key in preferred or []:
+        if key not in fields:
+            fields.append(key)
+    for row in rows:
+        for key in row:
+            if key not in fields:
+                fields.append(key)
+    return fields
+
+
+def _float_or_nan(value: Any) -> float:
+    try:
+        if value in (None, ""):
+            return float("nan")
+        return float(value)
+    except (TypeError, ValueError):
+        return float("nan")
+
+
+def _finite(values: list[float]) -> list[float]:
+    return [value for value in values if math.isfinite(value)]
+
+
+def _max_or_nan(values: list[float]) -> float:
+    finite = _finite(values)
+    return max(finite) if finite else float("nan")
+
+
+def _mean_or_nan(values: list[float]) -> float:
+    finite = _finite(values)
+    return sum(finite) / len(finite) if finite else float("nan")
+
+
+def _format_float(value: float) -> str:
+    return "" if not math.isfinite(value) else f"{value:.9g}"
+
+
+def read_trace_summary(path: Path) -> list[dict[str, Any]]:
+    rows = read_csv(path)
+    if not rows:
+        return []
+
+    base_name = path.name.split("-joint-tracking", 1)[0]
+    object_name = base_name
+    scene_name = ""
+    if "__" in base_name:
+        object_name, scene_name = base_name.split("__", 1)
+
+    out = []
+    for row in rows:
+        merged = dict(row)
+        merged["object_name"] = object_name
+        merged["scene_name"] = scene_name
+        merged["trace_summary_file"] = str(path)
+        out.append(merged)
+    return out
+
+
+def summarize_trace_artifacts(output_dir: Path) -> None:
+    trace_rows: list[dict[str, Any]] = []
+    for path in sorted(
+        (output_dir / "per_scene" / "debug_curves").glob("*-joint-tracking-episode-summary*.csv")
+    ):
+        trace_rows.extend(read_trace_summary(path))
+    if not trace_rows:
+        return
+
+    fieldnames = union_fieldnames(trace_rows, preferred=["object_name", "scene_name"])
+    write_csv(output_dir / "trajectory_trace_summary.csv", trace_rows, fieldnames)
+
+    grouped: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    grouped_obj: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in trace_rows:
+        grouped[(row["object_name"], row["scene_name"])].append(row)
+        grouped_obj[row["object_name"]].append(row)
+
+    def aggregate(rows: list[dict[str, Any]], extra: dict[str, Any]) -> dict[str, Any]:
+        first20_nongripper_gap = [_float_or_nan(row.get("first20_max_nongripper_abs_gap")) for row in rows]
+        first20_base_span = [_float_or_nan(row.get("first20_actual_base_span")) for row in rows]
+        first20_arm_span = [_float_or_nan(row.get("first20_actual_arm_span")) for row in rows]
+        first20_target_nongripper_span = [
+            _float_or_nan(row.get("first20_target_nongripper_span")) for row in rows
+        ]
+        first20_actual_nongripper_span = [
+            _float_or_nan(row.get("first20_actual_nongripper_span")) for row in rows
+        ]
+        eef_pos_gap = [_float_or_nan(row.get("max_eef_pos_gap_m")) for row in rows]
+        eef_rot_gap = [_float_or_nan(row.get("max_eef_rot_gap_rad")) for row in rows]
+        return {
+            **extra,
+            "traces": len(rows),
+            "first20_max_nongripper_gap": _format_float(_max_or_nan(first20_nongripper_gap)),
+            "first20_mean_nongripper_gap": _format_float(_mean_or_nan(first20_nongripper_gap)),
+            "first20_max_actual_base_span": _format_float(_max_or_nan(first20_base_span)),
+            "first20_max_actual_arm_span": _format_float(_max_or_nan(first20_arm_span)),
+            "first20_max_target_nongripper_span": _format_float(_max_or_nan(first20_target_nongripper_span)),
+            "first20_max_actual_nongripper_span": _format_float(_max_or_nan(first20_actual_nongripper_span)),
+            "max_eef_pos_gap_m": _format_float(_max_or_nan(eef_pos_gap)),
+            "mean_eef_pos_gap_m": _format_float(_mean_or_nan(eef_pos_gap)),
+            "max_eef_rot_gap_rad": _format_float(_max_or_nan(eef_rot_gap)),
+            "mean_eef_rot_gap_rad": _format_float(_mean_or_nan(eef_rot_gap)),
+        }
+
+    scene_rows = [
+        aggregate(rows, {"object_name": obj, "scene_name": scene})
+        for (obj, scene), rows in sorted(grouped.items())
+    ]
+    object_rows = [
+        aggregate(rows, {"object_name": obj})
+        for obj, rows in sorted(grouped_obj.items())
+    ]
+    trace_fields = list(scene_rows[0].keys())
+    write_csv(output_dir / "trajectory_trace_by_scene.csv", scene_rows, trace_fields)
+    write_csv(output_dir / "trajectory_trace_by_object.csv", object_rows, list(object_rows[0].keys()))
+
+
 def summarize(output_dir: Path, threshold: float) -> None:
+    summarize_trace_artifacts(output_dir)
+
     manifest_rows = read_csv(output_dir / "manifest.csv")
     manifest = {
         (row["object_name"], row["scene_name"], int(row["traj_index"])): row
@@ -221,7 +345,7 @@ def summarize(output_dir: Path, threshold: float) -> None:
             raw_rows.append(merged)
     if not raw_rows:
         return
-    fields = list(raw_rows[0].keys())
+    fields = union_fieldnames(raw_rows)
     write_csv(output_dir / "results_raw_joined.csv", raw_rows, fields)
 
     grouped: dict[tuple[str, str], dict[str, Any]] = {}
@@ -325,20 +449,19 @@ def run_work(work: list[dict[str, Any]], output_dir: Path, args: argparse.Namesp
         cmd = [
             "bash",
             "scripts/run_pipeline.sh",
-            "record",
+            "replay",
             item["object_name"],
             item["scene_name"],
             str(len(item["indices"])),
             "--headless",
             "--disable_cameras",
-            "--no_record",
             "--metrics",
+            "--metrics_file",
             str(metrics_path),
             "--episode_indices_file",
             item["indices_file"],
             "--traj_file",
             item["traj_file"],
-            "--validate_record_success",
             "--interpolated",
             str(args.interpolated),
             "--interpolation_type",
@@ -348,6 +471,8 @@ def run_work(work: list[dict[str, Any]], output_dir: Path, args: argparse.Namesp
             "--init_steps",
             str(args.init_steps),
         ]
+        if args.no_step_trace:
+            cmd.append("--no_step_trace")
         print(f"[{idx}/{len(work)}] running {item['object_name']} {item['scene_name']} n={len(item['indices'])}", flush=True)
         with progress_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps({"event": "start", "index": idx, "total": len(work), **{k: item[k] for k in ("object_name", "scene_name", "metrics_file")}}) + "\n")
@@ -383,6 +508,7 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=20260526)
     parser.add_argument("--scenes-per-object", type=int, default=5)
     parser.add_argument("--scene-list-file", type=Path, default=None)
+    parser.add_argument("--max-objects", type=int, default=None)
     parser.add_argument("--min-scene-episodes", type=int, default=500)
     parser.add_argument("--max-episodes-per-scene", type=int, default=2000)
     parser.add_argument("--success-threshold", type=float, default=0.7)
@@ -393,9 +519,17 @@ def main() -> int:
     parser.add_argument("--init-steps", type=int, default=5)
     parser.add_argument("--static-friction", type=float, default=1.0)
     parser.add_argument("--dynamic-friction", type=float, default=1.0)
+    parser.add_argument("--no-step-trace", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--keep-going", action="store_true")
     args = parser.parse_args()
+
+    if args.max_objects is not None and args.max_objects < 1:
+        parser.error("--max-objects must be >= 1 when set")
+    if args.scenes_per_object < 1:
+        parser.error("--scenes-per-object must be >= 1")
+    if args.max_episodes_per_scene < 1:
+        parser.error("--max-episodes-per-scene must be >= 1")
 
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_dir = args.output_dir or (DEFAULT_OUTPUT_ROOT / run_id)
