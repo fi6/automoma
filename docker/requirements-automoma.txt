@@ -1,0 +1,45 @@
+# Runtime pins mirrored from the working local `automoma` conda environment.
+# Isaac Sim itself is supplied by the base image; torch/torchvision are installed
+# separately from the cu128 PyTorch index before this file is applied.
+accelerate==1.13.0
+av==15.1.0
+cmake==4.1.3
+datasets==4.1.1
+deepdiff==8.6.2
+diffusers==0.35.2
+draccus==0.10.0
+einops==0.8.2
+fpsample>=1.0.0,<2.0.0
+gymnasium==1.2.0
+h5py==3.16.0
+hf-transfer>=0.1.8
+huggingface-hub[hf-transfer]==0.35.3
+imageio[ffmpeg]==2.37.0
+ipywidgets>=8.0
+jsonlines==4.0.0
+lightwheel-sdk==1.0.1
+matplotlib>=3.7.0
+numpy==1.26.0
+numpy-quaternion==2024.0.13
+omegaconf==2.3.0
+onnxruntime==1.23.2
+opencv-python-headless==4.11.0.86
+pillow>=10.0.0
+pynput==1.8.1
+pyserial==3.5
+PyYAML==6.0.2
+qpsolvers==4.12.0
+# Installed separately with --no-deps because rerun-sdk 0.26.2 metadata requires numpy>=2,
+# while Isaac Sim/cuRobo are validated with numpy==1.26.0.
+scikit-image==0.26.0
+scikit-learn==1.8.0
+scipy==1.15.3
+termcolor==3.3.0
+torchcodec==0.5
+tqdm>=4.65.0
+usd-core==26.5
+vuer[all]==0.0.70
+wandb==0.24.2
+warp-lang==1.12.1
+yourdfpy==0.0.60
+zarr>=2.18.0,<3.0.0
