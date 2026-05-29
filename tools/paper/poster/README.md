@@ -1,8 +1,7 @@
 # Poster Reach Comparison Renders
 
 Standalone poster-figure scripts for visualizing why `summit_franka` has a
-large mobile-base workspace while a fixed Franka is limited to elevated support
-surfaces.
+large mobile-base workspace while a fixed Franka is limited by a fixed base.
 
 ## Inputs
 
@@ -31,7 +30,9 @@ python tools/paper/poster/render_reach_comparison.py --check_inputs
 
 ## Render
 
-Use the wrapper so the Isaac Sim/IsaacLab environment variables are set:
+Use the wrapper so the Isaac Sim/IsaacLab environment variables are set. The
+current default renders only `ithor_floorplan1_1`; the mobile robot gets only an
+overview, and the fixed Franka gets an overview plus a robot-focused detail:
 
 ```bash
 bash tools/paper/poster/run_poster_render.sh
@@ -54,9 +55,8 @@ Outputs are written to `outputs/paper/poster/<scene>/<robot>/`:
 - `overview_all.png`
 - `overview_robots_only.png`
 - `overview_scene_objects_only.png`
-- `detail_all.png`
-- `detail_robots_only.png`
-- `detail_scene_objects_only.png`
+- `detail_all.png`, `detail_robots_only.png`, `detail_scene_objects_only.png`
+  for fixed Franka by default, or for any robot when `--views detail` is passed
 - `overview_contact_sheet.png`
 - `detail_contact_sheet.png`
 - `manifest.json`

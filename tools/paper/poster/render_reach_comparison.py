@@ -26,17 +26,17 @@ import yaml
 # Hackable poster parameters
 # =============================================================================
 
-DEFAULT_SCENES = (
-    "ithor_floorplan1_1",
-    "ithor_floorplan5_1",
-    "ithor_floorplan16_1",
-)
+DEFAULT_SCENES = ("ithor_floorplan1_1",)
 DEFAULT_ROBOTS = ("summit_franka", "franka")
 DEFAULT_VIEWS = ("overview", "detail")
+DEFAULT_ROBOT_VIEWS = {
+    "summit_franka": ("overview",),
+    "franka": ("overview", "detail"),
+}
 DEFAULT_MODES = ("all", "robots_only", "scene_objects_only")
 
-SUMMIT_SAMPLE_COUNT = 12
-FRANKA_SAMPLE_COUNT = 2
+SUMMIT_SAMPLE_COUNT = 16
+FRANKA_SAMPLE_COUNT = 14
 RANDOM_SEED = 20260529
 
 IMAGE_WIDTH = 1800
@@ -60,9 +60,23 @@ FRANKA_SURFACE_Z_OFFSET = 0.005
 ELEVATED_SURFACE_MIN_Z = 0.30
 
 # Random arm poses are sampled around natural defaults, then clamped to limits.
-SUMMIT_ARM_NOISE_FRACTION = 0.14
+SUMMIT_ARM_NOISE_FRACTION = 0.28
 FRANKA_ARM_NOISE_FRACTION = 0.10
 FINGER_OPEN_RANGE = (0.025, 0.04)
+
+FRANKA_WORKSPACE_JOINT_RANGES = {
+    "panda_joint1": (-2.65, 2.65),
+    "panda_joint2": (-1.20, 0.65),
+    "panda_joint3": (-2.75, 2.75),
+    "panda_joint4": (-2.95, -0.35),
+    "panda_joint5": (-2.75, 2.75),
+    "panda_joint6": (0.85, 3.65),
+    "panda_joint7": (-2.75, 2.75),
+}
+FRANKA_WORKSPACE_GHOST_COLOR = (0.48, 0.72, 1.0)
+FRANKA_WORKSPACE_GHOST_OPACITY = 0.42
+FRANKA_DETAIL_CAMERA_EYE_OFFSET = (0.0, -2.35, 1.55)
+FRANKA_DETAIL_CAMERA_TARGET_Z_OFFSET = 0.45
 
 # Approximate scene bounds for floor sampling and overview cameras.
 # These are deliberately easy to edit after a first preview render.
@@ -85,7 +99,7 @@ SCENE_RENDER_CONFIGS: dict[str, dict[str, Any]] = {
             (-2.30, -1.24, 1.60, 2.85),  # shelf/corner storage
         ],
         "summit_count": 16,
-        "franka_count": 3,
+        "franka_count": 14,
         "summit_fixed_points": [
             (-1.85, -1.05),
             (-1.85, -0.15),
@@ -109,11 +123,10 @@ SCENE_RENDER_CONFIGS: dict[str, dict[str, Any]] = {
             (0.52, 1.28),
             (-1.56, 0.62),
         ],
-        "franka_support_points": [
-            (0.22, -0.80, 0.93),
-            (-0.60, 0.45, 0.93),
-            (-0.68, 2.27, 0.93),
-        ],
+        # One fixed Franka base on the center island.  The samples below keep
+        # this root pose fixed and only fan out the arm configuration.
+        "franka_workspace_base": (-0.55, 0.0, 0.93),
+        "franka_workspace_target": (-0.10, -0.25),
         "franka_avoid_points": [
             (-0.48, -0.62, 0.25),  # book/magazine on the island
             (0.42, -0.12, 0.24),  # apple/food clutter
@@ -293,6 +306,7 @@ class RobotSample:
     position: tuple[float, float, float]
     yaw: float
     joint_pos: dict[str, float]
+    ghost: bool = False
 
 
 # =============================================================================
@@ -617,6 +631,22 @@ def random_arm_joints(
     return joints
 
 
+def random_franka_workspace_joints(rng: Any, index: int) -> dict[str, float]:
+    """Return one reference pose followed by broad fixed-base workspace poses."""
+
+    if index == 0:
+        return dict(FRANKA_DEFAULT_JOINTS)
+
+    joints: dict[str, float] = {}
+    for name in FRANKA_DEFAULT_JOINTS:
+        if "finger" in name:
+            joints[name] = float(rng.uniform(*FINGER_OPEN_RANGE))
+            continue
+        low, high = FRANKA_WORKSPACE_JOINT_RANGES.get(name, PANDA_JOINT_LIMITS.get(name, (-math.pi, math.pi)))
+        joints[name] = float(rng.uniform(low, high))
+    return joints
+
+
 def sample_grid_positions(
     count: int,
     bounds: tuple[float, float, float, float],
@@ -708,10 +738,7 @@ def sample_summit(spec: SceneSpec, count: int, summit_robot_cfg: Path | None = N
         )
     samples: list[RobotSample] = []
     for index, (x, y, z) in enumerate(positions):
-        if detail_obj is not None and index < len(anchors):
-            yaw = math.atan2(detail_obj.translate[1] - y, detail_obj.translate[0] - x)
-        else:
-            yaw = float(rng.uniform(-math.pi, math.pi))
+        yaw = float(rng.uniform(-math.pi, math.pi))
         joints = random_arm_joints(rng, summit_defaults, summit_limits, SUMMIT_ARM_NOISE_FRACTION)
         samples.append(
             RobotSample(
@@ -733,6 +760,20 @@ def elevated_candidates(spec: SceneSpec) -> list[ObjectSpec]:
 def configured_franka_support_points(spec: SceneSpec) -> list[tuple[float, float, float]]:
     points = SCENE_RENDER_CONFIGS.get(spec.name, {}).get("franka_support_points", [])
     return [(float(point[0]), float(point[1]), float(point[2])) for point in points]
+
+
+def configured_franka_workspace_base(spec: SceneSpec) -> tuple[float, float, float] | None:
+    point = SCENE_RENDER_CONFIGS.get(spec.name, {}).get("franka_workspace_base")
+    if point is None:
+        return None
+    return (float(point[0]), float(point[1]), float(point[2]))
+
+
+def configured_franka_workspace_target(spec: SceneSpec, x: float, y: float) -> tuple[float, float]:
+    point = SCENE_RENDER_CONFIGS.get(spec.name, {}).get("franka_workspace_target")
+    if point is not None:
+        return (float(point[0]), float(point[1]))
+    return franka_yaw_target(spec, x, y)
 
 
 def configured_franka_support_regions(spec: SceneSpec) -> list[dict[str, Any]]:
@@ -814,6 +855,25 @@ def sample_franka(spec: SceneSpec, count: int) -> list[RobotSample]:
     import numpy as np
 
     rng = np.random.default_rng(stable_seed(spec.name, "franka"))
+    workspace_base = configured_franka_workspace_base(spec)
+    if workspace_base is not None:
+        x, y, base_z = workspace_base
+        z = max(base_z + FRANKA_SURFACE_Z_OFFSET, ELEVATED_SURFACE_MIN_Z + FRANKA_SURFACE_Z_OFFSET)
+        if not valid_franka_surface_position(spec, x, y, z):
+            raise RuntimeError(f"Configured fixed-Franka workspace base {workspace_base} is invalid in {spec.name}")
+        target_x, target_y = configured_franka_workspace_target(spec, x, y)
+        yaw = math.atan2(target_y - y, target_x - x)
+        return [
+            RobotSample(
+                name=f"franka_{index:02d}",
+                position=(float(x), float(y), float(z)),
+                yaw=float(yaw),
+                joint_pos=random_franka_workspace_joints(rng, index),
+                ghost=index > 0,
+            )
+            for index in range(count)
+        ]
+
     support_regions = configured_franka_support_regions(spec)
     if support_regions:
         samples: list[RobotSample] = []
@@ -969,7 +1029,12 @@ def load_summit_joint_limits(summit_robot_cfg: Path | None) -> dict[str, tuple[f
     return limits
 
 
-def camera_for_view(spec: SceneSpec, view: str) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+def camera_for_view(
+    spec: SceneSpec,
+    view: str,
+    robot_kind: str | None = None,
+    samples: list[RobotSample] | None = None,
+) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
     config = SCENE_RENDER_CONFIGS.get(spec.name, {})
     if view == "overview":
         if "overview_eye" in config and "overview_target" in config:
@@ -982,6 +1047,15 @@ def camera_for_view(spec: SceneSpec, view: str) -> tuple[tuple[float, float, flo
             center,
         )
     if view == "detail":
+        if robot_kind == "franka" and samples:
+            base = samples[0].position
+            target = (base[0], base[1], base[2] + FRANKA_DETAIL_CAMERA_TARGET_Z_OFFSET)
+            eye = (
+                target[0] + FRANKA_DETAIL_CAMERA_EYE_OFFSET[0],
+                target[1] + FRANKA_DETAIL_CAMERA_EYE_OFFSET[1],
+                target[2] + FRANKA_DETAIL_CAMERA_EYE_OFFSET[2],
+            )
+            return eye, target
         target_obj = find_detail_object(spec)
         if target_obj is None:
             target = (0.0, 0.0, 0.7)
@@ -1013,13 +1087,109 @@ def add_repo_import_paths(root: Path) -> None:
             sys.path.insert(0, text)
 
 
-def set_prim_visibility(stage: Any, prim_path: str, visible: bool) -> None:
-    from pxr import UsdGeom
+def set_prim_visibility(stage: Any, prim_path: str, visible: bool, recursive: bool = False) -> None:
+    from pxr import Usd, UsdGeom
 
     prim = stage.GetPrimAtPath(prim_path)
-    if prim and prim.IsValid():
-        imageable = UsdGeom.Imageable(prim)
+    if not prim or not prim.IsValid():
+        return
+
+    prims = Usd.PrimRange(prim) if recursive else (prim,)
+    for child in prims:
+        imageable = UsdGeom.Imageable(child)
         imageable.MakeVisible() if visible else imageable.MakeInvisible()
+
+
+def make_preview_material(
+    stage: Any,
+    prim_path: str,
+    color: tuple[float, float, float],
+    opacity: float,
+) -> Any:
+    from pxr import Gf, Sdf, UsdShade
+
+    material = UsdShade.Material.Define(stage, prim_path)
+    shader = UsdShade.Shader.Define(stage, f"{prim_path}/PreviewSurface")
+    shader.CreateIdAttr("UsdPreviewSurface")
+    shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(Gf.Vec3f(*color))
+    shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(0.58)
+    shader.CreateInput("metallic", Sdf.ValueTypeNames.Float).Set(0.0)
+    shader.CreateInput("opacity", Sdf.ValueTypeNames.Float).Set(float(opacity))
+    material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+    return material
+
+
+def bind_material_to_meshes(stage: Any, root_path: str, material: Any, opacity: float) -> int:
+    from pxr import Gf, Usd, UsdGeom, UsdShade
+
+    root = stage.GetPrimAtPath(root_path)
+    if not root or not root.IsValid():
+        return 0
+
+    bound = 0
+    color = material.GetPrim().GetChild("PreviewSurface").GetAttribute("inputs:diffuseColor").Get()
+    for prim in Usd.PrimRange(root):
+        if not prim.IsA(UsdGeom.Gprim):
+            continue
+        gprim = UsdGeom.Gprim(prim)
+        gprim.CreateDisplayColorAttr().Set([Gf.Vec3f(*color)])
+        gprim.CreateDisplayOpacityAttr().Set([float(opacity)])
+        UsdShade.MaterialBindingAPI.Apply(prim).Bind(
+            material,
+            bindingStrength=UsdShade.Tokens.strongerThanDescendants,
+        )
+        bound += 1
+    return bound
+
+
+def disable_collisions_under_prim(stage: Any, root_path: str) -> int:
+    from pxr import Usd, UsdPhysics
+
+    root = stage.GetPrimAtPath(root_path)
+    if not root or not root.IsValid():
+        return 0
+
+    disabled = 0
+    for prim in Usd.PrimRange(root):
+        if prim.HasAPI(UsdPhysics.CollisionAPI) or prim.GetAttribute("physics:collisionEnabled"):
+            UsdPhysics.CollisionAPI.Apply(prim).CreateCollisionEnabledAttr(False)
+            disabled += 1
+    return disabled
+
+
+def style_fixed_franka_workspace(stage: Any, group_path: str, samples: list[RobotSample]) -> None:
+    if len(samples) <= 1:
+        return
+
+    import isaaclab.sim as sim_utils
+
+    material_path = f"{group_path}/GhostReachMaterial"
+    material = make_preview_material(
+        stage,
+        material_path,
+        FRANKA_WORKSPACE_GHOST_COLOR,
+        FRANKA_WORKSPACE_GHOST_OPACITY,
+    )
+    command_bound = 0
+    total_bound = 0
+    for sample in samples[1:]:
+        sample_path = f"{group_path}/{sample.name}"
+        try:
+            if sim_utils.bind_visual_material(
+                sample_path,
+                material_path,
+                stage=stage,
+                stronger_than_descendants=True,
+            ):
+                command_bound += 1
+        except Exception as exc:
+            print(f"[render] WARNING: failed material command bind for {sample_path}: {exc}")
+        total_bound += bind_material_to_meshes(stage, sample_path, material, FRANKA_WORKSPACE_GHOST_OPACITY)
+    disabled = disable_collisions_under_prim(stage, group_path)
+    print(
+        f"[render] fixed-Franka workspace ghosted {len(samples) - 1} samples "
+        f"({command_bound} command binds, {total_bound} mesh prims), disabled {disabled} collision prims"
+    )
 
 
 def spawn_scaled_usd_reference(
@@ -1094,9 +1264,17 @@ def make_robot_articulation(robot_kind: str, prim_path: str, sample: RobotSample
 
         robot_cfg = SummitFrankaSceneCfg().robot.replace(prim_path=prim_path)
     elif robot_kind == "franka":
+        import isaaclab.sim as sim_utils
         from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG
 
         robot_cfg = FRANKA_PANDA_HIGH_PD_CFG.replace(prim_path=prim_path)
+        if sample.ghost:
+            robot_cfg.spawn.visual_material = sim_utils.PreviewSurfaceCfg(
+                diffuse_color=FRANKA_WORKSPACE_GHOST_COLOR,
+                opacity=FRANKA_WORKSPACE_GHOST_OPACITY,
+                roughness=0.62,
+            )
+            robot_cfg.spawn.visual_material_path = f"{prim_path}/GhostReachMaterial"
     else:
         raise ValueError(f"Unsupported robot kind: {robot_kind}")
 
@@ -1209,7 +1387,12 @@ def render_one(
 ) -> None:
     set_prim_visibility(stage, "/World/Scene", mode != "robots_only")
     set_prim_visibility(stage, "/World/Objects", mode != "robots_only")
-    set_prim_visibility(stage, robot_group_path, mode != "scene_objects_only")
+    set_prim_visibility(
+        stage,
+        robot_group_path,
+        mode != "scene_objects_only",
+        recursive=mode != "scene_objects_only",
+    )
     set_camera_view(camera, sim, eye, target)
 
     dt = sim.get_physics_dt()
@@ -1236,6 +1419,12 @@ def sample_for_robot(robot_kind: str, spec: SceneSpec, count_override: int | Non
     raise ValueError(f"Unsupported robot kind: {robot_kind}")
 
 
+def views_for_robot(args: argparse.Namespace, robot_kind: str) -> list[str]:
+    if args.views is not None:
+        return list(args.views)
+    return list(DEFAULT_ROBOT_VIEWS.get(robot_kind, DEFAULT_VIEWS))
+
+
 def validate_robot_samples(robot_kind: str, spec: SceneSpec, samples: list[RobotSample]) -> None:
     if robot_kind == "summit_franka":
         for sample in samples:
@@ -1246,6 +1435,7 @@ def validate_robot_samples(robot_kind: str, spec: SceneSpec, samples: list[Robot
 
     if robot_kind == "franka":
         regions = configured_franka_support_regions(spec)
+        workspace_base = configured_franka_workspace_base(spec)
         for sample in samples:
             x, y, z = sample.position
             region = next(
@@ -1254,6 +1444,10 @@ def validate_robot_samples(robot_kind: str, spec: SceneSpec, samples: list[Robot
             )
             if not valid_franka_surface_position(spec, x, y, z, region):
                 raise RuntimeError(f"Invalid fixed-Franka surface sample in {spec.name}: {sample.name} at {sample.position}")
+            if workspace_base is not None and distance_xy((x, y), workspace_base[:2]) > 1e-4:
+                raise RuntimeError(f"Fixed-Franka workspace sample moved off its base in {spec.name}: {sample.name}")
+        if workspace_base is not None:
+            return
         for index, sample in enumerate(samples):
             for other in samples[index + 1 :]:
                 if distance_xy(sample.position[:2], other.position[:2]) < FRANKA_MIN_SEPARATION:
@@ -1291,18 +1485,23 @@ def render_scene_robot(
     samples = sample_for_robot(robot_kind, spec, count_override, args)
     validate_robot_samples(robot_kind, spec, samples)
     robots = spawn_robots(robot_kind, samples)
+    stage = omni.usd.get_context().get_stage()
+    robot_group_path = "/World/SummitSamples" if robot_kind == "summit_franka" else "/World/FrankaSamples"
+    if robot_kind == "franka" and configured_franka_workspace_base(spec) is not None:
+        style_fixed_franka_workspace(stage, robot_group_path, samples)
     camera = create_camera(args.image_width, args.image_height)
 
     sim.reset()
+    if robot_kind == "franka" and configured_franka_workspace_base(spec) is not None:
+        style_fixed_franka_workspace(stage, robot_group_path, samples)
     print(f"[render] scene={spec.name} robot={robot_kind} samples={len(samples)} objects={len(spec.objects)}")
     apply_robot_samples(robots, samples, sim.get_physics_dt())
 
-    stage = omni.usd.get_context().get_stage()
-    robot_group_path = "/World/SummitSamples" if robot_kind == "summit_franka" else "/World/FrankaSamples"
     outputs: dict[str, str] = {}
-    for view in args.views:
-        eye, target = camera_for_view(spec, view)
-        for mode in args.modes:
+    robot_views = views_for_robot(args, robot_kind)
+    for mode in args.modes:
+        for view in robot_views:
+            eye, target = camera_for_view(spec, view, robot_kind, samples)
             if args.skip_existing:
                 output_path = out_dir / f"{view}_{mode}.png"
                 if output_path.exists():
@@ -1332,7 +1531,7 @@ def render_scene_robot(
     outputs["manifest"] = str(manifest_path)
 
     if MAKE_CONTACT_SHEETS and not args.no_contact_sheets:
-        make_contact_sheets(out_dir, args.views, args.modes)
+        make_contact_sheets(out_dir, robot_views, args.modes)
 
     SimulationContext.clear_instance()
     return outputs
@@ -1392,7 +1591,13 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--output_root", default=str(root / "outputs" / "paper" / "poster"), help="Output root.")
     parser.add_argument("--scenes", nargs="+", default=list(DEFAULT_SCENES), help="Scene names to render.")
     parser.add_argument("--robots", nargs="+", default=list(DEFAULT_ROBOTS), choices=list(DEFAULT_ROBOTS))
-    parser.add_argument("--views", nargs="+", default=list(DEFAULT_VIEWS), choices=list(DEFAULT_VIEWS))
+    parser.add_argument(
+        "--views",
+        nargs="+",
+        default=None,
+        choices=list(DEFAULT_VIEWS),
+        help="Views to render. Defaults are robot-specific: mobile overview only, fixed overview + detail.",
+    )
     parser.add_argument("--modes", nargs="+", default=list(DEFAULT_MODES), choices=list(DEFAULT_MODES))
     parser.add_argument("--summit_count", type=int, default=None, help="Override Summit-Franka sample count.")
     parser.add_argument("--franka_count", type=int, default=None, help="Override fixed-Franka sample count.")
