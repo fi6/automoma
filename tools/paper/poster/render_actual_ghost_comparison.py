@@ -46,8 +46,11 @@ from render_reach_comparison import (
     repo_root,
     resolve_repo_path,
     sample_summit,
+    save_rgb_image,
     spawn_static_scene,
     stable_seed,
+    set_camera_view,
+    set_prim_visibility,
     yaw_to_quat_wxyz,
 )
 
@@ -85,10 +88,10 @@ MOBILE_COLORS = [
     (0.24, 0.62, 0.28),
 ]
 FIXED_COLOR = (0.90, 0.32, 0.13)
-MOBILE_TRAJ_OPACITY = 0.82
-MOBILE_WORKSPACE_OPACITY = 0.035
-FIXED_TRAJ_OPACITY = 0.82
-FIXED_RANDOM_OPACITY = 0.075
+MOBILE_TRAJ_OPACITY = 0.34
+MOBILE_WORKSPACE_OPACITY = 0.012
+FIXED_TRAJ_OPACITY = 0.34
+FIXED_RANDOM_OPACITY = 0.026
 
 
 @dataclasses.dataclass
@@ -544,31 +547,61 @@ def add_mobile_base_footprint(
     prim_path: str,
     sample: GhostSample,
 ) -> None:
-    """Add a simple Summit footprint so mobile ghosts keep a visible base."""
+    """Add a lightweight Summit base proxy for poster-only mobile ghosts."""
 
     from pxr import Gf, UsdGeom, UsdShade
 
     x = float(sample.joint_pos.get("base_x", 0.0))
     y = float(sample.joint_pos.get("base_y", 0.0))
     yaw = float(sample.joint_pos.get("base_z", 0.0))
-    opacity = 0.68 if sample.name.startswith("mobile_traj") else 0.20
+    opacity = 0.56 if sample.name.startswith("mobile_traj") else 0.13
 
-    cube = UsdGeom.Cube.Define(stage, prim_path)
-    cube.CreateSizeAttr(1.0)
-    cube.CreateDisplayColorAttr([Gf.Vec3f(*sample.color)])
-    cube.CreateDisplayOpacityAttr([float(opacity)])
-
-    xform = UsdGeom.Xformable(cube.GetPrim())
+    root = UsdGeom.Xform.Define(stage, prim_path)
+    xform = UsdGeom.Xformable(root.GetPrim())
     xform.ClearXformOpOrder()
-    xform.AddTranslateOp(UsdGeom.XformOp.PrecisionDouble).Set(Gf.Vec3d(x, y, 0.105))
+    # Float the proxy above the kitchen meshes for top-down poster readability:
+    # the imported Summit chassis USD is unresolved in this asset set, and the
+    # true floor-height proxy can be occluded by iTHOR cabinetry.
+    xform.AddTranslateOp(UsdGeom.XformOp.PrecisionDouble).Set(Gf.Vec3d(x, y, 0.92))
     xform.AddRotateZOp(UsdGeom.XformOp.PrecisionDouble).Set(math.degrees(yaw))
-    xform.AddScaleOp(UsdGeom.XformOp.PrecisionDouble).Set(Gf.Vec3d(0.34, 0.24, 0.055))
 
-    material = make_preview_material(stage, f"{prim_path}_Material", sample.color, opacity)
-    UsdShade.MaterialBindingAPI.Apply(cube.GetPrim()).Bind(
-        material,
-        bindingStrength=UsdShade.Tokens.strongerThanDescendants,
-    )
+    body_material = make_preview_material(stage, f"{prim_path}_BodyMaterial", sample.color, opacity)
+    wheel_material = make_preview_material(stage, f"{prim_path}_WheelMaterial", (0.10, 0.10, 0.09), min(0.62, opacity + 0.18))
+
+    def add_ellipsoid(
+        name: str,
+        local_pos: tuple[float, float, float],
+        scale: tuple[float, float, float],
+        color: tuple[float, float, float],
+        material: Any,
+        part_opacity: float,
+    ) -> None:
+        sphere = UsdGeom.Sphere.Define(stage, f"{prim_path}/{name}")
+        sphere.CreateRadiusAttr(1.0)
+        sphere.CreateDisplayColorAttr([Gf.Vec3f(*color)])
+        sphere.CreateDisplayOpacityAttr([float(part_opacity)])
+        sphere_xform = UsdGeom.Xformable(sphere.GetPrim())
+        sphere_xform.ClearXformOpOrder()
+        sphere_xform.AddTranslateOp(UsdGeom.XformOp.PrecisionDouble).Set(Gf.Vec3d(*local_pos))
+        sphere_xform.AddScaleOp(UsdGeom.XformOp.PrecisionDouble).Set(Gf.Vec3d(*scale))
+        UsdShade.MaterialBindingAPI.Apply(sphere.GetPrim()).Bind(
+            material,
+            bindingStrength=UsdShade.Tokens.strongerThanDescendants,
+        )
+
+    # The Isaac USD currently drops the Summit chassis visual in headless
+    # renders, so this proxy restores the mobile base without touching assets.
+    add_ellipsoid("chassis", (0.0, 0.0, 0.0), (0.34, 0.24, 0.060), sample.color, body_material, opacity)
+    add_ellipsoid("top_plate", (-0.02, 0.0, 0.12), (0.20, 0.15, 0.035), sample.color, body_material, opacity)
+    for wheel_id, (wx, wy) in enumerate(((-0.31, -0.25), (-0.31, 0.25), (0.31, -0.25), (0.31, 0.25))):
+        add_ellipsoid(
+            f"wheel_{wheel_id:02d}",
+            (wx, wy, -0.05),
+            (0.065, 0.040, 0.070),
+            (0.10, 0.10, 0.09),
+            wheel_material,
+            min(0.62, opacity + 0.18),
+        )
 
 
 def add_mobile_base_footprints(stage: Any, group_path: str, samples: list[GhostSample]) -> None:
@@ -576,10 +609,124 @@ def add_mobile_base_footprints(stage: Any, group_path: str, samples: list[GhostS
 
     footprint_group = f"{group_path}/MobileBaseFootprints"
     prim_utils.create_prim(footprint_group, "Xform")
-    visible_samples = [sample for sample in samples if not sample.hide_summit_base]
+    visible_samples = [
+        sample
+        for sample in samples
+        if not sample.hide_summit_base and sample.name.startswith("mobile_traj")
+    ]
     for index, sample in enumerate(visible_samples):
         add_mobile_base_footprint(stage, f"{footprint_group}/{sample.name}_{index:02d}", sample)
     print(f"[ghost] added {len(visible_samples)} mobile base footprints under {footprint_group}")
+
+
+def mobile_footprint_paths(group_path: str, samples: list[GhostSample]) -> dict[str, str]:
+    visible_samples = [
+        sample
+        for sample in samples
+        if not sample.hide_summit_base and sample.name.startswith("mobile_traj")
+    ]
+    return {
+        sample.name: f"{group_path}/MobileBaseFootprints/{sample.name}_{index:02d}"
+        for index, sample in enumerate(visible_samples)
+    }
+
+
+def project_world_to_pixel(
+    point: tuple[float, float, float],
+    eye: tuple[float, float, float],
+    target: tuple[float, float, float],
+    width: int,
+    height: int,
+) -> tuple[float, float] | None:
+    """Project a world point with the poster camera convention."""
+
+    eye_v = np.asarray(eye, dtype=float)
+    target_v = np.asarray(target, dtype=float)
+    point_v = np.asarray(point, dtype=float)
+    forward = target_v - eye_v
+    forward = forward / max(np.linalg.norm(forward), 1.0e-9)
+    world_up = np.asarray((0.0, 0.0, 1.0), dtype=float)
+    right = np.cross(forward, world_up)
+    right = right / max(np.linalg.norm(right), 1.0e-9)
+    up = np.cross(right, forward)
+    delta = point_v - eye_v
+    depth = float(np.dot(delta, forward))
+    if depth <= 1.0e-6:
+        return None
+    focal_px = 28.0 / 20.955 * float(width)
+    x = float(width) * 0.5 + focal_px * float(np.dot(delta, right)) / depth
+    y = float(height) * 0.5 - focal_px * float(np.dot(delta, up)) / depth
+    return x, y
+
+
+def overlay_mobile_base_proxies(
+    image_path: Path,
+    samples: list[GhostSample],
+    eye: tuple[float, float, float],
+    target: tuple[float, float, float],
+    width: int,
+    height: int,
+) -> None:
+    """Draw mobile base overlays directly on the PNG when USD opacity is unreliable."""
+
+    visible_samples = [
+        sample
+        for sample in samples
+        if not sample.hide_summit_base and sample.name.startswith("mobile_traj")
+    ]
+    if not visible_samples:
+        return
+    try:
+        from PIL import Image, ImageDraw
+    except Exception as exc:
+        print(f"[ghost] WARNING: PIL unavailable; skipped mobile base PNG overlay: {exc}")
+        return
+
+    image = Image.open(image_path).convert("RGBA")
+    overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay, "RGBA")
+
+    def as_rgba(color: tuple[float, float, float], alpha: int) -> tuple[int, int, int, int]:
+        return tuple(int(np.clip(c, 0.0, 1.0) * 255) for c in color) + (alpha,)
+
+    def project_xy(x: float, y: float, z: float = 0.95) -> tuple[float, float] | None:
+        return project_world_to_pixel((x, y, z), eye, target, width, height)
+
+    for sample in visible_samples:
+        x = float(sample.joint_pos.get("base_x", 0.0))
+        y = float(sample.joint_pos.get("base_y", 0.0))
+        yaw = float(sample.joint_pos.get("base_z", 0.0))
+        alpha = 64
+        outline_alpha = 104
+        color = sample.color
+        c, s = math.cos(yaw), math.sin(yaw)
+
+        def transform(local_x: float, local_y: float) -> tuple[float, float]:
+            return (x + c * local_x - s * local_y, y + s * local_x + c * local_y)
+
+        body = [transform(px, py) for px, py in ((-0.38, -0.30), (0.38, -0.30), (0.38, 0.30), (-0.38, 0.30))]
+        body_px = [project_xy(px, py) for px, py in body]
+        if all(point is not None for point in body_px):
+            draw.polygon(body_px, fill=as_rgba(color, alpha), outline=as_rgba(color, outline_alpha))
+
+        for wx, wy in ((-0.33, -0.31), (-0.33, 0.31), (0.33, -0.31), (0.33, 0.31)):
+            wheel_center = transform(wx, wy)
+            center_px = project_xy(*wheel_center)
+            edge_px = project_xy(*(transform(wx + 0.08, wy + 0.04)))
+            if center_px is None or edge_px is None:
+                continue
+            radius = max(2.0, math.dist(center_px, edge_px))
+            draw.ellipse(
+                (
+                    center_px[0] - radius,
+                    center_px[1] - radius,
+                    center_px[0] + radius,
+                    center_px[1] + radius,
+                ),
+                fill=(24, 24, 22, 92),
+            )
+
+    Image.alpha_composite(image, overlay).convert("RGB").save(image_path)
 
 
 def add_fixed_base_marker(
@@ -624,7 +771,95 @@ def add_mobile_base_curves(
                 color,
                 0.085,
                 0.92,
-            )
+        )
+
+
+def individual_frame_samples(samples: list[GhostSample], mode: str) -> list[GhostSample]:
+    if mode == "all":
+        return list(samples)
+    return [
+        sample
+        for sample in samples
+        if sample.name.startswith("fixed_traj") or sample.name.startswith("mobile_traj")
+    ]
+
+
+def render_with_current_visibility(
+    sim: Any,
+    camera: Any,
+    robots: dict[str, Any],
+    eye: tuple[float, float, float],
+    target: tuple[float, float, float],
+    output_path: Path,
+) -> None:
+    set_camera_view(camera, sim, eye, target)
+    dt = sim.get_physics_dt()
+    for _ in range(RENDER_SETTLE_STEPS):
+        for robot in robots.values():
+            robot.write_data_to_sim()
+        sim.step(render=True)
+        for robot in robots.values():
+            robot.update(dt)
+        camera.update(dt)
+    save_rgb_image(camera, output_path)
+    print(f"[render] wrote {output_path}")
+
+
+def export_individual_frames(
+    args: argparse.Namespace,
+    sim: Any,
+    camera: Any,
+    robots: dict[str, Any],
+    stage: Any,
+    group_path: str,
+    samples: list[GhostSample],
+    panel_out_dir: Path,
+    eye: tuple[float, float, float],
+    target: tuple[float, float, float],
+) -> list[str]:
+    selected = individual_frame_samples(samples, args.individual_frame_mode)
+    if args.individual_frame_limit > 0:
+        selected = selected[: args.individual_frame_limit]
+    if not selected:
+        return []
+
+    frame_dir = panel_out_dir / "individual_frames"
+    frame_dir.mkdir(parents=True, exist_ok=True)
+    footprint_paths = mobile_footprint_paths(group_path, samples)
+    base_curve_group = f"{group_path}/BaseTrajectories"
+
+    exported: list[str] = []
+    for sample in samples:
+        set_prim_visibility(stage, f"{group_path}/{sample.name}", False, recursive=False)
+    for footprint_path in footprint_paths.values():
+        set_prim_visibility(stage, footprint_path, False, recursive=False)
+    # Set inherited visibility only on parent prims where no child needs to be
+    # selectively shown. Recursing after physics init can invalidate PhysX.
+    set_prim_visibility(stage, base_curve_group, False, recursive=False)
+
+    for index, sample in enumerate(selected):
+        robot_path = f"{group_path}/{sample.name}"
+        footprint_path = footprint_paths.get(sample.name)
+        set_prim_visibility(stage, robot_path, True, recursive=False)
+        if footprint_path is not None:
+            set_prim_visibility(stage, footprint_path, True, recursive=False)
+
+        output_path = frame_dir / f"{index:03d}_{sample.name}.png"
+        render_with_current_visibility(sim, camera, robots, eye, target, output_path)
+        overlay_mobile_base_proxies(output_path, [sample], eye, target, args.image_width, args.image_height)
+        exported.append(str(output_path))
+
+        set_prim_visibility(stage, robot_path, False, recursive=False)
+        if footprint_path is not None:
+            set_prim_visibility(stage, footprint_path, False, recursive=False)
+
+    for sample in samples:
+        set_prim_visibility(stage, f"{group_path}/{sample.name}", True, recursive=False)
+    for footprint_path in footprint_paths.values():
+        set_prim_visibility(stage, footprint_path, True, recursive=False)
+    set_prim_visibility(stage, base_curve_group, True, recursive=False)
+    print(f"[ghost] exported {len(exported)} individual frame renders to {frame_dir}")
+    return exported
 
 
 def camera_for_actual_ghost(spec: Any) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
@@ -688,10 +923,29 @@ def render_panel(
     output_path = out_dir / f"{panel_name}_topdown_ghost.png"
     print(f"[ghost] rendering {output_path}", flush=True)
     render_one(sim, camera, robots, stage, group_path, eye, target, "all", output_path)
+    if panel_name.startswith("mobile"):
+        overlay_mobile_base_proxies(output_path, samples, eye, target, args.image_width, args.image_height)
+    individual_frames: list[str] = []
+    if args.export_individual_frames:
+        individual_frames = export_individual_frames(
+            args,
+            sim,
+            camera,
+            robots,
+            stage,
+            group_path,
+            samples,
+            out_dir,
+            eye,
+            target,
+        )
     stage_path = out_dir / "stage.usd"
     stage.GetRootLayer().Export(str(stage_path))
     SimulationContext.clear_instance()
-    return {"image": str(output_path), "stage": str(stage_path), "num_samples": len(samples)}
+    result = {"image": str(output_path), "stage": str(stage_path), "num_samples": len(samples)}
+    if individual_frames:
+        result["individual_frames"] = individual_frames
+    return result
 
 
 def make_side_by_side(output_root: Path, fixed_image: Path, mobile_image: Path) -> Path | None:
@@ -745,6 +999,23 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--fixed_keyframes", type=int, default=FIXED_KEYFRAMES)
     parser.add_argument("--fixed_arm_ghosts", type=int, default=FIXED_ARM_GHOSTS)
     parser.add_argument("--panels", nargs="+", choices=["fixed", "mobile"], default=["fixed", "mobile"])
+    parser.add_argument(
+        "--export_individual_frames",
+        action="store_true",
+        help="Also render one PNG per selected keyframe robot so the ghosts can be composited manually.",
+    )
+    parser.add_argument(
+        "--individual_frame_mode",
+        choices=["actual", "all"],
+        default="actual",
+        help="Which samples to export when --export_individual_frames is set.",
+    )
+    parser.add_argument(
+        "--individual_frame_limit",
+        type=int,
+        default=0,
+        help="Optional cap on per-frame exports per panel; 0 means no cap.",
+    )
     parser.add_argument(
         "--trajectory_xy_offset",
         nargs=2,
