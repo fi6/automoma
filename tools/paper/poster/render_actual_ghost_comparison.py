@@ -1,0 +1,923 @@
+#!/usr/bin/env python3
+"""Render actual planned trajectory ghosts for the poster workspace comparison.
+
+This script is intentionally separate from ``render_reach_comparison.py``:
+it reads the already-planned iTHOR trajectories on disk and renders two actual
+3D ghost panels with the same scene/camera:
+
+* fixed-base Summit-Franka, with the Summit base visuals hidden
+* mobile Summit-Franka, with colored solved base trajectories plus faint
+  workspace ghosts
+"""
+
+from __future__ import annotations
+
+import argparse
+import dataclasses
+import json
+import math
+import os
+import sys
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import torch
+
+from render_reach_comparison import (
+    DOME_LIGHT_INTENSITY,
+    ROBOT_OUTPUT_NAMES,
+    SCENE_RENDER_CONFIGS,
+    add_repo_import_paths,
+    bind_material_to_meshes,
+    camera_for_view,
+    check_inputs,
+    create_camera,
+    disable_collisions_under_prim,
+    euler_deg_to_quat_wxyz,
+    load_scene_specs,
+    load_summit_defaults_from_yml,
+    load_summit_joint_limits,
+    load_yaml,
+    make_contact_sheets,
+    make_preview_material,
+    random_arm_joints,
+    render_one,
+    repo_root,
+    resolve_repo_path,
+    sample_summit,
+    spawn_static_scene,
+    stable_seed,
+    yaw_to_quat_wxyz,
+)
+
+
+DEFAULT_DATA_ROOT = (
+    "/media/xinhai/GIANT/Research/AutoMoMa/data/ithor/data_250917/ithor_floorplan1_1"
+)
+DEFAULT_SCENE = "ithor_floorplan1_1"
+DEFAULT_OBJECT_ID = "7221"
+DEFAULT_OUTPUT_ROOT = "outputs/paper/poster/actual_ghost_comparison"
+DEFAULT_TRAJECTORY_DISPLAY_OFFSETS = {
+    # The old 7221 replay/HDF5 joint coordinates do not line up one-to-one with
+    # the poster FloorPlan1 USD frame.  Keep this as a poster-only display
+    # offset so the actual solved roots match the recorded top-down view near
+    # the upper-right microwave without changing any planner/replay data.
+    ("ithor_floorplan1_1", "7221"): (0.0, -1.56),
+}
+
+IMAGE_WIDTH = 2400
+IMAGE_HEIGHT = 1600
+RENDER_SETTLE_STEPS = 12
+
+MOBILE_TRAJ_COUNT = 5
+MOBILE_KEYFRAMES = 5
+MOBILE_WORKSPACE_GHOSTS = 22
+FIXED_KEYFRAMES = 7
+FIXED_ARM_GHOSTS = 22
+
+GHOST_GREY = (0.78, 0.80, 0.78)
+MOBILE_COLORS = [
+    (0.00, 0.55, 0.52),
+    (0.10, 0.45, 0.78),
+    (0.92, 0.48, 0.08),
+    (0.65, 0.34, 0.72),
+    (0.24, 0.62, 0.28),
+]
+FIXED_COLOR = (0.90, 0.32, 0.13)
+MOBILE_TRAJ_OPACITY = 0.82
+MOBILE_WORKSPACE_OPACITY = 0.035
+FIXED_TRAJ_OPACITY = 0.82
+FIXED_RANDOM_OPACITY = 0.075
+
+
+@dataclasses.dataclass
+class GhostSample:
+    name: str
+    joint_pos: dict[str, float]
+    color: tuple[float, float, float]
+    opacity: float
+    hide_summit_base: bool = False
+
+
+def trajectory_dir(data_root: Path, robot_name: str, object_id: str) -> Path:
+    return data_root / robot_name / object_id / "0" / "ik_traj_mobile_filter"
+
+
+def load_filtered_trajs(data_root: Path, robot_name: str, object_id: str) -> torch.Tensor:
+    """Load and concatenate successful raw cuRobo trajectories."""
+
+    directory = trajectory_dir(data_root, robot_name, object_id)
+    if not directory.exists():
+        raise FileNotFoundError(f"Trajectory directory not found: {directory}")
+
+    chunks: list[torch.Tensor] = []
+    for path in sorted(directory.glob("traj_mobile_*.pt")):
+        data = torch.load(path, map_location="cpu")
+        traj = data["traj_result"].float()
+        success = data.get("success")
+        if success is not None:
+            traj = traj[success.bool()]
+        if traj.shape[0] == 0:
+            continue
+        chunks.append(traj)
+    if not chunks:
+        raise RuntimeError(f"No successful trajectories found under {directory}")
+    return torch.cat(chunks, dim=0)
+
+
+def local_robot_cfg_path(root: Path, filename: str) -> Path:
+    local = root / "tools" / "paper" / "poster" / "local" / "robots" / filename
+    if local.exists():
+        return local
+    return root / "assets" / "robot" / "summit_franka" / filename
+
+
+def cfg_fixed_base_values(fixed_cfg_path: Path) -> tuple[float, float, float]:
+    cfg = load_yaml(fixed_cfg_path)
+    locks = cfg["robot_cfg"]["kinematics"].get("lock_joints", {})
+    return (
+        float(locks.get("base_x", 0.0)),
+        float(locks.get("base_y", 0.0)),
+        float(locks.get("base_z", 0.0)),
+    )
+
+
+def recorded_episode_paths(data_root: Path, robot_name: str, object_id: str) -> list[Path]:
+    root = data_root / robot_name / object_id / "0" / "collect_data"
+    if not root.exists():
+        return []
+    return sorted(root.glob("**/episode*.hdf5"))
+
+
+def load_recorded_fixed_base(
+    data_root: Path,
+    robot_name: str,
+    object_id: str,
+) -> tuple[float, float, float] | None:
+    """Read the fixed-base pose that IsaacLab actually recorded.
+
+    The fixed-base ``traj_mobile_*.pt`` files only contain arm + object-joint
+    states.  The robot root used for the old iTHOR runs is stored in the replay
+    HDF5 files, so prefer it over any stale checked-in YAML lock joints.
+    """
+
+    try:
+        import h5py
+    except Exception as exc:
+        print(f"[ghost] WARNING: h5py unavailable; cannot infer recorded fixed base: {exc}")
+        return None
+
+    samples: list[np.ndarray] = []
+    for path in recorded_episode_paths(data_root, robot_name, object_id):
+        try:
+            with h5py.File(path, "r") as f:
+                if "obs/joint/mobile_base" not in f:
+                    continue
+                mobile_base = np.asarray(f["obs/joint/mobile_base"][:], dtype=np.float64)
+                if mobile_base.ndim == 2 and mobile_base.shape[1] >= 3:
+                    samples.append(mobile_base[:, :3])
+        except Exception as exc:
+            print(f"[ghost] WARNING: failed to read fixed base from {path}: {exc}")
+    if not samples:
+        return None
+    values = np.concatenate(samples, axis=0)
+    base = np.median(values, axis=0)
+    return (float(base[0]), float(base[1]), float(base[2]))
+
+
+def load_recorded_fixed_arm_trajs(
+    data_root: Path,
+    robot_name: str,
+    object_id: str,
+) -> torch.Tensor | None:
+    """Load fixed-base arm trajectories from recorded HDF5 demos when present."""
+
+    try:
+        import h5py
+    except Exception as exc:
+        print(f"[ghost] WARNING: h5py unavailable; cannot load recorded fixed arms: {exc}")
+        return None
+
+    arms: list[torch.Tensor] = []
+    for path in recorded_episode_paths(data_root, robot_name, object_id):
+        try:
+            with h5py.File(path, "r") as f:
+                if "obs/joint/arm" not in f:
+                    continue
+                arm = torch.as_tensor(np.asarray(f["obs/joint/arm"][:]), dtype=torch.float32)
+                if arm.ndim == 2 and arm.shape[1] >= 7:
+                    arms.append(arm[:, :7])
+        except Exception as exc:
+            print(f"[ghost] WARNING: failed to read fixed arm trajectory from {path}: {exc}")
+    if not arms:
+        return None
+    lengths = {int(arm.shape[0]) for arm in arms}
+    if len(lengths) != 1:
+        min_len = min(lengths)
+        arms = [arm[:min_len] for arm in arms]
+    return torch.stack(arms, dim=0)
+
+
+def fixed_base_values(
+    fixed_cfg_path: Path,
+    data_root: Path,
+    robot_name: str,
+    object_id: str,
+) -> tuple[tuple[float, float, float], str]:
+    recorded = load_recorded_fixed_base(data_root, robot_name, object_id)
+    if recorded is not None:
+        return recorded, "recorded_hdf5_obs_joint_mobile_base"
+    return cfg_fixed_base_values(fixed_cfg_path), "robot_cfg_lock_joints"
+
+
+def summit_joint_names() -> list[str]:
+    return [
+        "base_x",
+        "base_y",
+        "base_z",
+        "panda_joint1",
+        "panda_joint2",
+        "panda_joint3",
+        "panda_joint4",
+        "panda_joint5",
+        "panda_joint6",
+        "panda_joint7",
+        "panda_finger_joint1",
+        "panda_finger_joint2",
+    ]
+
+
+def mobile_state_to_joints(
+    state: torch.Tensor,
+    *,
+    grip: float = 0.0,
+    xy_offset: tuple[float, float] = (0.0, 0.0),
+) -> dict[str, float]:
+    values = state.detach().cpu().float().tolist()
+    if len(values) < 10:
+        raise ValueError(f"Mobile trajectory state must have at least 10 robot values, got {len(values)}")
+    values[0] += float(xy_offset[0])
+    values[1] += float(xy_offset[1])
+    robot = values[:10] + [grip, grip]
+    return dict(zip(summit_joint_names(), map(float, robot), strict=True))
+
+
+def fixed_state_to_joints(
+    state: torch.Tensor,
+    fixed_base: tuple[float, float, float],
+    *,
+    grip: float = 0.0,
+) -> dict[str, float]:
+    values = state.detach().cpu().float().tolist()
+    if len(values) < 7:
+        raise ValueError(f"Fixed trajectory state must have at least 7 arm values, got {len(values)}")
+    robot = list(fixed_base) + values[:7] + [grip, grip]
+    return dict(zip(summit_joint_names(), map(float, robot), strict=True))
+
+
+def farthest_indices(features: np.ndarray, count: int) -> list[int]:
+    if features.shape[0] == 0:
+        return []
+    count = min(count, features.shape[0])
+    scaled = features.astype(float)
+    span = np.ptp(scaled, axis=0)
+    scaled = (scaled - scaled.mean(axis=0)) / np.maximum(span, 1.0e-6)
+    center = np.median(scaled, axis=0)
+    selected = [int(np.argmax(np.linalg.norm(scaled - center, axis=1)))]
+    min_dist = np.linalg.norm(scaled - scaled[selected[0]], axis=1)
+    for _ in range(1, count):
+        idx = int(np.argmax(min_dist))
+        selected.append(idx)
+        min_dist = np.minimum(min_dist, np.linalg.norm(scaled - scaled[idx], axis=1))
+    return selected
+
+
+def representative_mobile_indices(trajs: torch.Tensor, count: int) -> list[int]:
+    base = trajs[:, :, :3].numpy()
+    displacement = np.linalg.norm(base[:, -1, :2] - base[:, 0, :2], axis=1, keepdims=True)
+    features = np.concatenate([base[:, 0, :3], base[:, -1, :3], displacement], axis=1)
+    return farthest_indices(features, count)
+
+
+def representative_fixed_index(trajs: torch.Tensor) -> int:
+    arm = trajs[:, :, :7].numpy()
+    motion = np.linalg.norm(arm[:, -1, :] - arm[:, 0, :], axis=1)
+    return int(np.argsort(motion)[len(motion) // 2])
+
+
+def keyframe_indices(num_steps: int, count: int) -> list[int]:
+    if count <= 1:
+        return [num_steps - 1]
+    return sorted(set(int(round(v)) for v in np.linspace(0, num_steps - 1, count)))
+
+
+def build_mobile_trajectory_samples(
+    trajs: torch.Tensor,
+    traj_count: int,
+    keyframes: int,
+    xy_offset: tuple[float, float] = (0.0, 0.0),
+) -> tuple[list[GhostSample], list[dict[str, Any]]]:
+    selected = representative_mobile_indices(trajs, traj_count)
+    samples: list[GhostSample] = []
+    selected_meta: list[dict[str, Any]] = []
+    for color_id, traj_idx in enumerate(selected):
+        trajectory = trajs[traj_idx]
+        color = MOBILE_COLORS[color_id % len(MOBILE_COLORS)]
+        frames = keyframe_indices(trajectory.shape[0], keyframes)
+        selected_meta.append({"trajectory_index": traj_idx, "keyframes": frames, "color": color})
+        for frame in frames:
+            samples.append(
+                GhostSample(
+                    name=f"mobile_traj{color_id:02d}_t{frame:02d}",
+                    joint_pos=mobile_state_to_joints(trajectory[frame], xy_offset=xy_offset),
+                    color=color,
+                    opacity=MOBILE_TRAJ_OPACITY,
+                )
+            )
+    return samples, selected_meta
+
+
+def build_fixed_trajectory_samples(
+    trajs: torch.Tensor,
+    fixed_base: tuple[float, float, float],
+    keyframes: int,
+    trajectory_index: int | None = None,
+) -> tuple[list[GhostSample], dict[str, Any]]:
+    traj_idx = representative_fixed_index(trajs) if trajectory_index is None else int(trajectory_index)
+    trajectory = trajs[traj_idx]
+    frames = keyframe_indices(trajectory.shape[0], keyframes)
+    samples = [
+        GhostSample(
+            name=f"fixed_traj_t{frame:02d}",
+            joint_pos=fixed_state_to_joints(trajectory[frame], fixed_base),
+            color=FIXED_COLOR,
+            opacity=FIXED_TRAJ_OPACITY,
+            hide_summit_base=True,
+        )
+        for frame in frames
+    ]
+    return samples, {"trajectory_index": traj_idx, "keyframes": frames, "color": FIXED_COLOR}
+
+
+def build_fixed_random_ghosts(
+    trajs: torch.Tensor,
+    fixed_base: tuple[float, float, float],
+    count: int,
+) -> list[GhostSample]:
+    rng = np.random.default_rng(stable_seed("actual_ghost_fixed_random"))
+    flat = trajs[:, :, :].reshape(-1, trajs.shape[-1])
+    if flat.shape[0] == 0:
+        return []
+    ids = rng.choice(flat.shape[0], size=min(count, flat.shape[0]), replace=False)
+    return [
+        GhostSample(
+            name=f"fixed_random_{i:02d}",
+            joint_pos=fixed_state_to_joints(flat[int(idx)], fixed_base),
+            color=GHOST_GREY,
+            opacity=FIXED_RANDOM_OPACITY,
+            hide_summit_base=True,
+        )
+        for i, idx in enumerate(ids)
+    ]
+
+
+def build_mobile_workspace_ghosts(spec: Any, count: int, summit_cfg: Path) -> list[GhostSample]:
+    raw = sample_summit(spec, count, summit_cfg)
+    samples: list[GhostSample] = []
+    for index, sample in enumerate(raw):
+        joints = dict(sample.joint_pos)
+        joints["base_x"] = float(sample.position[0])
+        joints["base_y"] = float(sample.position[1])
+        joints["base_z"] = float(sample.yaw)
+        samples.append(
+            GhostSample(
+                name=f"mobile_workspace_{index:02d}",
+                joint_pos=joints,
+                color=GHOST_GREY,
+                opacity=MOBILE_WORKSPACE_OPACITY,
+            )
+        )
+    return samples
+
+
+def make_robot_articulation(sample: GhostSample, prim_path: str) -> Any:
+    from isaaclab.assets import Articulation
+    import isaaclab.sim as sim_utils
+    from isaaclab_arena.embodiments.summit_franka.summit_franka import SummitFrankaSceneCfg
+
+    robot_cfg = SummitFrankaSceneCfg().robot.replace(prim_path=prim_path)
+    robot_cfg.spawn.activate_contact_sensors = False
+    robot_cfg.spawn.visual_material = sim_utils.PreviewSurfaceCfg(
+        diffuse_color=sample.color,
+        opacity=sample.opacity,
+        roughness=0.62,
+    )
+    robot_cfg.spawn.visual_material_path = f"{prim_path}/GhostMaterial"
+    robot_cfg.init_state.pos = (0.0, 0.0, 0.0)
+    robot_cfg.init_state.rot = (1.0, 0.0, 0.0, 0.0)
+    return Articulation(cfg=robot_cfg)
+
+
+def spawn_ghost_robots(group_path: str, samples: list[GhostSample]) -> dict[str, Any]:
+    import isaacsim.core.utils.prims as prim_utils
+
+    prim_utils.create_prim(group_path, "Xform")
+    robots: dict[str, Any] = {}
+    for sample in samples:
+        robots[sample.name] = make_robot_articulation(sample, f"{group_path}/{sample.name}")
+    return robots
+
+
+def apply_ghost_samples(robots: dict[str, Any], samples: list[GhostSample], sim_dt: float) -> None:
+    for sample in samples:
+        robot = robots[sample.name]
+        root_pose = robot.data.default_root_state[:, :7].clone()
+        root_pose[:, :3] = torch.tensor((0.0, 0.0, 0.0), device=robot.device).unsqueeze(0)
+        root_pose[:, 3:7] = torch.tensor((1.0, 0.0, 0.0, 0.0), device=robot.device).unsqueeze(0)
+        root_vel = torch.zeros_like(robot.data.default_root_state[:, 7:])
+        robot.write_root_pose_to_sim(root_pose)
+        robot.write_root_velocity_to_sim(root_vel)
+
+        joint_pos = robot.data.default_joint_pos.clone()
+        joint_vel = torch.zeros_like(joint_pos)
+        for name, value in sample.joint_pos.items():
+            if name not in robot.joint_names:
+                continue
+            joint_pos[:, robot.joint_names.index(name)] = float(value)
+        robot.write_joint_state_to_sim(joint_pos, joint_vel)
+        robot.set_joint_position_target(joint_pos)
+        robot.write_data_to_sim()
+        robot.update(sim_dt)
+
+
+def style_ghosts(stage: Any, group_path: str, samples: list[GhostSample]) -> None:
+    import isaaclab.sim as sim_utils
+
+    for sample in samples:
+        material_path = f"{group_path}/{sample.name}/PosterGhostMaterial"
+        material = make_preview_material(stage, material_path, sample.color, sample.opacity)
+        try:
+            sim_utils.bind_visual_material(
+                f"{group_path}/{sample.name}",
+                material_path,
+                stage=stage,
+                stronger_than_descendants=True,
+            )
+        except Exception as exc:
+            print(f"[ghost] WARNING: material command bind failed for {sample.name}: {exc}")
+        bind_material_to_meshes(stage, f"{group_path}/{sample.name}", material, sample.opacity)
+    print(f"[ghost] styled {len(samples)} ghost robots under {group_path}")
+
+
+def hide_fixed_base_visuals(stage: Any, group_path: str) -> int:
+    from pxr import Usd, UsdGeom
+
+    root = stage.GetPrimAtPath(group_path)
+    if not root or not root.IsValid():
+        return 0
+    hidden = 0
+    needles = ("summit_base", "summit_chassis")
+    for prim in Usd.PrimRange(root):
+        path = prim.GetPath().pathString.lower()
+        name = prim.GetName().lower()
+        if any(needle in path or needle in name for needle in needles):
+            UsdGeom.Imageable(prim).MakeInvisible()
+            hidden += 1
+    return hidden
+
+
+def make_curve_material(stage: Any, prim_path: str, color: tuple[float, float, float]) -> Any:
+    return make_preview_material(stage, prim_path, color, 1.0)
+
+
+def add_base_path_curve(
+    stage: Any,
+    prim_path: str,
+    xytheta: np.ndarray,
+    color: tuple[float, float, float],
+    width: float = 0.08,
+    z: float = 0.18,
+) -> None:
+    from pxr import Gf, Sdf, UsdGeom, UsdShade
+
+    points = [Gf.Vec3f(float(x), float(y), float(z)) for x, y in xytheta[:, :2]]
+    curve = UsdGeom.BasisCurves.Define(stage, prim_path)
+    curve.CreateTypeAttr("linear")
+    curve.CreateCurveVertexCountsAttr([len(points)])
+    curve.CreatePointsAttr(points)
+    curve.CreateWidthsAttr([width])
+    curve.CreateDisplayColorAttr([Gf.Vec3f(*color)])
+    material = make_curve_material(stage, f"{prim_path}_Material", color)
+    UsdShade.MaterialBindingAPI.Apply(curve.GetPrim()).Bind(
+        material,
+        bindingStrength=UsdShade.Tokens.strongerThanDescendants,
+    )
+
+
+def add_marker_sphere(
+    stage: Any,
+    prim_path: str,
+    position: tuple[float, float, float],
+    color: tuple[float, float, float],
+    radius: float,
+    opacity: float = 1.0,
+) -> None:
+    from pxr import Gf, UsdGeom, UsdShade
+
+    sphere = UsdGeom.Sphere.Define(stage, prim_path)
+    sphere.CreateRadiusAttr(float(radius))
+    sphere.CreateDisplayColorAttr([Gf.Vec3f(*color)])
+    sphere.CreateDisplayOpacityAttr([float(opacity)])
+    xform = UsdGeom.Xformable(sphere.GetPrim())
+    xform.ClearXformOpOrder()
+    xform.AddTranslateOp(UsdGeom.XformOp.PrecisionDouble).Set(Gf.Vec3d(*position))
+    material = make_preview_material(stage, f"{prim_path}_Material", color, opacity)
+    UsdShade.MaterialBindingAPI.Apply(sphere.GetPrim()).Bind(
+        material,
+        bindingStrength=UsdShade.Tokens.strongerThanDescendants,
+    )
+
+
+def add_mobile_base_footprint(
+    stage: Any,
+    prim_path: str,
+    sample: GhostSample,
+) -> None:
+    """Add a simple Summit footprint so mobile ghosts keep a visible base."""
+
+    from pxr import Gf, UsdGeom, UsdShade
+
+    x = float(sample.joint_pos.get("base_x", 0.0))
+    y = float(sample.joint_pos.get("base_y", 0.0))
+    yaw = float(sample.joint_pos.get("base_z", 0.0))
+    opacity = 0.68 if sample.name.startswith("mobile_traj") else 0.20
+
+    cube = UsdGeom.Cube.Define(stage, prim_path)
+    cube.CreateSizeAttr(1.0)
+    cube.CreateDisplayColorAttr([Gf.Vec3f(*sample.color)])
+    cube.CreateDisplayOpacityAttr([float(opacity)])
+
+    xform = UsdGeom.Xformable(cube.GetPrim())
+    xform.ClearXformOpOrder()
+    xform.AddTranslateOp(UsdGeom.XformOp.PrecisionDouble).Set(Gf.Vec3d(x, y, 0.105))
+    xform.AddRotateZOp(UsdGeom.XformOp.PrecisionDouble).Set(math.degrees(yaw))
+    xform.AddScaleOp(UsdGeom.XformOp.PrecisionDouble).Set(Gf.Vec3d(0.34, 0.24, 0.055))
+
+    material = make_preview_material(stage, f"{prim_path}_Material", sample.color, opacity)
+    UsdShade.MaterialBindingAPI.Apply(cube.GetPrim()).Bind(
+        material,
+        bindingStrength=UsdShade.Tokens.strongerThanDescendants,
+    )
+
+
+def add_mobile_base_footprints(stage: Any, group_path: str, samples: list[GhostSample]) -> None:
+    import isaacsim.core.utils.prims as prim_utils
+
+    footprint_group = f"{group_path}/MobileBaseFootprints"
+    prim_utils.create_prim(footprint_group, "Xform")
+    visible_samples = [sample for sample in samples if not sample.hide_summit_base]
+    for index, sample in enumerate(visible_samples):
+        add_mobile_base_footprint(stage, f"{footprint_group}/{sample.name}_{index:02d}", sample)
+    print(f"[ghost] added {len(visible_samples)} mobile base footprints under {footprint_group}")
+
+
+def add_fixed_base_marker(
+    stage: Any,
+    group_path: str,
+    fixed_base: tuple[float, float, float],
+) -> None:
+    add_marker_sphere(
+        stage,
+        f"{group_path}/FixedBaseAnchor",
+        (float(fixed_base[0]), float(fixed_base[1]), 0.08),
+        FIXED_COLOR,
+        0.12,
+        0.95,
+    )
+
+
+def add_mobile_base_curves(
+    stage: Any,
+    group_path: str,
+    mobile_trajs: torch.Tensor,
+    selected_meta: list[dict[str, Any]],
+    xy_offset: tuple[float, float] = (0.0, 0.0),
+) -> None:
+    import isaacsim.core.utils.prims as prim_utils
+
+    curve_group = f"{group_path}/BaseTrajectories"
+    prim_utils.create_prim(curve_group, "Xform")
+    for index, meta in enumerate(selected_meta):
+        trajectory = mobile_trajs[int(meta["trajectory_index"])].numpy()
+        trajectory = trajectory.copy()
+        trajectory[:, 0] += float(xy_offset[0])
+        trajectory[:, 1] += float(xy_offset[1])
+        color = tuple(meta["color"])
+        add_base_path_curve(stage, f"{curve_group}/traj_{index:02d}", trajectory[:, :3], color, width=0.10, z=0.20)
+        for marker_id, frame in enumerate(keyframe_indices(trajectory.shape[0], 9)):
+            x, y = trajectory[frame, :2]
+            add_marker_sphere(
+                stage,
+                f"{curve_group}/traj_{index:02d}_dot_{marker_id:02d}",
+                (float(x), float(y), 0.22),
+                color,
+                0.085,
+                0.92,
+            )
+
+
+def camera_for_actual_ghost(spec: Any) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    config = SCENE_RENDER_CONFIGS.get(spec.name, {})
+    target = tuple(config.get("overview_target", (0.0, 0.25, 0.7)))
+    # High oblique top-down: preserves arm height while reading as a workspace map.
+    return (target[0] - 0.25, target[1] - 4.6, 8.8), (target[0], target[1], 0.45)
+
+
+def render_panel(
+    args: argparse.Namespace,
+    spec: Any,
+    panel_name: str,
+    samples: list[GhostSample],
+    simulation_app: Any,
+    mobile_trajs: torch.Tensor | None = None,
+    mobile_meta: list[dict[str, Any]] | None = None,
+    fixed_base: tuple[float, float, float] | None = None,
+    trajectory_xy_offset: tuple[float, float] = (0.0, 0.0),
+) -> dict[str, Any]:
+    import omni.usd
+    import isaaclab.sim as sim_utils
+    from isaaclab.sim import SimulationContext
+
+    root = Path(args.repo_root).resolve()
+    out_dir = resolve_repo_path(args.output_root, root) / panel_name
+    out_dir.mkdir(parents=True, exist_ok=True)
+    print(f"[ghost] render panel={panel_name} samples={len(samples)}", flush=True)
+
+    SimulationContext.clear_instance()
+    omni.usd.get_context().new_stage()
+    for _ in range(2):
+        simulation_app.update()
+
+    sim = sim_utils.SimulationContext(sim_utils.SimulationCfg(device=args.device))
+    spawn_static_scene(spec)
+    group_path = f"/World/{panel_name.title().replace('_', '')}Ghosts"
+    print(f"[ghost] spawning robots for {panel_name}", flush=True)
+    robots = spawn_ghost_robots(group_path, samples)
+    stage = omni.usd.get_context().get_stage()
+
+    if mobile_trajs is not None and mobile_meta is not None:
+        add_mobile_base_curves(stage, group_path, mobile_trajs, mobile_meta, xy_offset=trajectory_xy_offset)
+        add_mobile_base_footprints(stage, group_path, samples)
+    if fixed_base is not None:
+        add_fixed_base_marker(stage, group_path, fixed_base)
+
+    print(f"[ghost] styling ghosts for {panel_name}", flush=True)
+    style_ghosts(stage, group_path, samples)
+    hidden = hide_fixed_base_visuals(stage, group_path) if panel_name.startswith("fixed") else 0
+    if hidden:
+        print(f"[ghost] hid {hidden} fixed-base Summit visual prims in {panel_name}")
+
+    camera = create_camera(args.image_width, args.image_height)
+    print(f"[ghost] resetting sim for {panel_name}", flush=True)
+    sim.reset()
+    print(f"[ghost] applying samples for {panel_name}", flush=True)
+    apply_ghost_samples(robots, samples, sim.get_physics_dt())
+
+    eye, target = camera_for_actual_ghost(spec)
+    output_path = out_dir / f"{panel_name}_topdown_ghost.png"
+    print(f"[ghost] rendering {output_path}", flush=True)
+    render_one(sim, camera, robots, stage, group_path, eye, target, "all", output_path)
+    stage_path = out_dir / "stage.usd"
+    stage.GetRootLayer().Export(str(stage_path))
+    SimulationContext.clear_instance()
+    return {"image": str(output_path), "stage": str(stage_path), "num_samples": len(samples)}
+
+
+def make_side_by_side(output_root: Path, fixed_image: Path, mobile_image: Path) -> Path | None:
+    try:
+        from PIL import Image, ImageDraw
+    except Exception as exc:
+        print(f"[ghost] side-by-side skipped: PIL unavailable ({exc})")
+        return None
+    fixed = Image.open(fixed_image).convert("RGB")
+    mobile = Image.open(mobile_image).convert("RGB")
+    label_h = 72
+    width = fixed.width + mobile.width
+    height = max(fixed.height, mobile.height) + label_h
+    sheet = Image.new("RGB", (width, height), (244, 241, 235))
+    draw = ImageDraw.Draw(sheet)
+    draw.text((28, 22), "Fixed base: arm-only ghost trajectory", fill=(24, 28, 25))
+    draw.text((fixed.width + 28, 22), "Mobile base: workspace ghosts + solved trajectories", fill=(24, 28, 25))
+    sheet.paste(fixed, (0, label_h))
+    sheet.paste(mobile, (fixed.width, label_h))
+    path = output_root / "fixed_vs_mobile_actual_ghost.png"
+    sheet.save(path)
+    return path
+
+
+def add_common_args(parser: argparse.ArgumentParser) -> None:
+    root = repo_root()
+    parser.add_argument("--repo_root", default=str(root))
+    parser.add_argument("--scene", default=DEFAULT_SCENE)
+    parser.add_argument("--object_id", default=DEFAULT_OBJECT_ID)
+    parser.add_argument("--data_root", default=DEFAULT_DATA_ROOT)
+    parser.add_argument("--output_root", default=str(root / DEFAULT_OUTPUT_ROOT))
+    parser.add_argument("--summit_robot_cfg", default=str(local_robot_cfg_path(root, "summit_franka.yml")))
+    parser.add_argument(
+        "--fixed_robot_cfg",
+        default=str(local_robot_cfg_path(root, "summit_franka_fixed_base.yml")),
+    )
+    parser.add_argument(
+        "--dataset_config",
+        default=str(root / ".idea/cuakr_ithor/configs/dataset_config.yml"),
+    )
+    parser.add_argument(
+        "--object_data",
+        default=str(root / ".idea/cuakr_ithor/configs/object_data.json"),
+    )
+    parser.add_argument("--object_root", default=str(root / "assets/object"))
+    parser.add_argument("--image_width", type=int, default=IMAGE_WIDTH)
+    parser.add_argument("--image_height", type=int, default=IMAGE_HEIGHT)
+    parser.add_argument("--mobile_traj_count", type=int, default=MOBILE_TRAJ_COUNT)
+    parser.add_argument("--mobile_keyframes", type=int, default=MOBILE_KEYFRAMES)
+    parser.add_argument("--mobile_workspace_ghosts", type=int, default=MOBILE_WORKSPACE_GHOSTS)
+    parser.add_argument("--fixed_keyframes", type=int, default=FIXED_KEYFRAMES)
+    parser.add_argument("--fixed_arm_ghosts", type=int, default=FIXED_ARM_GHOSTS)
+    parser.add_argument("--panels", nargs="+", choices=["fixed", "mobile"], default=["fixed", "mobile"])
+    parser.add_argument(
+        "--trajectory_xy_offset",
+        nargs=2,
+        type=float,
+        default=None,
+        metavar=("DX", "DY"),
+        help="Poster-only x/y offset applied to actual planned base coordinates before rendering.",
+    )
+    parser.add_argument("--check_inputs", action="store_true")
+    # Keep compatibility with render_reach_comparison.check_inputs().
+    parser.add_argument("--scenes", nargs="+", default=None)
+
+
+def parse_bootstrap_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(add_help=False)
+    add_common_args(parser)
+    args, _ = parser.parse_known_args()
+    args.scenes = args.scenes or [args.scene]
+    return args
+
+
+def main() -> int:
+    bootstrap_args = parse_bootstrap_args()
+    bootstrap_args.scenes = [bootstrap_args.scene]
+    if bootstrap_args.check_inputs:
+        return 0 if check_inputs(bootstrap_args) else 1
+
+    root = Path(bootstrap_args.repo_root).resolve()
+    add_repo_import_paths(root)
+
+    try:
+        from isaaclab.app import AppLauncher
+    except Exception as exc:
+        print(
+            "[ghost] ERROR: IsaacLab is not importable. Run through "
+            "tools/paper/poster/run_actual_ghost_render.sh.\n"
+            f"Original error: {exc}",
+            file=sys.stderr,
+        )
+        return 2
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    add_common_args(parser)
+    AppLauncher.add_app_launcher_args(parser)
+    args = parser.parse_args()
+    args.scenes = [args.scene]
+
+    if not check_inputs(args):
+        return 1
+
+    data_root = Path(args.data_root).expanduser().resolve()
+    summit_cfg = Path(args.summit_robot_cfg).expanduser().resolve()
+    fixed_cfg = Path(args.fixed_robot_cfg).expanduser().resolve()
+    mobile_trajs = load_filtered_trajs(data_root, "summit_franka", args.object_id)
+    fixed_planned_trajs = load_filtered_trajs(data_root, "summit_franka_fixed_base", args.object_id)
+    fixed_recorded_trajs = load_recorded_fixed_arm_trajs(data_root, "summit_franka_fixed_base", args.object_id)
+    fixed_trajs = fixed_recorded_trajs if fixed_recorded_trajs is not None else fixed_planned_trajs
+    fixed_traj_source = "recorded_hdf5_obs_joint_arm" if fixed_recorded_trajs is not None else "planned_pt_traj_result"
+    fixed_base, fixed_base_source = fixed_base_values(
+        fixed_cfg,
+        data_root,
+        "summit_franka_fixed_base",
+        args.object_id,
+    )
+    trajectory_xy_offset = tuple(
+        float(v)
+        for v in (
+            args.trajectory_xy_offset
+            if args.trajectory_xy_offset is not None
+            else DEFAULT_TRAJECTORY_DISPLAY_OFFSETS.get((args.scene, args.object_id), (0.0, 0.0))
+        )
+    )
+    fixed_base_display = (
+        float(fixed_base[0] + trajectory_xy_offset[0]),
+        float(fixed_base[1] + trajectory_xy_offset[1]),
+        float(fixed_base[2]),
+    )
+    print(
+        f"[ghost] loaded mobile={tuple(mobile_trajs.shape)} "
+        f"fixed_planned={tuple(fixed_planned_trajs.shape)} fixed_render={tuple(fixed_trajs.shape)} "
+        f"fixed_traj_source={fixed_traj_source} fixed_base_raw={fixed_base} "
+        f"fixed_base_display={fixed_base_display} source={fixed_base_source} "
+        f"trajectory_xy_offset={trajectory_xy_offset}"
+    )
+    print(
+        "[ghost] mobile base xy range="
+        f"({mobile_trajs[:, :, 0].min().item():.3f}, {mobile_trajs[:, :, 0].max().item():.3f}) x "
+        f"({mobile_trajs[:, :, 1].min().item():.3f}, {mobile_trajs[:, :, 1].max().item():.3f})"
+    )
+
+    os.environ.setdefault("AUTOMOMA_OBJECT_ROOT", str(resolve_repo_path(args.object_root, root)))
+    os.environ.setdefault("AUTOMOMA_ROBOT_ROOT", str(root / "assets" / "robot"))
+
+    app_launcher = AppLauncher(args)
+    simulation_app = app_launcher.app
+    try:
+        spec = load_scene_specs(args)[0]
+        mobile_samples, mobile_meta = build_mobile_trajectory_samples(
+            mobile_trajs,
+            args.mobile_traj_count,
+            args.mobile_keyframes,
+            xy_offset=trajectory_xy_offset,
+        )
+        mobile_samples = build_mobile_workspace_ghosts(spec, args.mobile_workspace_ghosts, summit_cfg) + mobile_samples
+
+        fixed_selected_index = 0 if fixed_recorded_trajs is not None else None
+        fixed_samples, fixed_meta = build_fixed_trajectory_samples(
+            fixed_trajs,
+            fixed_base_display,
+            args.fixed_keyframes,
+            trajectory_index=fixed_selected_index,
+        )
+        fixed_random_source = fixed_trajs[: min(fixed_trajs.shape[0], 128)] if fixed_recorded_trajs is not None else fixed_trajs
+        fixed_samples = build_fixed_random_ghosts(fixed_random_source, fixed_base_display, args.fixed_arm_ghosts) + fixed_samples
+
+        outputs: dict[str, Any] = {
+            "data_root": str(data_root),
+            "scene": args.scene,
+            "object_id": args.object_id,
+            "summit_robot_cfg": str(summit_cfg),
+            "fixed_robot_cfg": str(fixed_cfg),
+            "fixed_base": fixed_base,
+            "fixed_base_display": fixed_base_display,
+            "fixed_base_source": fixed_base_source,
+            "trajectory_xy_offset": trajectory_xy_offset,
+            "fixed_traj_source": fixed_traj_source,
+            "mobile_trajs_shape": list(mobile_trajs.shape),
+            "fixed_planned_trajs_shape": list(fixed_planned_trajs.shape),
+            "fixed_render_trajs_shape": list(fixed_trajs.shape),
+            "mobile_selected": mobile_meta,
+            "fixed_selected": fixed_meta,
+        }
+        if "fixed" in args.panels:
+            outputs["fixed"] = render_panel(
+                args,
+                spec,
+                "fixed_base",
+                fixed_samples,
+                simulation_app,
+                fixed_base=fixed_base_display,
+                trajectory_xy_offset=trajectory_xy_offset,
+            )
+        if "mobile" in args.panels:
+            outputs["mobile"] = render_panel(
+                args,
+                spec,
+                "mobile_base",
+                mobile_samples,
+                simulation_app,
+                mobile_trajs=mobile_trajs,
+                mobile_meta=mobile_meta,
+                trajectory_xy_offset=trajectory_xy_offset,
+            )
+
+        out_root = resolve_repo_path(args.output_root, root)
+        if "fixed" in outputs and "mobile" in outputs:
+            side_by_side = make_side_by_side(
+                out_root,
+                Path(outputs["fixed"]["image"]),
+                Path(outputs["mobile"]["image"]),
+            )
+            if side_by_side is not None:
+                outputs["side_by_side"] = str(side_by_side)
+
+        summary_path = out_root / "manifest.json"
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
+        with summary_path.open("w", encoding="utf-8") as f:
+            json.dump(outputs, f, indent=2)
+        print(f"[ghost] summary: {summary_path}")
+    finally:
+        simulation_app.close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

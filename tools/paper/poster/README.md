@@ -28,6 +28,68 @@ This does not import Isaac Sim and is safe to run in a normal Python env:
 python tools/paper/poster/render_reach_comparison.py --check_inputs
 ```
 
+## Trajectory-Driven Workspace Sketches
+
+For faster poster ideation, generate top-down comparison figures directly from
+planned trajectories. This path uses the actual 12D planner output, not random
+pose samples, and does not require Isaac Sim:
+
+```bash
+python tools/paper/poster/plot_trajectory_workspace.py
+```
+
+Default input:
+`data/trajs/summit_franka/microwave_7221/scene_0_seed_0/train/traj_data_train.pt`.
+
+Outputs are written to `outputs/paper/poster/trajectory_workspace_7221/`:
+
+- `mobile_workspace_trajectories.png`
+- `fixed_vs_mobile_workspace.png`
+- `poster_workspace_triptych.png`
+- `metrics.json`
+
+## Actual Ghost Comparison
+
+For the poster figure that uses the already-planned iTHOR 7221 data, render
+actual 3D ghost panels for fixed-base and mobile Summit-Franka:
+
+```bash
+bash tools/paper/poster/run_actual_ghost_render.sh \
+  --image_width 1600 \
+  --image_height 1050 \
+  --mobile_traj_count 4 \
+  --mobile_keyframes 5 \
+  --mobile_workspace_ghosts 14 \
+  --fixed_keyframes 6 \
+  --fixed_arm_ghosts 8 \
+  --output_root outputs/paper/poster/actual_ghost_comparison_aligned_v2
+```
+
+Defaults use:
+
+- data root:
+  `/media/xinhai/GIANT/Research/AutoMoMa/data/ithor/data_250917/ithor_floorplan1_1`
+- object id: `7221`
+- local poster robot configs under `tools/paper/poster/local/robots/`
+
+Important alignment notes:
+
+- Mobile `traj_mobile_*.pt` files are rendered from their first three base
+  coordinates plus the planned arm joints.
+- Fixed-base `traj_mobile_*.pt` files are 8D arm/object states and do not carry
+  the fixed base pose. The renderer therefore prefers recorded HDF5
+  `obs/joint/mobile_base` and `obs/joint/arm` when available.
+- `ithor_floorplan1_1` / `7221` applies a poster-only XY display offset so the
+  replay coordinates match the visible upper-right microwave in the current
+  FloorPlan1 USD. This does not modify planner, replay, or dataset files.
+
+Outputs include:
+
+- `fixed_base/fixed_base_topdown_ghost.png`
+- `mobile_base/mobile_base_topdown_ghost.png`
+- `fixed_vs_mobile_actual_ghost.png`
+- `manifest.json`
+
 ## Render
 
 Use the wrapper so the Isaac Sim/IsaacLab environment variables are set. The
