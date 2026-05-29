@@ -84,7 +84,7 @@ Isaac Sim 5.1 and IsaacLab require Python 3.11. Do not use Python 3.12 for the f
 conda create -y -n automoma python=3.11
 conda activate automoma
 
-cd /path/to/lerobot-arena
+cd /path/to/automoma
 ```
 
 **2) Install common build tools and CUDA compiler**
@@ -151,7 +151,7 @@ ln -sf "$CONDA_PREFIX/lib/python3.11/site-packages/isaacsim" _isaac_sim
 # flatdict 4.0.1 needs the non-isolated build env with setuptools<81.
 pip install "flatdict==4.0.1" --no-build-isolation
 ./isaaclab.sh -i
-cd /path/to/lerobot-arena
+cd /path/to/automoma
 pip install -e ./third_party/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab --no-build-isolation
 pip install -e ./third_party/IsaacLab-Arena
 
@@ -234,7 +234,7 @@ If you encounter `ValueError: mutable default` errors when importing curobo, the
 
 If you need to clean curobo build artifacts before rebuilding, use:
 ```bash
-./scripts/clean_curobo_build.sh
+./tools/dev/clean_curobo_build.sh
 ```
 
 ### Isaac Sim Headless Camera Crash
@@ -268,6 +268,8 @@ kill <stale-python-pid>
 
 ## Quick Start
 
+For additional command examples, see `scripts/quickstart.sh` and `docs/workflows.md`. Maintainer utilities are documented in `docs/tools.md`.
+
 ### 1. Plan Trajectories
 
 Generate trajectories for a specific object and scene:
@@ -287,7 +289,7 @@ python scripts/plan.py object_id=7221 scene_name=scene_0_seed_0 planner.visualiz
 
 ```bash
 # Prepare object
-python scripts/prepare_object.py --object_type Microwave --object_id 7221
+python tools/assets/prepare_object.py --object_type Microwave --object_id 7221
 
 # Record with 30 episodes.
 # Default replay timing is --interpolated 5 --interpolation_type cubic --decimation 1 --init_steps 5.
@@ -323,7 +325,7 @@ With `--metrics`, replay writes:
 For the 5-object replay trace probe:
 
 ```bash
-python scripts/run_grasp_filter_metrics.py \
+python tools/debug/run_grasp_filter_metrics.py \
   --max-objects 5 \
   --scenes-per-object 1 \
   --max-episodes-per-scene 50 \
@@ -349,20 +351,20 @@ lerobot-dataset-viz \
 
 ### 3.1 Visualize Raw AutoMoMa HDF5
 
-Use `scripts/automoma_dataset_viz.py` to inspect raw AutoMoMa HDF5 recordings directly in an interactive Rerun viewer.
+Use `tools/dataset/viz_hdf5.py` to inspect raw AutoMoMa HDF5 recordings directly in an interactive Rerun viewer.
 
 ```bash
 # Preview a small dataset (all demos become tabs)
-python scripts/automoma_dataset_viz.py \
+python tools/dataset/viz_hdf5.py \
     data/automoma/summit_franka_open-microwave_7221-scene_0_seed_0-10.hdf5
 
 # Preview specific demos only
-python scripts/automoma_dataset_viz.py \
+python tools/dataset/viz_hdf5.py \
     data/automoma/summit_franka_open-microwave_7221-scene_0_seed_0-10.hdf5 \
     --demo-index 1,3-4
 
 # Large datasets: load only one demo for fast inspection
-python scripts/automoma_dataset_viz.py \
+python tools/dataset/viz_hdf5.py \
     data/automoma/code_validation/code_validation-microwave_7221-scene_0_seed_0-6400-set_state.hdf5 \
     --demo-index 123
 ```
@@ -424,7 +426,7 @@ DEBUG_VISUALIZE_HANDLE=true bash scripts/run_pipeline.sh eval lerobot act microw
 
 ```bash
 # Prepare and record dishwasher trajectories
-python scripts/prepare_object.py --object_type Dishwasher --object_id 11622
+python tools/assets/prepare_object.py --object_type Dishwasher --object_id 11622
 bash scripts/run_pipeline.sh record dishwasher_11622 scene_0_seed_0 30 --set_state --disable_collision
 bash scripts/run_pipeline.sh convert lerobot dishwasher_11622 scene_0_seed_0 30
 ```

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# run_pipeline.sh — Unified pipeline for the lerobot-arena project.
+# run_pipeline.sh — Unified pipeline for the AutoMoMa project.
 #
 # Supports: plan, record, replay, convert, train, eval, record_dataset_eval, debug
 # =============================================================================
@@ -9,6 +9,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+TOOLS_DIR="$REPO_ROOT/tools"
 ISAACLAB_ARENA="$REPO_ROOT/third_party/IsaacLab-Arena"
 ROBOTWIN_ROOT="$REPO_ROOT/third_party/RoboTwin"
 
@@ -230,6 +231,9 @@ do_record() {
     fi
     if [[ "$record_format" == "episodes" && "$dataset_file_explicit" == "false" ]]; then
         dataset_file="$REPO_ROOT/data/automoma/${name}"
+    fi
+    if [[ "$traj_file" != /* ]]; then
+        traj_file="$REPO_ROOT/$traj_file"
     fi
     if [[ "$dataset_file" != /* ]]; then
         dataset_file="$REPO_ROOT/$dataset_file"
@@ -636,7 +640,7 @@ do_convert() {
         if [[ -n "$split_hdf5_dir" ]]; then
             conversion_tmp_dir="$(mktemp -d "$REPO_ROOT/data/automoma/.merge_for_convert.XXXXXX")"
             local merged_hdf5="$conversion_tmp_dir/$(basename "$split_hdf5_dir").hdf5"
-            python "$REPO_ROOT/scripts/convert_automoma_hdf5_layout.py" \
+            python "$TOOLS_DIR/dataset/convert_hdf5_layout.py" \
                 "$split_hdf5_dir" \
                 "$merged_hdf5" \
                 --direction merge \
@@ -688,7 +692,7 @@ do_convert() {
     if [[ -d "$hdf5_path" ]]; then
         robotwin_tmp_dir="$(mktemp -d "$REPO_ROOT/data/automoma/.merge_for_convert.XXXXXX")"
         local robotwin_merged_hdf5="$robotwin_tmp_dir/$(basename "$hdf5_path").hdf5"
-        python "$REPO_ROOT/scripts/convert_automoma_hdf5_layout.py" \
+        python "$TOOLS_DIR/dataset/convert_hdf5_layout.py" \
             "$hdf5_path" \
             "$robotwin_merged_hdf5" \
             --direction merge \
@@ -699,7 +703,7 @@ do_convert() {
         local split_hdf5_dir="$data_root/${hdf5_name%.hdf5}"
         robotwin_tmp_dir="$(mktemp -d "$REPO_ROOT/data/automoma/.merge_for_convert.XXXXXX")"
         local robotwin_merged_hdf5="$robotwin_tmp_dir/$(basename "$split_hdf5_dir").hdf5"
-        python "$REPO_ROOT/scripts/convert_automoma_hdf5_layout.py" \
+        python "$TOOLS_DIR/dataset/convert_hdf5_layout.py" \
             "$split_hdf5_dir" \
             "$robotwin_merged_hdf5" \
             --direction merge \
@@ -842,7 +846,7 @@ do_train() {
 
     setup_log train "$object_name" "$scene_name"
 
-    local train_wrapper="$REPO_ROOT/scripts/robotwin_train.sh"
+    local train_wrapper="$TOOLS_DIR/robotwin/robotwin_train.sh"
     local -a cmd=(
         bash "$train_wrapper"
         "$policy_name_upper"
@@ -930,7 +934,7 @@ do_eval() {
         local debug_marker_scale="${DEBUG_MARKER_SCALE:-1.0}"
 
         local -a cmd=(
-            python "$REPO_ROOT/scripts/lerobot_eval_aligned.py"
+            python "$TOOLS_DIR/eval/lerobot_eval_aligned.py"
             --policy.path="$policy_path"
             --policy.device=cuda
             --object_name="$object_name"
@@ -1073,7 +1077,7 @@ PY
     local -a friction_passthrough=()
     append_robot_object_friction_args friction_passthrough
     passthrough=(--traj_file "$traj_file" --mobile_base_relative "$eval_mobile_base_relative" "${friction_passthrough[@]}" "${passthrough[@]}")
-    local eval_wrapper="$REPO_ROOT/scripts/robotwin_eval.sh"
+    local eval_wrapper="$TOOLS_DIR/robotwin/robotwin_eval.sh"
     local task_name="$object_name"
     local task_config="$scene_name"
     local -a cmd=()
@@ -1083,7 +1087,7 @@ PY
             exit 1
         fi
         cmd=(
-            python "$REPO_ROOT/scripts/cvpr26/robotwin_dp3_eval.py"
+            python "$TOOLS_DIR/paper/cvpr26/robotwin_dp3_eval.py"
             --task_name "$task_name"
             --task_config "$task_config"
             --expert_data_num "$num_episodes"
@@ -1193,7 +1197,7 @@ do_record_dataset_eval() {
     local debug_marker_scale="${DEBUG_MARKER_SCALE:-1.0}"
 
     local -a cmd=(
-        python "$REPO_ROOT/scripts/record_dataset_eval.py"
+        python "$TOOLS_DIR/eval/record_dataset_eval.py"
         --dataset_file="$dataset_file"
         --output_dir="$output_dir"
         --object_name="$object_name"

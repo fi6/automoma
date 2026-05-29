@@ -1,7 +1,6 @@
 # Specific to this project
 assets/
 outputs/
-tests/
 data/
 data_backup/
 logs/

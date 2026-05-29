@@ -21,7 +21,8 @@ Current architecture:
 - `automoma/planning/pipeline.py`: end-to-end planning orchestration and 11D -> 12D trajectory conversion.
 - `scripts/plan.py`: planning CLI entrypoint.
 - `scripts/run_pipeline.sh`: main operational entrypoint for `record`, `convert`, `train`, `eval`, and `debug`.
-- `scripts/run_simple.sh`: example commands and quick workflow reference.
+- `tools/`: first-party maintainer utilities, diagnostics, release helpers, and non-public workflow wrappers.
+- `scripts/quickstart.sh`: concise public workflow examples.
 - `configs/plan.yaml`: planning configuration source of truth.
 
 ## Data Directory Structure
@@ -62,7 +63,7 @@ When the user asks to debug and explicitly asks to record debug information, kee
 
 ## Working Rules
 - Read the relevant implementation before changing behavior. Do not infer workflow details from filenames alone.
-- Prefer editing first-party code in `automoma/`, `scripts/`, and `configs/`.
+- Prefer editing first-party code in `automoma/`, `scripts/`, `tools/`, and `configs/`.
 - Keep changes minimal and local unless the problem is clearly cross-cutting.
 - If a task affects both planning and replay/eval semantics, inspect both sides before editing either side.
 - Preserve existing CLIs and file layout unless the task explicitly requires interface changes.
@@ -110,7 +111,7 @@ If validation is blocked by environment limits, missing assets, GPU requirements
 - Evaluate a policy: `bash scripts/run_pipeline.sh eval <benchmark> <policy> <object_name> <scene_name> <num_episodes> [overrides...]`
 - Debug trajectory replay: `bash scripts/run_pipeline.sh debug <object_name> <scene_name> --debug_file <path>`
 
-Use `scripts/run_simple.sh` as a quick reference for known working command patterns, but verify assumptions against the actual implementation before changing code.
+Use `scripts/quickstart.sh` and `docs/workflows.md` as quick references for known working command patterns, but verify assumptions against the actual implementation before changing code.
 
 ## Response Expectations
 When reporting completed work, include:
