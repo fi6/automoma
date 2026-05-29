@@ -1,5 +1,7 @@
 # Specific to this project
 assets/
+!tools/assets/
+!tools/assets/render_object_foreground.py
 outputs/
 data/
 data_backup/
