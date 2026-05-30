@@ -101,6 +101,7 @@ class GhostSample:
     color: tuple[float, float, float]
     opacity: float
     hide_summit_base: bool = False
+    urdf_path: str | None = None
 
 
 def trajectory_dir(data_root: Path, robot_name: str, object_id: str) -> Path:
@@ -134,6 +135,34 @@ def local_robot_cfg_path(root: Path, filename: str) -> Path:
     if local.exists():
         return local
     return root / "assets" / "robot" / "summit_franka" / filename
+
+
+def ensure_local_urdfs(root: Path) -> tuple[Path, Path]:
+    """Create poster-local URDF variants without touching global assets."""
+
+    import xml.etree.ElementTree as ET
+
+    source = root / "assets" / "robot" / "summit_franka" / "summit_franka.urdf"
+    local_dir = root / "tools" / "paper" / "poster" / "local" / "robots"
+    local_dir.mkdir(parents=True, exist_ok=True)
+    mobile_urdf = local_dir / "summit_franka_full_base.urdf"
+    fixed_urdf = local_dir / "summit_franka_empty_base.urdf"
+
+    if not mobile_urdf.exists() or source.stat().st_mtime > mobile_urdf.stat().st_mtime:
+        mobile_urdf.write_text(source.read_text(), encoding="utf-8")
+
+    if not fixed_urdf.exists() or source.stat().st_mtime > fixed_urdf.stat().st_mtime:
+        tree = ET.parse(source)
+        xml_root = tree.getroot()
+        for link in xml_root.findall("link"):
+            if link.attrib.get("name") != "summit_base":
+                continue
+            for child in list(link):
+                if child.tag in {"visual", "collision"}:
+                    link.remove(child)
+        tree.write(fixed_urdf, encoding="utf-8", xml_declaration=True)
+
+    return mobile_urdf, fixed_urdf
 
 
 def cfg_fixed_base_values(fixed_cfg_path: Path) -> tuple[float, float, float]:
@@ -363,6 +392,39 @@ def build_fixed_trajectory_samples(
     return samples, {"trajectory_index": traj_idx, "keyframes": frames, "color": FIXED_COLOR}
 
 
+def representative_fixed_indices(trajs: torch.Tensor, count: int) -> list[int]:
+    arm = trajs[:, :, :7].numpy()
+    displacement = np.linalg.norm(arm[:, -1, :] - arm[:, 0, :], axis=1, keepdims=True)
+    features = np.concatenate([arm[:, 0, :], arm[:, -1, :], displacement], axis=1)
+    return farthest_indices(features, count)
+
+
+def build_fixed_episode_trajectory_samples(
+    trajs: torch.Tensor,
+    fixed_base: tuple[float, float, float],
+    episode_count: int,
+    keyframes: int,
+) -> tuple[list[GhostSample], list[dict[str, Any]]]:
+    samples: list[GhostSample] = []
+    metas: list[dict[str, Any]] = []
+    for episode_id, traj_idx in enumerate(representative_fixed_indices(trajs, episode_count)):
+        trajectory = trajs[traj_idx]
+        color = MOBILE_COLORS[episode_id % len(MOBILE_COLORS)]
+        frames = keyframe_indices(trajectory.shape[0], keyframes)
+        metas.append({"trajectory_index": traj_idx, "keyframes": frames, "color": color})
+        for frame in frames:
+            samples.append(
+                GhostSample(
+                    name=f"fixed_traj{episode_id:02d}_t{frame:02d}",
+                    joint_pos=fixed_state_to_joints(trajectory[frame], fixed_base),
+                    color=color,
+                    opacity=FIXED_TRAJ_OPACITY,
+                    hide_summit_base=True,
+                )
+            )
+    return samples, metas
+
+
 def build_fixed_random_ghosts(
     trajs: torch.Tensor,
     fixed_base: tuple[float, float, float],
@@ -410,13 +472,24 @@ def make_robot_articulation(sample: GhostSample, prim_path: str) -> Any:
     from isaaclab_arena.embodiments.summit_franka.summit_franka import SummitFrankaSceneCfg
 
     robot_cfg = SummitFrankaSceneCfg().robot.replace(prim_path=prim_path)
-    robot_cfg.spawn.activate_contact_sensors = False
-    robot_cfg.spawn.visual_material = sim_utils.PreviewSurfaceCfg(
+    visual_material = sim_utils.PreviewSurfaceCfg(
         diffuse_color=sample.color,
         opacity=sample.opacity,
         roughness=0.62,
     )
-    robot_cfg.spawn.visual_material_path = f"{prim_path}/GhostMaterial"
+    if sample.urdf_path:
+        robot_cfg.spawn = sim_utils.UrdfFileCfg(
+            asset_path=str(Path(sample.urdf_path)),
+            fix_base=True,
+            merge_fixed_joints=False,
+            make_instanceable=False,
+            visual_material=visual_material,
+            visual_material_path=f"{prim_path}/GhostMaterial",
+        )
+    else:
+        robot_cfg.spawn.activate_contact_sensors = False
+        robot_cfg.spawn.visual_material = visual_material
+        robot_cfg.spawn.visual_material_path = f"{prim_path}/GhostMaterial"
     robot_cfg.init_state.pos = (0.0, 0.0, 0.0)
     robot_cfg.init_state.rot = (1.0, 0.0, 0.0, 0.0)
     return Articulation(cfg=robot_cfg)
@@ -480,7 +553,7 @@ def hide_fixed_base_visuals(stage: Any, group_path: str) -> int:
     if not root or not root.IsValid():
         return 0
     hidden = 0
-    needles = ("summit_base", "summit_chassis")
+    needles = ("base_link_z", "summit_base", "summit_chassis", "franka_stand")
     for prim in Usd.PrimRange(root):
         path = prim.GetPath().pathString.lower()
         name = prim.GetName().lower()
@@ -862,11 +935,97 @@ def export_individual_frames(
     return exported
 
 
-def camera_for_actual_ghost(spec: Any) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+def episode_name(sample_name: str) -> str:
+    for prefix in ("mobile_traj", "fixed_traj"):
+        if sample_name.startswith(prefix):
+            suffix = sample_name[len(prefix) :].split("_t", 1)[0]
+            if suffix.isdigit():
+                return f"episode{int(suffix) + 1:02d}"
+    if "_t" in sample_name:
+        return sample_name.rsplit("_t", 1)[0]
+    return sample_name
+
+
+def export_layer_sources(
+    args: argparse.Namespace,
+    sim: Any,
+    camera: Any,
+    robots: dict[str, Any],
+    stage: Any,
+    group_path: str,
+    samples: list[GhostSample],
+    panel_out_dir: Path,
+    view_name: str,
+    eye: tuple[float, float, float],
+    target: tuple[float, float, float],
+) -> dict[str, Any]:
+    source_dir = panel_out_dir / "sources" / view_name
+    source_dir.mkdir(parents=True, exist_ok=True)
+    source_outputs: dict[str, Any] = {}
+
+    scene_path = source_dir / "scene_objects.png"
+    render_one(sim, camera, robots, stage, group_path, eye, target, "scene_objects_only", scene_path)
+    source_outputs["scene"] = str(scene_path)
+
+    actual_samples = [
+        sample
+        for sample in samples
+        if sample.name.startswith("mobile_traj") or sample.name.startswith("fixed_traj")
+    ]
+    workspace_samples = [sample for sample in samples if sample.name.startswith("mobile_workspace")]
+
+    set_prim_visibility(stage, "/World/Scene", False, recursive=False)
+    set_prim_visibility(stage, "/World/Objects", False, recursive=False)
+    set_prim_visibility(stage, group_path, True, recursive=False)
+    for sample in samples:
+        set_prim_visibility(stage, f"{group_path}/{sample.name}", False, recursive=False)
+    set_prim_visibility(stage, f"{group_path}/BaseTrajectories", False, recursive=False)
+    set_prim_visibility(stage, f"{group_path}/MobileBaseFootprints", False, recursive=False)
+    set_prim_visibility(stage, f"{group_path}/FixedBaseAnchor", False, recursive=False)
+
+    episodes: dict[str, list[str]] = {}
+    for sample in actual_samples:
+        episode_dir = source_dir / episode_name(sample.name)
+        episode_dir.mkdir(parents=True, exist_ok=True)
+        robot_path = f"{group_path}/{sample.name}"
+        set_prim_visibility(stage, robot_path, True, recursive=False)
+        if sample.hide_summit_base:
+            hide_fixed_base_visuals(stage, robot_path)
+        output_path = episode_dir / f"{sample.name}_robot_only.png"
+        render_with_current_visibility(sim, camera, robots, eye, target, output_path)
+        episodes.setdefault(episode_dir.name, []).append(str(output_path))
+        set_prim_visibility(stage, robot_path, False, recursive=False)
+
+    if workspace_samples:
+        for sample in workspace_samples:
+            set_prim_visibility(stage, f"{group_path}/{sample.name}", True, recursive=False)
+        workspace_path = source_dir / "workspace_robots_only.png"
+        render_with_current_visibility(sim, camera, robots, eye, target, workspace_path)
+        source_outputs["workspace"] = str(workspace_path)
+        for sample in workspace_samples:
+            set_prim_visibility(stage, f"{group_path}/{sample.name}", False, recursive=False)
+
+    for sample in samples:
+        set_prim_visibility(stage, f"{group_path}/{sample.name}", True, recursive=False)
+    set_prim_visibility(stage, "/World/Scene", True, recursive=False)
+    set_prim_visibility(stage, "/World/Objects", True, recursive=False)
+    set_prim_visibility(stage, f"{group_path}/BaseTrajectories", True, recursive=False)
+    set_prim_visibility(stage, f"{group_path}/MobileBaseFootprints", True, recursive=False)
+    set_prim_visibility(stage, f"{group_path}/FixedBaseAnchor", True, recursive=False)
+
+    source_outputs["episodes"] = episodes
+    print(f"[ghost] exported layered sources for {view_name} to {source_dir}")
+    return source_outputs
+
+
+def camera_for_actual_ghost(spec: Any, view: str = "overview") -> tuple[tuple[float, float, float], tuple[float, float, float]]:
     config = SCENE_RENDER_CONFIGS.get(spec.name, {})
     target = tuple(config.get("overview_target", (0.0, 0.25, 0.7)))
-    # High oblique top-down: preserves arm height while reading as a workspace map.
-    return (target[0] - 0.25, target[1] - 4.6, 8.8), (target[0], target[1], 0.45)
+    # Straighter poster cameras: still slightly oblique, but much closer to
+    # top-down so the base workspace reads geometrically.
+    if view == "close":
+        return (target[0], target[1] - 1.55, 7.50), (target[0], target[1], 0.50)
+    return (target[0], target[1] - 2.20, 12.00), (target[0], target[1], 0.48)
 
 
 def render_panel(
@@ -903,7 +1062,8 @@ def render_panel(
 
     if mobile_trajs is not None and mobile_meta is not None:
         add_mobile_base_curves(stage, group_path, mobile_trajs, mobile_meta, xy_offset=trajectory_xy_offset)
-        add_mobile_base_footprints(stage, group_path, samples)
+        if args.use_mobile_base_proxy:
+            add_mobile_base_footprints(stage, group_path, samples)
     if fixed_base is not None:
         add_fixed_base_marker(stage, group_path, fixed_base)
 
@@ -919,30 +1079,71 @@ def render_panel(
     print(f"[ghost] applying samples for {panel_name}", flush=True)
     apply_ghost_samples(robots, samples, sim.get_physics_dt())
 
-    eye, target = camera_for_actual_ghost(spec)
-    output_path = out_dir / f"{panel_name}_topdown_ghost.png"
-    print(f"[ghost] rendering {output_path}", flush=True)
-    render_one(sim, camera, robots, stage, group_path, eye, target, "all", output_path)
-    if panel_name.startswith("mobile"):
-        overlay_mobile_base_proxies(output_path, samples, eye, target, args.image_width, args.image_height)
+    primary_output_path: Path | None = None
+    view_outputs: dict[str, Any] = {}
     individual_frames: list[str] = []
-    if args.export_individual_frames:
-        individual_frames = export_individual_frames(
-            args,
-            sim,
-            camera,
-            robots,
-            stage,
-            group_path,
-            samples,
-            out_dir,
-            eye,
-            target,
-        )
+    for view_name in args.render_views:
+        eye, target = camera_for_actual_ghost(spec, view_name)
+        output_path = out_dir / f"{panel_name}_{view_name}_all.png"
+        print(f"[ghost] rendering {output_path}", flush=True)
+        if panel_name.startswith("fixed"):
+            set_prim_visibility(stage, "/World/Scene", True, recursive=False)
+            set_prim_visibility(stage, "/World/Objects", True, recursive=False)
+            set_prim_visibility(stage, group_path, True, recursive=True)
+            hide_fixed_base_visuals(stage, group_path)
+            render_with_current_visibility(sim, camera, robots, eye, target, output_path)
+        else:
+            render_one(sim, camera, robots, stage, group_path, eye, target, "all", output_path)
+        if args.use_mobile_base_proxy and panel_name.startswith("mobile"):
+            overlay_mobile_base_proxies(output_path, samples, eye, target, args.image_width, args.image_height)
+        if primary_output_path is None:
+            primary_output_path = output_path
+            legacy_path = out_dir / f"{panel_name}_topdown_ghost.png"
+            if legacy_path != output_path:
+                try:
+                    import shutil
+
+                    shutil.copy2(output_path, legacy_path)
+                except Exception as exc:
+                    print(f"[ghost] WARNING: failed to write legacy topdown image: {exc}")
+        view_result: dict[str, Any] = {"image": str(output_path)}
+        if args.export_layer_sources:
+            view_result["sources"] = export_layer_sources(
+                args,
+                sim,
+                camera,
+                robots,
+                stage,
+                group_path,
+                samples,
+                out_dir,
+                view_name,
+                eye,
+                target,
+            )
+        if args.export_individual_frames and view_name == args.render_views[0]:
+            individual_frames = export_individual_frames(
+                args,
+                sim,
+                camera,
+                robots,
+                stage,
+                group_path,
+                samples,
+                out_dir,
+                eye,
+                target,
+            )
+        view_outputs[view_name] = view_result
     stage_path = out_dir / "stage.usd"
     stage.GetRootLayer().Export(str(stage_path))
     SimulationContext.clear_instance()
-    result = {"image": str(output_path), "stage": str(stage_path), "num_samples": len(samples)}
+    result = {
+        "image": str(primary_output_path),
+        "views": view_outputs,
+        "stage": str(stage_path),
+        "num_samples": len(samples),
+    }
     if individual_frames:
         result["individual_frames"] = individual_frames
     return result
@@ -998,7 +1199,29 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--mobile_workspace_ghosts", type=int, default=MOBILE_WORKSPACE_GHOSTS)
     parser.add_argument("--fixed_keyframes", type=int, default=FIXED_KEYFRAMES)
     parser.add_argument("--fixed_arm_ghosts", type=int, default=FIXED_ARM_GHOSTS)
+    parser.add_argument("--fixed_episode_count", type=int, default=3)
     parser.add_argument("--panels", nargs="+", choices=["fixed", "mobile"], default=["fixed", "mobile"])
+    parser.add_argument("--render_views", nargs="+", choices=["overview", "close"], default=["overview"])
+    parser.add_argument(
+        "--export_layer_sources",
+        action="store_true",
+        help="Export scene-only and robot-only source layers for scriptable poster compositing.",
+    )
+    parser.add_argument(
+        "--use_usd_robot",
+        action="store_true",
+        help="Deprecated compatibility flag; USD is now the default for reliable headless rendering.",
+    )
+    parser.add_argument(
+        "--use_urdf_robot",
+        action="store_true",
+        help="Experimental: spawn poster-local URDF variants instead of the default IsaacLab-Arena USD.",
+    )
+    parser.add_argument(
+        "--use_mobile_base_proxy",
+        action="store_true",
+        help="Draw the old simplified mobile-base proxy/PNG overlay. Off by default when URDF base is used.",
+    )
     parser.add_argument(
         "--export_individual_frames",
         action="store_true",
@@ -1108,6 +1331,7 @@ def main() -> int:
 
     os.environ.setdefault("AUTOMOMA_OBJECT_ROOT", str(resolve_repo_path(args.object_root, root)))
     os.environ.setdefault("AUTOMOMA_ROBOT_ROOT", str(root / "assets" / "robot"))
+    mobile_urdf, fixed_empty_urdf = ensure_local_urdfs(root)
 
     app_launcher = AppLauncher(args)
     simulation_app = app_launcher.app
@@ -1120,16 +1344,21 @@ def main() -> int:
             xy_offset=trajectory_xy_offset,
         )
         mobile_samples = build_mobile_workspace_ghosts(spec, args.mobile_workspace_ghosts, summit_cfg) + mobile_samples
+        if args.use_urdf_robot:
+            for sample in mobile_samples:
+                sample.urdf_path = str(mobile_urdf)
 
-        fixed_selected_index = 0 if fixed_recorded_trajs is not None else None
-        fixed_samples, fixed_meta = build_fixed_trajectory_samples(
+        fixed_samples, fixed_meta = build_fixed_episode_trajectory_samples(
             fixed_trajs,
             fixed_base_display,
+            args.fixed_episode_count,
             args.fixed_keyframes,
-            trajectory_index=fixed_selected_index,
         )
         fixed_random_source = fixed_trajs[: min(fixed_trajs.shape[0], 128)] if fixed_recorded_trajs is not None else fixed_trajs
         fixed_samples = build_fixed_random_ghosts(fixed_random_source, fixed_base_display, args.fixed_arm_ghosts) + fixed_samples
+        if args.use_urdf_robot:
+            for sample in fixed_samples:
+                sample.urdf_path = str(fixed_empty_urdf)
 
         outputs: dict[str, Any] = {
             "data_root": str(data_root),
@@ -1147,6 +1376,8 @@ def main() -> int:
             "fixed_render_trajs_shape": list(fixed_trajs.shape),
             "mobile_selected": mobile_meta,
             "fixed_selected": fixed_meta,
+            "mobile_urdf": str(mobile_urdf),
+            "fixed_empty_base_urdf": str(fixed_empty_urdf),
         }
         if "fixed" in args.panels:
             outputs["fixed"] = render_panel(
