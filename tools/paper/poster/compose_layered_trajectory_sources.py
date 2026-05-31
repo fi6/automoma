@@ -71,6 +71,13 @@ def episode_dirs(source_dir: Path) -> list[Path]:
     )
 
 
+def selected_episode_dirs(source_dir: Path, max_episodes: int) -> list[Path]:
+    episodes = episode_dirs(source_dir)
+    if max_episodes > 0:
+        return episodes[:max_episodes]
+    return episodes
+
+
 def selected_frames(episode_dir: Path, max_frames: int) -> list[Path]:
     frames = sorted(episode_dir.glob("*_robot_only.png"))
     if max_frames > 0:
@@ -89,12 +96,12 @@ def composite_view(source_dir: Path, output_dir: Path, args: argparse.Namespace,
 
     workspace_path = source_dir / "workspace_robots_only.png"
     if workspace_path.exists() and args.workspace_alpha > 0.0:
-        workspace_color = (178, 184, 178)
-        workspace_layer = tint_layer(Image.open(workspace_path), workspace_color, args.workspace_alpha, args.threshold)
+        workspace_layer = alpha_layer(Image.open(workspace_path), args.workspace_alpha, args.threshold)
+        all_canvas.alpha_composite(workspace_layer)
         ghost_canvas.alpha_composite(workspace_layer)
         manifest["workspace"] = str(workspace_path)
 
-    episodes = episode_dirs(source_dir)
+    episodes = selected_episode_dirs(source_dir, args.max_episodes)
     for episode_id, episode_dir in enumerate(episodes):
         color = DEFAULT_COLORS[episode_id % len(DEFAULT_COLORS)]
         frames = selected_frames(episode_dir, args.max_frames)
@@ -118,10 +125,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input_root", required=True, help="Panel directory, e.g. .../mobile_base")
     parser.add_argument("--views", nargs="+", default=["overview", "close"])
-    parser.add_argument("--raw_alpha", type=float, default=0.22)
-    parser.add_argument("--alpha", type=float, default=0.34, help="Alpha for colored ghost composites.")
-    parser.add_argument("--workspace_alpha", type=float, default=0.10)
+    parser.add_argument("--raw_alpha", type=float, default=1.0)
+    parser.add_argument("--alpha", type=float, default=1.0, help="Alpha for colored ghost composites.")
+    parser.add_argument("--workspace_alpha", type=float, default=0.80)
     parser.add_argument("--threshold", type=int, default=246)
+    parser.add_argument("--max_episodes", type=int, default=3, help="Maximum episode layers to composite; 0 uses all.")
     parser.add_argument("--max_frames", type=int, default=0)
     parser.add_argument("--output_dir", default=None)
     args = parser.parse_args()

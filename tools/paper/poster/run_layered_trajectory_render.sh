@@ -29,18 +29,20 @@ bash "$SCRIPT_DIR/run_actual_ghost_render.sh" \
 "${AUTOMOMA_PYTHON:-python}" "$SCRIPT_DIR/compose_layered_trajectory_sources.py" \
   --input_root "$OUTPUT_ABS/fixed_base" \
   --views overview close \
-  --raw_alpha "${FIXED_COMPOSE_RAW_ALPHA:-0.18}" \
-  --alpha "${FIXED_COMPOSE_ALPHA:-0.28}" \
+  --raw_alpha "${FIXED_COMPOSE_RAW_ALPHA:-1.0}" \
+  --alpha "${FIXED_COMPOSE_ALPHA:-1.0}" \
   --workspace_alpha 0.0 \
+  --max_episodes "${FIXED_COMPOSE_MAX_EPISODES:-3}" \
   --max_frames "${FIXED_COMPOSE_MAX_FRAMES:-0}" \
   --output_dir "$OUTPUT_ABS/fixed_base/composites"
 
 "${AUTOMOMA_PYTHON:-python}" "$SCRIPT_DIR/compose_layered_trajectory_sources.py" \
   --input_root "$OUTPUT_ABS/mobile_base" \
   --views overview close \
-  --raw_alpha "${MOBILE_COMPOSE_RAW_ALPHA:-0.16}" \
-  --alpha "${MOBILE_COMPOSE_ALPHA:-0.24}" \
-  --workspace_alpha "${MOBILE_WORKSPACE_COMPOSE_ALPHA:-0.035}" \
+  --raw_alpha "${MOBILE_COMPOSE_RAW_ALPHA:-1.0}" \
+  --alpha "${MOBILE_COMPOSE_ALPHA:-1.0}" \
+  --workspace_alpha "${MOBILE_WORKSPACE_COMPOSE_ALPHA:-0.80}" \
+  --max_episodes "${MOBILE_COMPOSE_MAX_EPISODES:-3}" \
   --max_frames "${MOBILE_COMPOSE_MAX_FRAMES:-0}" \
   --output_dir "$OUTPUT_ABS/mobile_base/composites"
 
