@@ -1026,12 +1026,12 @@ def export_layer_sources(
 def camera_for_actual_ghost(spec: Any, view: str = "overview") -> tuple[tuple[float, float, float], tuple[float, float, float]]:
     config = SCENE_RENDER_CONFIGS.get(spec.name, {})
     target = tuple(config.get("overview_target", (0.0, 0.25, 0.7)))
-    # Straighter poster cameras: still slightly oblique, but much closer to
-    # top-down so the base workspace reads geometrically.
+    # Poster v3 uses an oblique camera so the scene reads as a 3D room rather
+    # than a floor-plan crop.
     if view == "close":
-        close_target = tuple(config.get("poster_close_target", (0.82, 1.38, 0.58)))
-        return (close_target[0], close_target[1] - 1.15, 6.15), close_target
-    return (target[0], target[1] - 2.20, 12.00), (target[0], target[1], 0.48)
+        close_target = tuple(config.get("poster_close_target", (0.95, 1.95, 0.65)))
+        return (close_target[0], close_target[1] - 3.15, 5.25), close_target
+    return (target[0], target[1] - 5.40, 9.40), (target[0], target[1], 0.55)
 
 
 def export_standalone_stage(stage: Any, output_path: Path) -> Path | None:
@@ -1101,13 +1101,15 @@ def render_scene_layers(args: argparse.Namespace, spec: Any, simulation_app: Any
         render_with_current_visibility(sim, camera, {}, eye, target, output_path)
         views[view_name] = str(output_path)
 
-    stage_path = out_dir / "scene_stage.usd"
-    stage.GetRootLayer().Export(str(stage_path))
-    standalone_path = export_standalone_stage(stage, out_dir / "scene_stage_standalone.usd")
+    result: dict[str, Any] = {"views": views}
+    if args.export_usd:
+        stage_path = out_dir / "scene_stage.usd"
+        stage.GetRootLayer().Export(str(stage_path))
+        standalone_path = export_standalone_stage(stage, out_dir / "scene_stage_standalone.usd")
+        result["stage"] = str(stage_path)
+        if standalone_path is not None:
+            result["standalone_stage"] = str(standalone_path)
     SimulationContext.clear_instance()
-    result: dict[str, Any] = {"views": views, "stage": str(stage_path)}
-    if standalone_path is not None:
-        result["standalone_stage"] = str(standalone_path)
     return result
 
 
@@ -1220,18 +1222,19 @@ def render_panel(
                 target,
             )
         view_outputs[view_name] = view_result
-    stage_path = out_dir / "stage.usd"
-    stage.GetRootLayer().Export(str(stage_path))
-    standalone_path = export_standalone_stage(stage, out_dir / "stage_standalone.usd")
-    SimulationContext.clear_instance()
     result = {
         "image": str(primary_output_path),
         "views": view_outputs,
-        "stage": str(stage_path),
         "num_samples": len(samples),
     }
-    if standalone_path is not None:
-        result["standalone_stage"] = str(standalone_path)
+    if args.export_usd:
+        stage_path = out_dir / "stage.usd"
+        stage.GetRootLayer().Export(str(stage_path))
+        standalone_path = export_standalone_stage(stage, out_dir / "stage_standalone.usd")
+        result["stage"] = str(stage_path)
+        if standalone_path is not None:
+            result["standalone_stage"] = str(standalone_path)
+    SimulationContext.clear_instance()
     if individual_frames:
         result["individual_frames"] = individual_frames
     return result
@@ -1291,9 +1294,19 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--panels", nargs="+", choices=["fixed", "mobile"], default=["fixed", "mobile"])
     parser.add_argument("--render_views", nargs="+", choices=["overview", "close"], default=["overview"])
     parser.add_argument(
+        "--scene_only",
+        action="store_true",
+        help="Render only canonical scene/object backgrounds and skip robot trajectory panels.",
+    )
+    parser.add_argument(
         "--export_layer_sources",
         action="store_true",
         help="Export scene-only and robot-only source layers for scriptable poster compositing.",
+    )
+    parser.add_argument(
+        "--export_usd",
+        action="store_true",
+        help="Export composed USD stages. Off by default for raster-only poster outputs.",
     )
     parser.add_argument(
         "--use_usd_robot",
@@ -1377,6 +1390,30 @@ def main() -> int:
     if not check_inputs(args):
         return 1
 
+    root = Path(args.repo_root).resolve()
+    os.environ.setdefault("AUTOMOMA_OBJECT_ROOT", str(resolve_repo_path(args.object_root, root)))
+    os.environ.setdefault("AUTOMOMA_ROBOT_ROOT", str(root / "assets" / "robot"))
+
+    if args.scene_only:
+        app_launcher = AppLauncher(args)
+        simulation_app = app_launcher.app
+        try:
+            spec = load_scene_specs(args)[0]
+            outputs: dict[str, Any] = {
+                "scene_name": args.scene,
+                "object_id": args.object_id,
+                "scene": render_scene_layers(args, spec, simulation_app),
+            }
+            out_root = resolve_repo_path(args.output_root, root)
+            summary_path = out_root / "manifest.json"
+            summary_path.parent.mkdir(parents=True, exist_ok=True)
+            with summary_path.open("w", encoding="utf-8") as f:
+                json.dump(outputs, f, indent=2)
+            print(f"[ghost] summary: {summary_path}")
+        finally:
+            simulation_app.close()
+        return 0
+
     data_root = Path(args.data_root).expanduser().resolve()
     summit_cfg = Path(args.summit_robot_cfg).expanduser().resolve()
     fixed_cfg = Path(args.fixed_robot_cfg).expanduser().resolve()
@@ -1417,8 +1454,6 @@ def main() -> int:
         f"({mobile_trajs[:, :, 1].min().item():.3f}, {mobile_trajs[:, :, 1].max().item():.3f})"
     )
 
-    os.environ.setdefault("AUTOMOMA_OBJECT_ROOT", str(resolve_repo_path(args.object_root, root)))
-    os.environ.setdefault("AUTOMOMA_ROBOT_ROOT", str(root / "assets" / "robot"))
     mobile_urdf, fixed_empty_urdf = ensure_local_urdfs(root)
 
     app_launcher = AppLauncher(args)
