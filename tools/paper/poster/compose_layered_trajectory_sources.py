@@ -39,38 +39,27 @@ def robot_mask(image: Image.Image, threshold: int) -> np.ndarray:
     return np.any(arr < threshold, axis=-1)
 
 
+def alpha_layer(image: Image.Image, alpha: float, threshold: int) -> Image.Image:
+    rgb = np.asarray(image.convert("RGB"), dtype=np.uint8)
+    mask = robot_mask(image, threshold)
+    layer = np.zeros((rgb.shape[0], rgb.shape[1], 4), dtype=np.uint8)
+    layer[..., :3] = rgb
+    layer[..., 3] = (mask.astype(np.float32) * 255.0 * alpha).astype(np.uint8)
+    return Image.fromarray(layer).convert("RGBA")
+
+
 def tint_layer(image: Image.Image, color: tuple[int, int, int], alpha: float, threshold: int) -> Image.Image:
     rgb = np.asarray(image.convert("RGB"), dtype=np.uint8)
     mask = robot_mask(image, threshold)
-    tinted = np.zeros((rgb.shape[0], rgb.shape[1], 4), dtype=np.uint8)
+    layer = np.zeros((rgb.shape[0], rgb.shape[1], 4), dtype=np.uint8)
     shaded = (0.35 * rgb.astype(np.float32) + 0.65 * np.asarray(color, dtype=np.float32)).clip(0, 255)
-    tinted[..., :3] = shaded.astype(np.uint8)
-    tinted[..., 3] = (mask.astype(np.float32) * 255.0 * alpha).astype(np.uint8)
-    return Image.fromarray(tinted).convert("RGBA")
+    layer[..., :3] = shaded.astype(np.uint8)
+    layer[..., 3] = (mask.astype(np.float32) * 255.0 * alpha).astype(np.uint8)
+    return Image.fromarray(layer).convert("RGBA")
 
 
-def composite_view(
-    source_dir: Path,
-    output_path: Path,
-    alpha: float,
-    workspace_alpha: float,
-    threshold: int,
-    max_frames: int,
-) -> dict:
-    scene_path = source_dir / "scene_objects.png"
-    if not scene_path.exists():
-        raise FileNotFoundError(f"Missing scene layer: {scene_path}")
-    canvas = Image.open(scene_path).convert("RGBA")
-
-    manifest = {"scene": str(scene_path), "episodes": {}}
-    workspace_path = source_dir / "workspace_robots_only.png"
-    if workspace_path.exists() and workspace_alpha > 0.0:
-        workspace_color = (178, 184, 178)
-        workspace_layer = tint_layer(Image.open(workspace_path), workspace_color, workspace_alpha, threshold)
-        canvas.alpha_composite(workspace_layer)
-        manifest["workspace"] = str(workspace_path)
-
-    episodes = sorted(
+def episode_dirs(source_dir: Path) -> list[Path]:
+    return sorted(
         path
         for path in source_dir.iterdir()
         if path.is_dir()
@@ -80,18 +69,48 @@ def composite_view(
             or path.name.startswith("fixed_traj")
         )
     )
+
+
+def selected_frames(episode_dir: Path, max_frames: int) -> list[Path]:
+    frames = sorted(episode_dir.glob("*_robot_only.png"))
+    if max_frames > 0:
+        frames = frames[:max_frames]
+    return frames
+
+
+def composite_view(source_dir: Path, output_dir: Path, args: argparse.Namespace, view: str) -> dict:
+    scene_path = source_dir / "scene_objects.png"
+    if not scene_path.exists():
+        raise FileNotFoundError(f"Missing scene layer: {scene_path}")
+
+    manifest = {"scene": str(scene_path), "episodes": {}, "outputs": {}}
+    all_canvas = Image.open(scene_path).convert("RGBA")
+    ghost_canvas = Image.open(scene_path).convert("RGBA")
+
+    workspace_path = source_dir / "workspace_robots_only.png"
+    if workspace_path.exists() and args.workspace_alpha > 0.0:
+        workspace_color = (178, 184, 178)
+        workspace_layer = tint_layer(Image.open(workspace_path), workspace_color, args.workspace_alpha, args.threshold)
+        ghost_canvas.alpha_composite(workspace_layer)
+        manifest["workspace"] = str(workspace_path)
+
+    episodes = episode_dirs(source_dir)
     for episode_id, episode_dir in enumerate(episodes):
         color = DEFAULT_COLORS[episode_id % len(DEFAULT_COLORS)]
-        frames = sorted(episode_dir.glob("*_robot_only.png"))
-        if max_frames > 0:
-            frames = frames[:max_frames]
+        frames = selected_frames(episode_dir, args.max_frames)
         manifest["episodes"][episode_dir.name] = [str(path) for path in frames]
         for frame in frames:
-            canvas.alpha_composite(tint_layer(Image.open(frame), color, alpha, threshold))
+            image = Image.open(frame)
+            all_canvas.alpha_composite(alpha_layer(image, args.raw_alpha, args.threshold))
+            ghost_canvas.alpha_composite(tint_layer(image, color, args.alpha, args.threshold))
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    canvas.convert("RGB").save(output_path)
-    manifest["output"] = str(output_path)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    all_path = output_dir / f"{view}_all.png"
+    ghost_path = output_dir / f"{view}_all_ghost.png"
+    all_canvas.convert("RGB").save(all_path)
+    ghost_canvas.convert("RGB").save(ghost_path)
+    manifest["outputs"]["all"] = str(all_path)
+    manifest["outputs"]["ghost"] = str(ghost_path)
     return manifest
 
 
@@ -99,7 +118,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input_root", required=True, help="Panel directory, e.g. .../mobile_base")
     parser.add_argument("--views", nargs="+", default=["overview", "close"])
-    parser.add_argument("--alpha", type=float, default=0.34)
+    parser.add_argument("--raw_alpha", type=float, default=0.22)
+    parser.add_argument("--alpha", type=float, default=0.34, help="Alpha for colored ghost composites.")
     parser.add_argument("--workspace_alpha", type=float, default=0.10)
     parser.add_argument("--threshold", type=int, default=246)
     parser.add_argument("--max_frames", type=int, default=0)
@@ -111,16 +131,9 @@ def main() -> int:
     manifest = {}
     for view in args.views:
         source_dir = input_root / "sources" / view
-        output_path = output_dir / f"{view}_composite.png"
-        manifest[view] = composite_view(
-            source_dir,
-            output_path,
-            args.alpha,
-            args.workspace_alpha,
-            args.threshold,
-            args.max_frames,
-        )
-        print(f"[compose] wrote {output_path}")
+        manifest[view] = composite_view(source_dir, output_dir, args, view)
+        print(f"[compose] wrote {manifest[view]['outputs']['all']}")
+        print(f"[compose] wrote {manifest[view]['outputs']['ghost']}")
 
     manifest_path = output_dir / "compose_manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")

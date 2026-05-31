@@ -17,6 +17,7 @@ import dataclasses
 import json
 import math
 import os
+import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -958,13 +959,17 @@ def export_layer_sources(
     view_name: str,
     eye: tuple[float, float, float],
     target: tuple[float, float, float],
+    scene_layer_path: Path | None = None,
 ) -> dict[str, Any]:
     source_dir = panel_out_dir / "sources" / view_name
     source_dir.mkdir(parents=True, exist_ok=True)
     source_outputs: dict[str, Any] = {}
 
     scene_path = source_dir / "scene_objects.png"
-    render_one(sim, camera, robots, stage, group_path, eye, target, "scene_objects_only", scene_path)
+    if scene_layer_path is not None and scene_layer_path.exists():
+        shutil.copy2(scene_layer_path, scene_path)
+    else:
+        render_one(sim, camera, robots, stage, group_path, eye, target, "scene_objects_only", scene_path)
     source_outputs["scene"] = str(scene_path)
 
     actual_samples = [
@@ -1024,8 +1029,86 @@ def camera_for_actual_ghost(spec: Any, view: str = "overview") -> tuple[tuple[fl
     # Straighter poster cameras: still slightly oblique, but much closer to
     # top-down so the base workspace reads geometrically.
     if view == "close":
-        return (target[0], target[1] - 1.55, 7.50), (target[0], target[1], 0.50)
+        close_target = tuple(config.get("poster_close_target", (0.82, 1.38, 0.58)))
+        return (close_target[0], close_target[1] - 1.15, 6.15), close_target
     return (target[0], target[1] - 2.20, 12.00), (target[0], target[1], 0.48)
+
+
+def export_standalone_stage(stage: Any, output_path: Path) -> Path | None:
+    """Export a flattened USD layer so the poster stage can be opened alone."""
+
+    from pxr import Sdf, Usd
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        flattened = stage.Flatten(addSourceFileComment=False)
+    except TypeError:
+        flattened = stage.Flatten()
+
+    # Keep the file self-contained by removing material texture/MDL asset
+    # pointers.  The flattened layer still contains the composed geometry and
+    # internal prototype references, but does not need repo-local texture files.
+    stripped_assets = 0
+    flat_stage = Usd.Stage.Open(flattened)
+    if flat_stage is not None:
+        for prim in flat_stage.TraverseAll():
+            for attr in prim.GetAttributes():
+                value = attr.Get()
+                if isinstance(value, Sdf.AssetPath) and value.path:
+                    attr.Clear()
+                    stripped_assets += 1
+                elif isinstance(value, (list, tuple)) and any(isinstance(item, Sdf.AssetPath) for item in value):
+                    attr.Clear()
+                    stripped_assets += 1
+        flattened = flat_stage.GetRootLayer()
+
+    try:
+        flattened.Export(str(output_path))
+    except Exception as exc:
+        print(f"[ghost] WARNING: failed to export standalone USD {output_path}: {exc}")
+        return None
+    print(f"[ghost] exported standalone USD {output_path} stripped_asset_attrs={stripped_assets}")
+    return output_path
+
+
+def render_scene_layers(args: argparse.Namespace, spec: Any, simulation_app: Any) -> dict[str, Any]:
+    """Render canonical scene backgrounds once, before any robot layers."""
+
+    import omni.usd
+    import isaaclab.sim as sim_utils
+    from isaaclab.sim import SimulationContext
+
+    root = Path(args.repo_root).resolve()
+    out_dir = resolve_repo_path(args.output_root, root) / "scene"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    print("[ghost] rendering canonical scene layers", flush=True)
+
+    SimulationContext.clear_instance()
+    omni.usd.get_context().new_stage()
+    for _ in range(2):
+        simulation_app.update()
+
+    sim = sim_utils.SimulationContext(sim_utils.SimulationCfg(device=args.device))
+    spawn_static_scene(spec)
+    stage = omni.usd.get_context().get_stage()
+    camera = create_camera(args.image_width, args.image_height)
+    sim.reset()
+
+    views: dict[str, str] = {}
+    for view_name in args.render_views:
+        eye, target = camera_for_actual_ghost(spec, view_name)
+        output_path = out_dir / f"{view_name}_scene_objects.png"
+        render_with_current_visibility(sim, camera, {}, eye, target, output_path)
+        views[view_name] = str(output_path)
+
+    stage_path = out_dir / "scene_stage.usd"
+    stage.GetRootLayer().Export(str(stage_path))
+    standalone_path = export_standalone_stage(stage, out_dir / "scene_stage_standalone.usd")
+    SimulationContext.clear_instance()
+    result: dict[str, Any] = {"views": views, "stage": str(stage_path)}
+    if standalone_path is not None:
+        result["standalone_stage"] = str(standalone_path)
+    return result
 
 
 def render_panel(
@@ -1038,6 +1121,7 @@ def render_panel(
     mobile_meta: list[dict[str, Any]] | None = None,
     fixed_base: tuple[float, float, float] | None = None,
     trajectory_xy_offset: tuple[float, float] = (0.0, 0.0),
+    scene_layers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     import omni.usd
     import isaaclab.sim as sim_utils
@@ -1120,6 +1204,7 @@ def render_panel(
                 view_name,
                 eye,
                 target,
+                Path(scene_layers[view_name]) if scene_layers and view_name in scene_layers else None,
             )
         if args.export_individual_frames and view_name == args.render_views[0]:
             individual_frames = export_individual_frames(
@@ -1137,6 +1222,7 @@ def render_panel(
         view_outputs[view_name] = view_result
     stage_path = out_dir / "stage.usd"
     stage.GetRootLayer().Export(str(stage_path))
+    standalone_path = export_standalone_stage(stage, out_dir / "stage_standalone.usd")
     SimulationContext.clear_instance()
     result = {
         "image": str(primary_output_path),
@@ -1144,6 +1230,8 @@ def render_panel(
         "stage": str(stage_path),
         "num_samples": len(samples),
     }
+    if standalone_path is not None:
+        result["standalone_stage"] = str(standalone_path)
     if individual_frames:
         result["individual_frames"] = individual_frames
     return result
@@ -1379,6 +1467,11 @@ def main() -> int:
             "mobile_urdf": str(mobile_urdf),
             "fixed_empty_base_urdf": str(fixed_empty_urdf),
         }
+        if args.export_layer_sources:
+            outputs["scene"] = render_scene_layers(args, spec, simulation_app)
+            scene_layers = outputs["scene"]["views"]
+        else:
+            scene_layers = None
         if "fixed" in args.panels:
             outputs["fixed"] = render_panel(
                 args,
@@ -1388,6 +1481,7 @@ def main() -> int:
                 simulation_app,
                 fixed_base=fixed_base_display,
                 trajectory_xy_offset=trajectory_xy_offset,
+                scene_layers=scene_layers,
             )
         if "mobile" in args.panels:
             outputs["mobile"] = render_panel(
@@ -1399,6 +1493,7 @@ def main() -> int:
                 mobile_trajs=mobile_trajs,
                 mobile_meta=mobile_meta,
                 trajectory_xy_offset=trajectory_xy_offset,
+                scene_layers=scene_layers,
             )
 
         out_root = resolve_repo_path(args.output_root, root)
