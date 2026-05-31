@@ -93,6 +93,29 @@ MOBILE_TRAJ_OPACITY = 0.34
 MOBILE_WORKSPACE_OPACITY = 0.012
 FIXED_TRAJ_OPACITY = 0.34
 FIXED_RANDOM_OPACITY = 0.026
+SOURCE_BACKGROUND_COLOR = (0.0, 1.0, 0.0)
+SOURCE_BACKGROUND_SIZE = 80.0
+SOURCE_BACKGROUND_DISTANCE = 30.0
+
+SCENE_FOREGROUND_OCCLUDER_PATHS = [
+    # Front wall/door occluders from the original iTHOR scene USD.
+    "/World/Structure/FloorPlan1/Wall",
+    "/World/Structure/FloorPlan1/Door",
+    "/World/Structure/FloorPlan1/Door1",
+    "/World/Structure/FloorPlan1/DoorFrame",
+    "/World/Structure/FloorPlan1/DoorFrame1",
+    "/World/Objects/LightSwitch_cfaab6e3",
+    # Island/tabletop objects that should occlude robot-only layers later.
+    "/World/Structure/FloorPlan1/StandardIslandHeight",
+    "/World/Objects/Bowl_208f368b",
+    "/World/Objects/Tomato_caaae6b0",
+    "/World/Objects/ButterKnife_4ae287b7",
+    "/World/Objects/Bread_c6b4566e",
+    "/World/Objects/Apple_3fef4551",
+    "/World/Objects/Book_e5ef3174",
+    "/World/Structure/PaperClutter1",
+    "/World/Objects/CreditCard_5e829d70",
+]
 
 
 @dataclasses.dataclass
@@ -947,6 +970,84 @@ def episode_name(sample_name: str) -> str:
     return sample_name
 
 
+def add_camera_facing_source_background(
+    stage: Any,
+    prim_path: str,
+    eye: tuple[float, float, float],
+    target: tuple[float, float, float],
+    color: tuple[float, float, float],
+    size: float = SOURCE_BACKGROUND_SIZE,
+    distance: float = SOURCE_BACKGROUND_DISTANCE,
+) -> str:
+    """Add a pure-color backdrop for robot-only source layers.
+
+    The robots are white, so the default white renderer background makes later
+    mask extraction fragile.  A camera-facing green card gives every source
+    render a stable chroma-key background without changing the scene layer.
+    """
+
+    from pxr import Gf, Sdf, UsdGeom, UsdShade
+
+    eye_np = np.asarray(eye, dtype=np.float64)
+    target_np = np.asarray(target, dtype=np.float64)
+    forward = target_np - eye_np
+    forward /= np.linalg.norm(forward)
+    world_up = np.asarray((0.0, 0.0, 1.0), dtype=np.float64)
+    right = np.cross(forward, world_up)
+    if np.linalg.norm(right) < 1.0e-6:
+        right = np.asarray((1.0, 0.0, 0.0), dtype=np.float64)
+    else:
+        right /= np.linalg.norm(right)
+    up = np.cross(right, forward)
+    up /= np.linalg.norm(up)
+
+    center = target_np + forward * distance
+    half = size * 0.5
+    points = [
+        Gf.Vec3f(*(center - right * half - up * half)),
+        Gf.Vec3f(*(center + right * half - up * half)),
+        Gf.Vec3f(*(center + right * half + up * half)),
+        Gf.Vec3f(*(center - right * half + up * half)),
+    ]
+
+    mesh = UsdGeom.Mesh.Define(stage, prim_path)
+    mesh.CreatePointsAttr(points)
+    mesh.CreateFaceVertexCountsAttr([4])
+    mesh.CreateFaceVertexIndicesAttr([0, 1, 2, 3])
+    mesh.CreateDoubleSidedAttr(True)
+
+    material_path = f"{prim_path}_Material"
+    material = UsdShade.Material.Define(stage, material_path)
+    shader = UsdShade.Shader.Define(stage, f"{material_path}/PreviewSurface")
+    shader.CreateIdAttr("UsdPreviewSurface")
+    rgb = Gf.Vec3f(*color)
+    shader.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f).Set(rgb)
+    shader.CreateInput("emissiveColor", Sdf.ValueTypeNames.Color3f).Set(rgb)
+    shader.CreateInput("roughness", Sdf.ValueTypeNames.Float).Set(1.0)
+    material.CreateSurfaceOutput().ConnectToSource(shader.ConnectableAPI(), "surface")
+    UsdShade.MaterialBindingAPI(mesh).Bind(material)
+    set_prim_visibility(stage, prim_path, False, recursive=False)
+    return prim_path
+
+
+def normalize_green_source_background(path: Path, color: tuple[float, float, float]) -> None:
+    """Snap the chroma backdrop to exact green after renderer tonemapping."""
+
+    if tuple(round(c, 3) for c in color) != (0.0, 1.0, 0.0):
+        return
+    try:
+        from PIL import Image
+    except Exception as exc:
+        print(f"[ghost] WARNING: cannot normalize source background without PIL: {exc}")
+        return
+
+    image = Image.open(path).convert("RGB")
+    arr = np.asarray(image, dtype=np.uint8).copy()
+    greenish = (arr[..., 1] > 180) & (arr[..., 0] < 90) & (arr[..., 2] < 90)
+    arr[greenish] = np.asarray((0, 255, 0), dtype=np.uint8)
+    Image.fromarray(arr).save(path)
+
+
 def export_layer_sources(
     args: argparse.Namespace,
     sim: Any,
@@ -979,6 +1080,14 @@ def export_layer_sources(
     ]
     workspace_samples = [sample for sample in samples if sample.name.startswith("mobile_workspace")]
 
+    source_background_path = add_camera_facing_source_background(
+        stage,
+        f"{group_path}/SourceBackground_{view_name}",
+        eye,
+        target,
+        tuple(args.source_background_color),
+    )
+
     set_prim_visibility(stage, "/World/Scene", False, recursive=False)
     set_prim_visibility(stage, "/World/Objects", False, recursive=False)
     set_prim_visibility(stage, group_path, True, recursive=False)
@@ -996,17 +1105,23 @@ def export_layer_sources(
         set_prim_visibility(stage, robot_path, True, recursive=False)
         if sample.hide_summit_base:
             hide_fixed_base_visuals(stage, robot_path)
+        set_prim_visibility(stage, source_background_path, True, recursive=False)
         output_path = episode_dir / f"{sample.name}_robot_only.png"
         render_with_current_visibility(sim, camera, robots, eye, target, output_path)
+        normalize_green_source_background(output_path, tuple(args.source_background_color))
         episodes.setdefault(episode_dir.name, []).append(str(output_path))
         set_prim_visibility(stage, robot_path, False, recursive=False)
+        set_prim_visibility(stage, source_background_path, False, recursive=False)
 
     if workspace_samples:
         for sample in workspace_samples:
             set_prim_visibility(stage, f"{group_path}/{sample.name}", True, recursive=False)
+        set_prim_visibility(stage, source_background_path, True, recursive=False)
         workspace_path = source_dir / "workspace_robots_only.png"
         render_with_current_visibility(sim, camera, robots, eye, target, workspace_path)
+        normalize_green_source_background(workspace_path, tuple(args.source_background_color))
         source_outputs["workspace"] = str(workspace_path)
+        set_prim_visibility(stage, source_background_path, False, recursive=False)
         for sample in workspace_samples:
             set_prim_visibility(stage, f"{group_path}/{sample.name}", False, recursive=False)
 
@@ -1071,6 +1186,131 @@ def export_standalone_stage(stage: Any, output_path: Path) -> Path | None:
     return output_path
 
 
+def _path_is_descendant(path: str, ancestor: str) -> bool:
+    return path.startswith(f"{ancestor}/")
+
+
+def _path_is_ancestor(path: str, descendant: str) -> bool:
+    return descendant.startswith(f"{path}/")
+
+
+def resolve_scene_foreground_paths(stage: Any) -> tuple[list[str], list[str]]:
+    """Map original iTHOR USD paths to their referenced paths in the render stage."""
+
+    resolved: list[str] = []
+    missing: list[str] = []
+    for raw_path in SCENE_FOREGROUND_OCCLUDER_PATHS:
+        suffix = raw_path.removeprefix("/World")
+        candidates = [
+            f"/World/Scene/iTHOR{suffix}",
+            f"/World/Scene/iTHOR{raw_path}",
+            raw_path,
+        ]
+        match = next((path for path in candidates if stage.GetPrimAtPath(path).IsValid()), None)
+        if match is None:
+            missing.append(raw_path)
+        else:
+            resolved.append(match)
+    return resolved, missing
+
+
+def scene_baseline_visibility(stage: Any) -> dict[str, bool]:
+    """Record which prims are actually visible in the loaded USD scene."""
+
+    from pxr import Usd, UsdGeom
+
+    baseline: dict[str, bool] = {}
+    for root_path in ("/World/Scene", "/World/Objects"):
+        root_prim = stage.GetPrimAtPath(root_path)
+        if not root_prim or not root_prim.IsValid():
+            continue
+        for prim in Usd.PrimRange(root_prim):
+            if prim.IsA(UsdGeom.Imageable):
+                imageable = UsdGeom.Imageable(prim)
+                baseline[str(prim.GetPath())] = imageable.ComputeVisibility() != UsdGeom.Tokens.invisible
+    return baseline
+
+
+def apply_scene_baseline_visibility(stage: Any, baseline_visibility: dict[str, bool]) -> None:
+    from pxr import UsdGeom
+
+    for path, visible in baseline_visibility.items():
+        prim = stage.GetPrimAtPath(path)
+        if not prim or not prim.IsValid() or not prim.IsA(UsdGeom.Imageable):
+            continue
+        imageable = UsdGeom.Imageable(prim)
+        imageable.MakeVisible() if visible else imageable.MakeInvisible()
+
+
+def set_scene_foreground_visibility(
+    stage: Any,
+    mode: str,
+    foreground_paths: list[str],
+    baseline_visibility: dict[str, bool],
+) -> None:
+    """Switch scene visibility between normal, no-foreground, and foreground-only."""
+
+    from pxr import Usd, UsdGeom
+
+    apply_scene_baseline_visibility(stage, baseline_visibility)
+
+    if mode == "normal":
+        return
+
+    if mode == "without_foreground":
+        for path in foreground_paths:
+            set_prim_visibility(stage, path, False, recursive=False)
+        return
+
+    if mode != "foreground_only":
+        raise ValueError(f"Unknown foreground visibility mode: {mode}")
+
+    for root_path in ("/World/Scene", "/World/Objects"):
+        root_prim = stage.GetPrimAtPath(root_path)
+        if not root_prim or not root_prim.IsValid():
+            continue
+        for prim in Usd.PrimRange(root_prim):
+            if not prim.IsA(UsdGeom.Imageable):
+                continue
+            path = str(prim.GetPath())
+            keep = any(
+                path == foreground
+                or _path_is_descendant(path, foreground)
+                or _path_is_ancestor(path, foreground)
+                for foreground in foreground_paths
+            )
+            imageable = UsdGeom.Imageable(prim)
+            imageable.MakeVisible() if keep and baseline_visibility.get(path, False) else imageable.MakeInvisible()
+
+
+def visible_foreground_paths(
+    stage: Any,
+    foreground_paths: list[str],
+    baseline_visibility: dict[str, bool],
+) -> list[str]:
+    from pxr import Usd, UsdGeom
+
+    visible_paths: list[str] = []
+    for foreground in foreground_paths:
+        prim = stage.GetPrimAtPath(foreground)
+        if not prim or not prim.IsValid():
+            continue
+        if not prim.IsA(UsdGeom.Imageable):
+            visible_paths.append(foreground)
+            continue
+        if not baseline_visibility.get(foreground, False):
+            continue
+        has_visible_drawable_descendant = False
+        for child in Usd.PrimRange(prim):
+            path = str(child.GetPath())
+            if child.IsA(UsdGeom.Imageable) and baseline_visibility.get(path, False):
+                has_visible_drawable_descendant = True
+                break
+        if has_visible_drawable_descendant:
+            visible_paths.append(foreground)
+    return visible_paths
+
+
 def render_scene_layers(args: argparse.Namespace, spec: Any, simulation_app: Any) -> dict[str, Any]:
     """Render canonical scene backgrounds once, before any robot layers."""
 
@@ -1081,6 +1321,8 @@ def render_scene_layers(args: argparse.Namespace, spec: Any, simulation_app: Any
     root = Path(args.repo_root).resolve()
     out_dir = resolve_repo_path(args.output_root, root) / "scene"
     out_dir.mkdir(parents=True, exist_ok=True)
+    for old_png in out_dir.glob("*.png"):
+        old_png.unlink()
     print("[ghost] rendering canonical scene layers", flush=True)
 
     SimulationContext.clear_instance()
@@ -1093,15 +1335,38 @@ def render_scene_layers(args: argparse.Namespace, spec: Any, simulation_app: Any
     stage = omni.usd.get_context().get_stage()
     camera = create_camera(args.image_width, args.image_height)
     sim.reset()
+    baseline_visibility = scene_baseline_visibility(stage)
+    foreground_paths, missing_foreground_paths = resolve_scene_foreground_paths(stage)
+    foreground_paths = visible_foreground_paths(stage, foreground_paths, baseline_visibility)
+    if missing_foreground_paths:
+        print(
+            "[ghost] WARNING: missing scene foreground occluders: "
+            + ", ".join(missing_foreground_paths)
+        )
+    print(f"[ghost] visible scene foreground occluders: {len(foreground_paths)}")
 
     views: dict[str, str] = {}
+    foreground_views: dict[str, str] = {}
     for view_name in args.render_views:
         eye, target = camera_for_actual_ghost(spec, view_name)
-        output_path = out_dir / f"{view_name}_scene_objects.png"
-        render_with_current_visibility(sim, camera, {}, eye, target, output_path)
-        views[view_name] = str(output_path)
+        no_foreground_path = out_dir / f"{view_name}_scene_no_foreground.png"
+        foreground_path = out_dir / f"{view_name}_scene_foreground_only.png"
 
-    result: dict[str, Any] = {"views": views}
+        set_scene_foreground_visibility(stage, "without_foreground", foreground_paths, baseline_visibility)
+        render_with_current_visibility(sim, camera, {}, eye, target, no_foreground_path)
+        views[view_name] = str(no_foreground_path)
+
+        set_scene_foreground_visibility(stage, "foreground_only", foreground_paths, baseline_visibility)
+        render_with_current_visibility(sim, camera, {}, eye, target, foreground_path)
+        foreground_views[view_name] = str(foreground_path)
+
+        set_scene_foreground_visibility(stage, "normal", foreground_paths, baseline_visibility)
+
+    result: dict[str, Any] = {
+        "views": views,
+        "foreground_views": foreground_views,
+        "foreground_occluders": foreground_paths,
+    }
     if args.export_usd:
         stage_path = out_dir / "scene_stage.usd"
         stage.GetRootLayer().Export(str(stage_path))
@@ -1293,6 +1558,14 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--fixed_episode_count", type=int, default=3)
     parser.add_argument("--panels", nargs="+", choices=["fixed", "mobile"], default=["fixed", "mobile"])
     parser.add_argument("--render_views", nargs="+", choices=["overview", "close"], default=["overview"])
+    parser.add_argument(
+        "--source_background_color",
+        nargs=3,
+        type=float,
+        default=list(SOURCE_BACKGROUND_COLOR),
+        metavar=("R", "G", "B"),
+        help="RGB color in [0, 1] for robot-only source backdrops; default is pure green.",
+    )
     parser.add_argument(
         "--scene_only",
         action="store_true",

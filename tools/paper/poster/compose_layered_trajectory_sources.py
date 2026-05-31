@@ -33,6 +33,13 @@ def robot_mask(image: Image.Image, threshold: int) -> np.ndarray:
         ]
     )
     background = np.median(border, axis=0)
+    if background[1] > 220 and background[0] < 40 and background[2] < 40:
+        green_screen = (
+            (arr[..., 1] > 120)
+            & (arr[..., 1] > arr[..., 0] * 1.25)
+            & (arr[..., 1] > arr[..., 2] * 1.25)
+        )
+        return ~green_screen
     if threshold >= 200:
         delta = max(6, 255 - int(threshold))
         return np.max(np.abs(arr - background), axis=-1) > delta
