@@ -21,6 +21,7 @@ bash "$SCRIPT_DIR/run_actual_ghost_render.sh" \
   --mobile_traj_count "${MOBILE_EPISODES:-3}" \
   --mobile_keyframes "${MOBILE_KEYFRAMES:-8}" \
   --mobile_workspace_ghosts "${MOBILE_WORKSPACE_GHOSTS:-18}" \
+  --fixed_workspace_ghosts "${FIXED_WORKSPACE_GHOSTS:-18}" \
   --fixed_episode_count "${FIXED_EPISODES:-3}" \
   --fixed_keyframes "${FIXED_KEYFRAMES:-8}" \
   --fixed_arm_ghosts "${FIXED_RANDOM_GHOSTS:-0}" \

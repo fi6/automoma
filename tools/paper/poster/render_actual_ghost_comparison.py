@@ -27,6 +27,8 @@ import torch
 
 from render_reach_comparison import (
     DOME_LIGHT_INTENSITY,
+    FINGER_OPEN_RANGE,
+    FRANKA_WORKSPACE_JOINT_RANGES,
     ROBOT_OUTPUT_NAMES,
     SCENE_RENDER_CONFIGS,
     add_repo_import_paths,
@@ -42,7 +44,6 @@ from render_reach_comparison import (
     load_yaml,
     make_contact_sheets,
     make_preview_material,
-    random_arm_joints,
     render_one,
     repo_root,
     resolve_repo_path,
@@ -77,6 +78,7 @@ RENDER_SETTLE_STEPS = 12
 MOBILE_TRAJ_COUNT = 5
 MOBILE_KEYFRAMES = 5
 MOBILE_WORKSPACE_GHOSTS = 22
+FIXED_WORKSPACE_GHOSTS = 18
 FIXED_KEYFRAMES = 7
 FIXED_ARM_GHOSTS = 22
 
@@ -91,6 +93,7 @@ MOBILE_COLORS = [
 FIXED_COLOR = (0.90, 0.32, 0.13)
 MOBILE_TRAJ_OPACITY = 0.34
 MOBILE_WORKSPACE_OPACITY = 0.012
+FIXED_WORKSPACE_OPACITY = 0.72
 FIXED_TRAJ_OPACITY = 0.34
 FIXED_RANDOM_OPACITY = 0.026
 SOURCE_BACKGROUND_COLOR = (0.0, 1.0, 0.0)
@@ -485,6 +488,141 @@ def build_mobile_workspace_ghosts(spec: Any, count: int, summit_cfg: Path) -> li
                 joint_pos=joints,
                 color=GHOST_GREY,
                 opacity=MOBILE_WORKSPACE_OPACITY,
+            )
+        )
+    return samples
+
+
+def build_fixed_workspace_ghosts(
+    fixed_base: tuple[float, float, float],
+    count: int,
+    fixed_cfg: Path,
+    scene_name: str,
+) -> list[GhostSample]:
+    if count <= 0:
+        return []
+    # Match the older fixed_franka/detail_robots_only.png fan: one fixed base
+    # with broad, radially distributed arm poses rather than local trajectory
+    # perturbations.  The pose bank is adapted from the older
+    # fixed_franka/detail_robots_only.png random workspace render: joint1 is
+    # swept azimuthally, while joints 2-7 vary between low, side, and raised
+    # elbow configurations so the silhouette reads like a rough sphere rather
+    # than a flat flower.
+    rng = np.random.default_rng(stable_seed(scene_name, "franka"))
+    defaults = load_summit_defaults_from_yml(fixed_cfg)
+    joint1_low, joint1_high = FRANKA_WORKSPACE_JOINT_RANGES["panda_joint1"]
+    joint1_angles = np.linspace(joint1_low, joint1_high, count, endpoint=True)
+    if count >= 14:
+        # For poster source layers it is more important to communicate the
+        # envelope than to leave a small visual gap at the joint-limit seam.
+        joint1_angles = np.linspace(-math.pi, math.pi, count, endpoint=False)
+    workspace_pose_bank = [
+        {
+            "panda_joint2": -0.569,
+            "panda_joint3": 0.0,
+            "panda_joint4": -2.81,
+            "panda_joint5": 0.0,
+            "panda_joint6": 3.037,
+            "panda_joint7": 0.741,
+        },
+        {
+            "panda_joint2": -1.070,
+            "panda_joint3": -0.105,
+            "panda_joint4": -2.349,
+            "panda_joint5": -1.117,
+            "panda_joint6": 3.271,
+            "panda_joint7": -0.158,
+        },
+        {
+            "panda_joint2": -1.074,
+            "panda_joint3": -1.710,
+            "panda_joint4": -0.548,
+            "panda_joint5": 0.529,
+            "panda_joint6": 1.588,
+            "panda_joint7": 2.619,
+        },
+        {
+            "panda_joint2": 0.236,
+            "panda_joint3": -2.164,
+            "panda_joint4": -0.875,
+            "panda_joint5": 1.209,
+            "panda_joint6": 2.605,
+            "panda_joint7": 0.020,
+        },
+        {
+            "panda_joint2": 0.068,
+            "panda_joint3": -2.042,
+            "panda_joint4": -1.803,
+            "panda_joint5": -0.314,
+            "panda_joint6": 2.622,
+            "panda_joint7": -0.457,
+        },
+        {
+            "panda_joint2": 0.465,
+            "panda_joint3": 1.027,
+            "panda_joint4": -1.441,
+            "panda_joint5": -1.165,
+            "panda_joint6": 2.288,
+            "panda_joint7": 2.343,
+        },
+        {
+            "panda_joint2": 0.171,
+            "panda_joint3": -0.601,
+            "panda_joint4": -1.756,
+            "panda_joint5": 1.139,
+            "panda_joint6": 1.234,
+            "panda_joint7": -1.908,
+        },
+        {
+            "panda_joint2": -0.869,
+            "panda_joint3": -1.989,
+            "panda_joint4": -1.673,
+            "panda_joint5": 2.259,
+            "panda_joint6": 2.612,
+            "panda_joint7": 2.447,
+        },
+        {
+            "panda_joint2": -0.18,
+            "panda_joint3": 0.00,
+            "panda_joint4": -1.28,
+            "panda_joint5": 0.00,
+            "panda_joint6": 1.36,
+            "panda_joint7": 0.55,
+        },
+        {
+            "panda_joint2": -0.24,
+            "panda_joint3": 0.12,
+            "panda_joint4": -1.20,
+            "panda_joint5": -0.14,
+            "panda_joint6": 1.44,
+            "panda_joint7": 0.70,
+        },
+        {
+            "panda_joint2": -0.10,
+            "panda_joint3": -0.12,
+            "panda_joint4": -1.36,
+            "panda_joint5": 0.14,
+            "panda_joint6": 1.28,
+            "panda_joint7": 0.40,
+        },
+    ]
+    samples: list[GhostSample] = []
+    for index in range(count):
+        joints = dict(defaults)
+        joints.update(workspace_pose_bank[index % len(workspace_pose_bank)])
+        joints["panda_joint1"] = float(joint1_angles[index])
+        joints["panda_finger_joint1"] = float(rng.uniform(*FINGER_OPEN_RANGE))
+        joints["panda_finger_joint2"] = float(rng.uniform(*FINGER_OPEN_RANGE))
+        joints["base_x"] = float(fixed_base[0])
+        joints["base_y"] = float(fixed_base[1])
+        joints["base_z"] = float(fixed_base[2])
+        samples.append(
+            GhostSample(
+                name=f"fixed_workspace_{index:02d}",
+                joint_pos=joints,
+                color=GHOST_GREY,
+                opacity=FIXED_WORKSPACE_OPACITY,
+                hide_summit_base=True,
             )
         )
     return samples
@@ -1048,6 +1186,53 @@ def normalize_green_source_background(path: Path, color: tuple[float, float, flo
     Image.fromarray(arr).save(path)
 
 
+def zoom_robot_only_source(
+    path: Path,
+    color: tuple[float, float, float],
+    margin_scale: float = 1.28,
+) -> None:
+    """Zoom standalone robot-only workspace sources into a detail-style plate."""
+
+    if tuple(round(c, 3) for c in color) != (0.0, 1.0, 0.0):
+        return
+    try:
+        from PIL import Image
+    except Exception as exc:
+        print(f"[ghost] WARNING: cannot zoom source background without PIL: {exc}")
+        return
+
+    image = Image.open(path).convert("RGB")
+    arr = np.asarray(image, dtype=np.uint8)
+    robot_mask = ~((arr[..., 1] > 220) & (arr[..., 0] < 40) & (arr[..., 2] < 40))
+    ys, xs = np.nonzero(robot_mask)
+    if xs.size == 0 or ys.size == 0:
+        return
+
+    width, height = image.size
+    xmin, xmax = int(xs.min()), int(xs.max()) + 1
+    ymin, ymax = int(ys.min()), int(ys.max()) + 1
+    cx = (xmin + xmax) * 0.5
+    cy = (ymin + ymax) * 0.5
+    crop_w = max(float(xmax - xmin) * margin_scale, 1.0)
+    crop_h = max(float(ymax - ymin) * margin_scale, 1.0)
+    aspect = width / height
+    if crop_w / crop_h > aspect:
+        crop_h = crop_w / aspect
+    else:
+        crop_w = crop_h * aspect
+
+    left = max(0, int(round(cx - crop_w * 0.5)))
+    right = min(width, int(round(cx + crop_w * 0.5)))
+    top = max(0, int(round(cy - crop_h * 0.5)))
+    bottom = min(height, int(round(cy + crop_h * 0.5)))
+    if right <= left or bottom <= top:
+        return
+
+    resample = getattr(Image, "Resampling", Image).LANCZOS
+    image.crop((left, top, right, bottom)).resize((width, height), resample).save(path)
+    normalize_green_source_background(path, color)
+
+
 def export_layer_sources(
     args: argparse.Namespace,
     sim: Any,
@@ -1078,7 +1263,11 @@ def export_layer_sources(
         for sample in samples
         if sample.name.startswith("mobile_traj") or sample.name.startswith("fixed_traj")
     ]
-    workspace_samples = [sample for sample in samples if sample.name.startswith("mobile_workspace")]
+    workspace_samples = [
+        sample
+        for sample in samples
+        if sample.name.startswith("mobile_workspace") or sample.name.startswith("fixed_workspace")
+    ]
 
     source_background_path = add_camera_facing_source_background(
         stage,
@@ -1115,11 +1304,16 @@ def export_layer_sources(
 
     if workspace_samples:
         for sample in workspace_samples:
-            set_prim_visibility(stage, f"{group_path}/{sample.name}", True, recursive=False)
+            robot_path = f"{group_path}/{sample.name}"
+            set_prim_visibility(stage, robot_path, True, recursive=False)
+            if sample.hide_summit_base:
+                hide_fixed_base_visuals(stage, robot_path)
         set_prim_visibility(stage, source_background_path, True, recursive=False)
         workspace_path = source_dir / "workspace_robots_only.png"
         render_with_current_visibility(sim, camera, robots, eye, target, workspace_path)
         normalize_green_source_background(workspace_path, tuple(args.source_background_color))
+        if view_name == "close" and all(sample.name.startswith("fixed_workspace") for sample in workspace_samples):
+            zoom_robot_only_source(workspace_path, tuple(args.source_background_color))
         source_outputs["workspace"] = str(workspace_path)
         set_prim_visibility(stage, source_background_path, False, recursive=False)
         for sample in workspace_samples:
@@ -1325,55 +1519,66 @@ def render_scene_layers(args: argparse.Namespace, spec: Any, simulation_app: Any
         old_png.unlink()
     print("[ghost] rendering canonical scene layers", flush=True)
 
-    SimulationContext.clear_instance()
-    omni.usd.get_context().new_stage()
-    for _ in range(2):
-        simulation_app.update()
+    cached_foreground_paths: list[str] | None = None
+    cached_missing_foreground_paths: list[str] | None = None
 
-    sim = sim_utils.SimulationContext(sim_utils.SimulationCfg(device=args.device))
-    spawn_static_scene(spec)
-    stage = omni.usd.get_context().get_stage()
-    camera = create_camera(args.image_width, args.image_height)
-    sim.reset()
-    baseline_visibility = scene_baseline_visibility(stage)
-    foreground_paths, missing_foreground_paths = resolve_scene_foreground_paths(stage)
-    foreground_paths = visible_foreground_paths(stage, foreground_paths, baseline_visibility)
-    if missing_foreground_paths:
-        print(
-            "[ghost] WARNING: missing scene foreground occluders: "
-            + ", ".join(missing_foreground_paths)
-        )
-    print(f"[ghost] visible scene foreground occluders: {len(foreground_paths)}")
+    def render_one_scene_image(view_name: str, mode: str, output_path: Path) -> list[str]:
+        nonlocal cached_foreground_paths, cached_missing_foreground_paths
+
+        # Scene-only layers must represent the same simulation timestamp across
+        # camera views.  Build a fresh stage per image so close/overview and
+        # foreground/no-foreground renders all settle for exactly the same
+        # number of physics frames from the identical initial USD state.
+        SimulationContext.clear_instance()
+        omni.usd.get_context().new_stage()
+        for _ in range(2):
+            simulation_app.update()
+
+        sim = sim_utils.SimulationContext(sim_utils.SimulationCfg(device=args.device))
+        spawn_static_scene(spec)
+        stage = omni.usd.get_context().get_stage()
+        camera = create_camera(args.image_width, args.image_height)
+        sim.reset()
+        baseline_visibility = scene_baseline_visibility(stage)
+        foreground_paths, missing_foreground_paths = resolve_scene_foreground_paths(stage)
+        foreground_paths = visible_foreground_paths(stage, foreground_paths, baseline_visibility)
+        if cached_foreground_paths is None:
+            cached_foreground_paths = list(foreground_paths)
+            cached_missing_foreground_paths = list(missing_foreground_paths)
+            if missing_foreground_paths:
+                print(
+                    "[ghost] WARNING: missing scene foreground occluders: "
+                    + ", ".join(missing_foreground_paths)
+                )
+            print(f"[ghost] visible scene foreground occluders: {len(foreground_paths)}")
+
+        eye, target = camera_for_actual_ghost(spec, view_name)
+        set_scene_foreground_visibility(stage, mode, foreground_paths, baseline_visibility)
+        render_with_current_visibility(sim, camera, {}, eye, target, output_path)
+        SimulationContext.clear_instance()
+        return foreground_paths
 
     views: dict[str, str] = {}
     foreground_views: dict[str, str] = {}
     for view_name in args.render_views:
-        eye, target = camera_for_actual_ghost(spec, view_name)
         no_foreground_path = out_dir / f"{view_name}_scene_no_foreground.png"
         foreground_path = out_dir / f"{view_name}_scene_foreground_only.png"
 
-        set_scene_foreground_visibility(stage, "without_foreground", foreground_paths, baseline_visibility)
-        render_with_current_visibility(sim, camera, {}, eye, target, no_foreground_path)
+        render_one_scene_image(view_name, "without_foreground", no_foreground_path)
         views[view_name] = str(no_foreground_path)
 
-        set_scene_foreground_visibility(stage, "foreground_only", foreground_paths, baseline_visibility)
-        render_with_current_visibility(sim, camera, {}, eye, target, foreground_path)
+        render_one_scene_image(view_name, "foreground_only", foreground_path)
         foreground_views[view_name] = str(foreground_path)
-
-        set_scene_foreground_visibility(stage, "normal", foreground_paths, baseline_visibility)
 
     result: dict[str, Any] = {
         "views": views,
         "foreground_views": foreground_views,
-        "foreground_occluders": foreground_paths,
+        "foreground_occluders": cached_foreground_paths or [],
     }
+    if cached_missing_foreground_paths:
+        result["missing_foreground_occluders"] = cached_missing_foreground_paths
     if args.export_usd:
-        stage_path = out_dir / "scene_stage.usd"
-        stage.GetRootLayer().Export(str(stage_path))
-        standalone_path = export_standalone_stage(stage, out_dir / "scene_stage_standalone.usd")
-        result["stage"] = str(stage_path)
-        if standalone_path is not None:
-            result["standalone_stage"] = str(standalone_path)
+        print("[ghost] WARNING: --export_usd is ignored for scene-only fresh-stage rendering")
     SimulationContext.clear_instance()
     return result
 
@@ -1553,6 +1758,7 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--mobile_traj_count", type=int, default=MOBILE_TRAJ_COUNT)
     parser.add_argument("--mobile_keyframes", type=int, default=MOBILE_KEYFRAMES)
     parser.add_argument("--mobile_workspace_ghosts", type=int, default=MOBILE_WORKSPACE_GHOSTS)
+    parser.add_argument("--fixed_workspace_ghosts", type=int, default=FIXED_WORKSPACE_GHOSTS)
     parser.add_argument("--fixed_keyframes", type=int, default=FIXED_KEYFRAMES)
     parser.add_argument("--fixed_arm_ghosts", type=int, default=FIXED_ARM_GHOSTS)
     parser.add_argument("--fixed_episode_count", type=int, default=3)
@@ -1750,8 +1956,18 @@ def main() -> int:
             args.fixed_episode_count,
             args.fixed_keyframes,
         )
+        fixed_workspace_samples = build_fixed_workspace_ghosts(
+            fixed_base_display,
+            args.fixed_workspace_ghosts,
+            fixed_cfg,
+            args.scene,
+        )
         fixed_random_source = fixed_trajs[: min(fixed_trajs.shape[0], 128)] if fixed_recorded_trajs is not None else fixed_trajs
-        fixed_samples = build_fixed_random_ghosts(fixed_random_source, fixed_base_display, args.fixed_arm_ghosts) + fixed_samples
+        fixed_samples = (
+            fixed_workspace_samples
+            + build_fixed_random_ghosts(fixed_random_source, fixed_base_display, args.fixed_arm_ghosts)
+            + fixed_samples
+        )
         if args.use_urdf_robot:
             for sample in fixed_samples:
                 sample.urdf_path = str(fixed_empty_urdf)
@@ -1767,6 +1983,7 @@ def main() -> int:
             "fixed_base_source": fixed_base_source,
             "trajectory_xy_offset": trajectory_xy_offset,
             "fixed_traj_source": fixed_traj_source,
+            "fixed_workspace_ghosts": args.fixed_workspace_ghosts,
             "mobile_trajs_shape": list(mobile_trajs.shape),
             "fixed_planned_trajs_shape": list(fixed_planned_trajs.shape),
             "fixed_render_trajs_shape": list(fixed_trajs.shape),
