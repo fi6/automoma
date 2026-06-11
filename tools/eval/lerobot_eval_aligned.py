@@ -107,6 +107,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scene_name", required=True)
     parser.add_argument("--traj_file", required=True)
     parser.add_argument("--traj_seed", type=int, default=42)
+    parser.add_argument("--traj_selection_mode", choices=("random", "sequential"), default="random")
     parser.add_argument("--seed", type=int, default=1000)
     parser.add_argument("--eval.n_episodes", "--n_episodes", dest="n_episodes", type=int, default=50)
     parser.add_argument("--env.episode_length", "--max_steps", dest="max_steps", type=int, default=300)
@@ -274,6 +275,7 @@ def make_isaaclab_arena_cfg(args: argparse.Namespace) -> IsaaclabArenaEnv:
         "mobile_base_relative": args.mobile_base_relative,
         "traj_file": str(Path(args.traj_file).resolve()),
         "traj_seed": args.traj_seed,
+        "traj_selection_mode": args.traj_selection_mode,
         "interpolated": args.interpolated,
         "interpolation_type": args.interpolation_type,
         "openness_threshold": args.openness_threshold,
@@ -734,6 +736,7 @@ def main() -> None:
             "mobile_base_relative": bool(args.mobile_base_relative),
             "traj_file": str(Path(args.traj_file).resolve()),
             "traj_seed": args.traj_seed,
+            "traj_selection_mode": args.traj_selection_mode,
             "debug_action_trace": bool(args.debug_action_trace),
             "action_trace_csv": str(action_trace_path) if args.debug_action_trace else "",
         },
