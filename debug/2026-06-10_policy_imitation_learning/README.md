@@ -151,3 +151,65 @@ Third-party changes made during PI-FAST debugging are committed separately in
 `third_party/lerobot` and checkpointed in the top-level repo. They cover PI-FAST
 token decoding compatibility, causal-mask compatibility, and processor construction
 for PI-FAST pretrained training.
+
+## PI-FAST similar_100 eval
+
+Status: completed on 2026-06-12.
+
+Checkpoint and configuration:
+
+- H100 training job: `pi0fast_abs_sim100_v2`, 30000 steps.
+- H100 checkpoint:
+  `output/similar_100/train/lerobot/pi0_fast_abs_no_relative_v2/checkpoints/030000/pretrained_model`
+- Local eval checkpoint:
+  `output/tmp/pi0_fast_abs_similar100_030000_no_kv64/pretrained_model`
+- Local eval settings:
+  `use_relative_actions=false`, `use_kv_cache=false`, `max_decoding_steps=64`.
+- Eval trajectory file:
+  `assets/eval/similar_100/traj_data_eval_random50_seed0.pt`
+
+Teacher-force diagnostics:
+
+- H100 checkpoint 030000 diagnostic:
+  mean loss `0.339955`, min `0.076783`, max `0.850763` over 11 sampled frames.
+- Local checkpoint 030000 diagnostic:
+  mean loss `0.339158`, min `0.076294`, max `0.849588` over the same sampled frames.
+
+Eval runs:
+
+- Smoke eval:
+  `output/eval_local/pi_fast_abs030_similar100_no_kv64_smoke_20260612_043655/similar_100/pi_fast/`
+  returned `1/1`, `pc_success=100.0`.
+- Initial fixed-subset eval using the historical random-with-replacement wrapper behavior:
+  `output/eval_local/pi_fast_abs030_similar100_no_kv64_20260612_044058/similar_100/pi_fast/`
+  returned `5/50`, `pc_success=10.0`.
+  This run loaded the fixed random50 subset but sampled start states with replacement
+  (`50` resets, `33` unique trajectory starts), so it is kept as a diagnostic rather
+  than the primary fixed-50 result.
+- Primary sequential fixed-50 eval:
+  `output/eval_local/pi_fast_abs030_similar100_no_kv64_sequential50_20260612_060328/similar_100/pi_fast/`
+  returned `8/50`, `pc_success=16.0`.
+
+Primary sequential eval details:
+
+- Trajectory start indices were verified as the exact prefix `0..49`.
+- Success episodes: `[19, 28, 29, 31, 32, 33, 44, 49]`.
+- `final_door_open`: `16/50`.
+- `final_engaged`: `21/50`.
+- Both open and engaged: `8/50`.
+- Failure categories:
+  open without final engagement `8`, engaged without final open `13`, neither `21`.
+- Mean final door openness: `0.2345`.
+- Mean final handle distance: `0.4083`.
+- Action trace:
+  `output/eval_local/pi_fast_abs030_similar100_no_kv64_sequential50_20260612_060328/similar_100/pi_fast/action_trace_joint_states.csv`
+- Per-episode CSV:
+  `output/eval_local/pi_fast_abs030_similar100_no_kv64_sequential50_20260612_060328/similar_100/pi_fast/per_episode_results.csv`
+- Eval info:
+  `output/eval_local/pi_fast_abs030_similar100_no_kv64_sequential50_20260612_060328/similar_100/pi_fast/eval_info.json`
+
+Eval-only code change:
+
+- Added opt-in `traj_selection_mode=sequential` for IsaacLab-Arena trajectory
+  initial states. The default remains the previous random sampling behavior.
+- Top-level eval CLI now records `traj_selection_mode` in `eval_info.json`.
