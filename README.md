@@ -471,7 +471,7 @@ The dataset covers diverse:
 
 ```bash
 # HuggingFace
-huggingface-cli download automoma/AutoMoMa-500k --repo-type dataset --local-dir ./data/automoma
+huggingface-cli download automoma/automoma-500k --repo-type dataset --local-dir ./data/automoma
 ```
 
 ## Method
@@ -528,7 +528,7 @@ AutoMoMa trajectories are compatible with LeRobot for policy training:
 # Example: Train DP3 on AutoMoMa trajectories
 lerobot-train \
     --config dp3 \
-    --dataset.path automoma/AutoMoMa-500k \
+    --dataset.path automoma/automoma-500k \
     --env.type=isaaclab_arena
 ```
 
