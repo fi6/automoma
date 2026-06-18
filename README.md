@@ -29,10 +29,10 @@
     <a href='https://automoma.pages.dev/' target="_blank">
         <img src='https://img.shields.io/badge/Project-Page-blue?style=plastic&logo=google-chrome&logoColor=white' alt='Project Page'>
     </a>
-    <a href='' target="_blank">
+    <a href='https://yzhu.io/publication/tamp2026cvpr/paper.pdf' target="_blank">
         <img src='https://img.shields.io/badge/arXiv-CvPR%202026-B31B1B?style=plastic&logo=arxiv&logoColor=white' alt='arXiv'>
     </a>
-    <a href='' target="_blank">
+    <a href='https://huggingface.co/datasets/automoma/automoma-500k' target="_blank">
         <img src='https://img.shields.io/badge/Dataset-Hugging_Face-yellow?style=plastic&logo=huggingface&logoColor=white' alt='Dataset'>
     </a>
 </p>
@@ -469,6 +469,8 @@ The dataset covers diverse:
 
 ### Download
 
+Download the full dataset from [Hugging Face](https://huggingface.co/datasets/automoma/automoma-500k).
+
 ```bash
 # HuggingFace
 huggingface-cli download automoma/automoma-500k --repo-type dataset --local-dir ./data/automoma
@@ -544,7 +546,7 @@ If our work assists your research, please cite:
   author    = {Niu, Yida and Chang, Xinhai and Liu, Xin and Jiao, Ziyuan and Zhu, Yixin},
   year      = {2026},
   booktitle = {CVPR},
-  url       = {https://automoma.pages.dev/}
+  url       = {https://yzhu.io/publication/tamp2026cvpr/paper.pdf}
 }
 ```
 
