@@ -166,8 +166,13 @@ for scene in "${SCENES[@]}"; do
     printf -v chunk_name "chunk_%06d_%06d.hdf5" "$((start + 1))" "$((end + 1))"
     recording_file="$scene_recording_dir/$chunk_name"
     ready_file="$scene_ready_dir/$chunk_name"
+    done_file="$scene_ready_dir/$chunk_name.done"
     log_file="$scene_log_dir/${chunk_name%.hdf5}.log"
 
+    if [[ -f "$done_file" ]]; then
+      echo "Skip completed chunk marker: $done_file"
+      continue
+    fi
     if [[ -f "$ready_file" ]]; then
       echo "Skip existing ready chunk: $ready_file"
       continue
@@ -202,6 +207,7 @@ for scene in "${SCENES[@]}"; do
       exit 1
     fi
     mv "$recording_file" "$ready_file"
+    touch "$done_file"
     echo "[$(date -Is)] Ready: $ready_file"
   done
 done
