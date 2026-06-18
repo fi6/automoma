@@ -211,6 +211,7 @@ for scene in "${SCENES[@]}"; do
       rm -f "$recording_file"
       echo
       echo "[$(date -Is)] Recording $OBJECT_NAME $scene $chunk_name start=$start count=$count attempt=$attempt/$MAX_ATTEMPTS"
+      set +e
       (
         set -x
         bash scripts/run_pipeline.sh record "$OBJECT_NAME" "$scene" "$count" \
@@ -224,6 +225,7 @@ for scene in "${SCENES[@]}"; do
           "${EXTRA_RECORD_ARGS[@]}"
       ) 2>&1 | tee -a "$log_file"
       status="${PIPESTATUS[0]}"
+      set -e
       if ((status == 0)) && [[ -f "$recording_file" ]]; then
         break
       fi
