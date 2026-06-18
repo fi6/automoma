@@ -32,6 +32,7 @@ bash scripts/run_pipeline.sh debug microwave_7221 scene_0_seed_0 \
 ```
 
 Recording writes raw HDF5 demos under `data/automoma/`. Replay is useful for inspecting planned trajectories without writing full datasets.
+Recording and eval use absolute mobile-base actions by default; pass `--mobile_base_relative` only for relative-delta datasets.
 
 ## Conversion And Training
 

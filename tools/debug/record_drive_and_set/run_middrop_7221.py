@@ -368,7 +368,6 @@ def _record_command(spec: RunSpec, dataset_file: Path, args: argparse.Namespace)
         "--environment",
         HIGHRES_ENV,
         "--enable_cameras",
-        "--mobile_base_relative",
         "--traj_file",
         str(_traj_file(spec.object_name, spec.scene_name)),
         "--dataset_file",
@@ -397,6 +396,8 @@ def _record_command(spec: RunSpec, dataset_file: Path, args: argparse.Namespace)
         "--robot_object_dynamic_friction",
         str(args.dynamic_friction),
     ]
+    if args.mobile_base_relative:
+        cmd.append("--mobile_base_relative")
     if spec.set_state:
         cmd.extend(["--set_state", "--object_joint_names", args.object_joint_names])
     if args.headless:
@@ -733,6 +734,7 @@ def main() -> int:
     parser.add_argument("--interpolation_type", default="cubic")
     parser.add_argument("--decimation", type=int, default=1)
     parser.add_argument("--init_steps", type=int, default=5)
+    parser.add_argument("--mobile_base_relative", action="store_true")
     parser.add_argument("--static_friction", type=float, default=1.0)
     parser.add_argument("--dynamic_friction", type=float, default=1.0)
     parser.add_argument("--object_joint_names", default="joint_0")

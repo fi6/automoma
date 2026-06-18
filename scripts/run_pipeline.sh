@@ -39,12 +39,12 @@ usage() {
     cat <<'EOF'
 Usage:
   bash scripts/run_pipeline.sh plan    <object_id> <scene_name> <split> [overrides...]
-  bash scripts/run_pipeline.sh record  <object_name> <scene_name> <num_ep> [--record_format full|episodes] [--headless|--no-headless] [--validate_record_success] [overrides...]
+  bash scripts/run_pipeline.sh record  <object_name> <scene_name> <num_ep> [--record_format full|episodes] [--headless|--no-headless] [--mobile_base_relative] [--validate_record_success] [overrides...]
   bash scripts/run_pipeline.sh replay  <object_name> <scene_name> <num_ep> [--metrics [--metrics_file PATH]] [--headless|--no-headless] [overrides...]
   bash scripts/run_pipeline.sh convert <benchmark> <object_name> <scene_name> <num_ep> [--policy=POLICY] [overrides...]
   bash scripts/run_pipeline.sh train   <benchmark> <policy> <object_name> <scene_name> <num_ep> [overrides...]
-  bash scripts/run_pipeline.sh eval    <benchmark> <policy> <object_name> <scene_name> <num_ep> [--headless|--no-headless] [overrides...]
-  bash scripts/run_pipeline.sh record_dataset_eval <object_name> <scene_name> <num_ep> [--headless|--no-headless] [overrides...]
+  bash scripts/run_pipeline.sh eval    <benchmark> <policy> <object_name> <scene_name> <num_ep> [--headless|--no-headless] [--mobile_base_relative] [overrides...]
+  bash scripts/run_pipeline.sh record_dataset_eval <object_name> <scene_name> <num_ep> [--headless|--no-headless] [--mobile_base_relative] [overrides...]
   bash scripts/run_pipeline.sh debug   <object_name> <scene_name> [overrides...]
 
 Benchmarks:
@@ -284,7 +284,6 @@ do_record() {
     done
 
     local -a recorder_args=(
-        --mobile_base_relative
         --traj_file "$traj_file"
     )
     if [[ "$add_cameras" == "true" ]]; then
@@ -882,7 +881,7 @@ do_eval() {
         local eval_interpolation_type="${EVAL_INTERPOLATION_TYPE:-linear}"
         local eval_decimation="${EVAL_DECIMATION:-1}"
         local eval_init_steps="${EVAL_INIT_STEPS:-5}"
-        local eval_mobile_base_relative="${EVAL_MOBILE_BASE_RELATIVE:-true}"
+        local eval_mobile_base_relative="${EVAL_MOBILE_BASE_RELATIVE:-false}"
 
         while [[ $# -gt 0 ]]; do
             case "$1" in
@@ -901,7 +900,16 @@ do_eval() {
                 --interpolation_type=*) eval_interpolation_type="${1#*=}"; shift ;;
                 --interpolation_type) eval_interpolation_type="$2"; shift 2 ;;
                 --mobile_base_relative=*) eval_mobile_base_relative="${1#*=}"; shift ;;
-                --mobile_base_relative) eval_mobile_base_relative="$2"; shift 2 ;;
+                --mobile_base_relative)
+                    if [[ $# -gt 1 && "$2" != --* ]]; then
+                        eval_mobile_base_relative="$2"
+                        shift 2
+                    else
+                        eval_mobile_base_relative="true"
+                        shift
+                    fi
+                    ;;
+                --no-mobile_base_relative|--no-mobile-base-relative) eval_mobile_base_relative="false"; shift ;;
                 *) break ;;
             esac
         done
@@ -1006,7 +1014,7 @@ PY
     local traj_file="$REPO_ROOT/data/trajs/summit_franka/${object_name}/${scene_name}/test/traj_data_test.pt"
     local use_rgb=""
     local legacy_cvpr26="false"
-    local eval_mobile_base_relative="${EVAL_MOBILE_BASE_RELATIVE:-true}"
+    local eval_mobile_base_relative="${EVAL_MOBILE_BASE_RELATIVE:-false}"
     local seed_explicit="false"
     local checkpoint_root_explicit="false"
     local output_dir_explicit="false"
@@ -1035,7 +1043,16 @@ PY
             --use_rgb=*) use_rgb="${1#*=}"; shift ;;
             --use_rgb) use_rgb="$2"; shift 2 ;;
             --mobile_base_relative=*) eval_mobile_base_relative="${1#*=}"; shift ;;
-            --mobile_base_relative) eval_mobile_base_relative="$2"; shift 2 ;;
+            --mobile_base_relative)
+                if [[ $# -gt 1 && "$2" != --* ]]; then
+                    eval_mobile_base_relative="$2"
+                    shift 2
+                else
+                    eval_mobile_base_relative="true"
+                    shift
+                fi
+                ;;
+            --no-mobile_base_relative|--no-mobile-base-relative) eval_mobile_base_relative="false"; shift ;;
             --legacy_cvpr26)
                 legacy_cvpr26="true"
                 shift
@@ -1131,6 +1148,7 @@ do_record_dataset_eval() {
     local eval_interpolation_type="${EVAL_INTERPOLATION_TYPE:-linear}"
     local eval_decimation="${EVAL_DECIMATION:-}"
     local eval_init_steps="${EVAL_INIT_STEPS:-1}"
+    local eval_mobile_base_relative="${EVAL_MOBILE_BASE_RELATIVE:-false}"
     local action_key="${RECORD_DATASET_EVAL_ACTION_KEY:-actions}"
     local max_episodes_rendered="${MAX_EPISODES_RENDERED:-10}"
     local -a passthrough=()
@@ -1159,6 +1177,17 @@ do_record_dataset_eval() {
             --interpolation_type) eval_interpolation_type="$2"; shift 2 ;;
             --decimation=*) eval_decimation="${1#*=}"; shift ;;
             --decimation) eval_decimation="$2"; shift 2 ;;
+            --mobile_base_relative=*) eval_mobile_base_relative="${1#*=}"; shift ;;
+            --mobile_base_relative)
+                if [[ $# -gt 1 && "$2" != --* ]]; then
+                    eval_mobile_base_relative="$2"
+                    shift 2
+                else
+                    eval_mobile_base_relative="true"
+                    shift
+                fi
+                ;;
+            --no-mobile_base_relative|--no-mobile-base-relative) eval_mobile_base_relative="false"; shift ;;
             --env.episode_length=*) eval_episode_length="${1#*=}"; shift ;;
             --env.episode_length) eval_episode_length="$2"; shift 2 ;;
             *) passthrough+=("$1"); shift ;;
@@ -1199,6 +1228,7 @@ do_record_dataset_eval() {
         --interpolated="$eval_interpolated"
         --interpolation_type="$eval_interpolation_type"
         --action_key="$action_key"
+        --mobile_base_relative="$eval_mobile_base_relative"
         --openness_threshold="$openness_threshold"
         --proximity_threshold="$proximity_threshold"
         --proximity_window_steps="$proximity_window_steps"

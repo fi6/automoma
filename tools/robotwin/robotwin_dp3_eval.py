@@ -306,7 +306,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--headless", type=str2bool, default=True)
     parser.add_argument("--env.headless", dest="headless", type=str2bool)
     parser.add_argument("--max_episodes_rendered", type=int, default=10)
-    parser.add_argument("--mobile_base_relative", type=str2bool, default=True)
+    parser.add_argument("--mobile_base_relative", type=str2bool, nargs="?", const=True, default=False)
     parser.add_argument("--debug_visualize_handle", type=str2bool, default=False)
     parser.add_argument("--debug_record_handle_diagnostics", type=str2bool, default=False)
     parser.add_argument("--debug_action_trace", type=str2bool, default=False)

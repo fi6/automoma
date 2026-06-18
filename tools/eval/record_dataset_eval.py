@@ -128,7 +128,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--interpolation_type", default="linear")
     parser.add_argument("--action_key", default="actions", choices=("actions", "processed_actions", "obs/actions"))
     parser.add_argument("--stop_on_dataset_end", type=str2bool, default=True)
-    parser.add_argument("--mobile_base_relative", type=str2bool, default=True)
+    parser.add_argument("--mobile_base_relative", type=str2bool, nargs="?", const=True, default=False)
     parser.add_argument(
         "--base_relative_reference",
         default="eval_state",

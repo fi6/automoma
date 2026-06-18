@@ -65,6 +65,7 @@ python scripts/plan.py object_id=7221 scene_name=scene_0_seed_0 \
 # 3. Record, replay, and trajectory debug
 # =============================================================================
 # Record planned train trajectories to one merged HDF5.
+# Base actions are absolute by default; add --mobile_base_relative only for relative-delta datasets.
 bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 10 --headless
 
 # Record with explicit trajectory and output HDF5 paths.
@@ -179,7 +180,7 @@ WANDB_MODE=disabled bash scripts/run_pipeline.sh train lerobot act microwave_722
   --batch_size 2 \
   --wandb.enable=false
 
-# Evaluate a trained LeRobot policy.
+# Evaluate a trained LeRobot policy. Base actions are absolute by default.
 bash scripts/run_pipeline.sh eval lerobot act microwave_7221 scene_0_seed_0 10 --headless
 
 # Evaluate with explicit checkpoint, test trajectory, and output directory.

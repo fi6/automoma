@@ -117,7 +117,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--init_steps", type=int, default=1)
     parser.add_argument("--interpolated", type=int, default=1)
     parser.add_argument("--interpolation_type", default="linear")
-    parser.add_argument("--mobile_base_relative", type=str2bool, default=True)
+    parser.add_argument("--mobile_base_relative", type=str2bool, nargs="?", const=True, default=False)
     parser.add_argument("--openness_threshold", type=float, default=0.3)
     parser.add_argument("--proximity_threshold", type=float, default=0.12)
     parser.add_argument("--proximity_window_steps", type=int, default=8)

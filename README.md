@@ -293,6 +293,7 @@ python tools/assets/prepare_object.py --object_type Microwave --object_id 7221
 
 # Record with 30 episodes.
 # Default replay timing is --interpolated 5 --interpolation_type cubic --decimation 1 --init_steps 5.
+# Base actions are absolute by default; add --mobile_base_relative only for relative-delta datasets.
 bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 30
 
 # Override interpolation only when doing an ablation/debug run.
@@ -385,7 +386,6 @@ export AUTOMOMA_ROBOT_ROOT=/path/to/assets/robot
 cd third_party/IsaacLab-Arena
 python isaaclab_arena/scripts/record_automoma_demos.py \
   --enable_cameras \
-  --mobile_base_relative \
   --traj_file /path/to/traj_data_train.pt \
   --dataset_file /path/to/test_gui.hdf5 \
   --num_episodes 1 \
@@ -394,6 +394,9 @@ python isaaclab_arena/scripts/record_automoma_demos.py \
   --scene_name scene_1_seed_1 \
   --object_center
 ```
+
+Recording and eval use absolute mobile-base actions by default. Pass
+`--mobile_base_relative` only when working with relative-delta action datasets.
 
 ### 5. Evaluation Semantics
 
