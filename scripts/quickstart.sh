@@ -113,6 +113,7 @@ bash scripts/run_pipeline.sh debug microwave_7221 scene_0_seed_0 \
 # =============================================================================
 # Convert raw AutoMoMa HDF5 to LeRobot format.
 bash scripts/run_pipeline.sh convert lerobot microwave_7221 scene_0_seed_0 10
+# Split per-episode HDF5 directories are converted directly without a temporary merged HDF5.
 
 # Convert with explicit input/output locations and repo id.
 bash scripts/run_pipeline.sh convert lerobot microwave_7221 scene_0_seed_0 10 \

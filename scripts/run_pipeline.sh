@@ -627,7 +627,7 @@ do_convert() {
     if [[ "$benchmark" == "lerobot" ]]; then
         local convert_data_root="$data_root"
         local convert_hdf5_name="$hdf5_name"
-        local conversion_tmp_dir=""
+        local converter_script="isaaclab_arena_gr00t/data_utils/convert_hdf5_to_lerobot_v30.py"
         local data_root_abs; data_root_abs="$(resolve_repo_path "$data_root")"
         local hdf5_path="$data_root_abs/$hdf5_name"
         local split_hdf5_dir=""
@@ -638,20 +638,14 @@ do_convert() {
         fi
 
         if [[ -n "$split_hdf5_dir" ]]; then
-            conversion_tmp_dir="$(mktemp -d "$REPO_ROOT/data/automoma/.merge_for_convert.XXXXXX")"
-            local merged_hdf5="$conversion_tmp_dir/$(basename "$split_hdf5_dir").hdf5"
-            python "$TOOLS_DIR/dataset/convert_hdf5_layout.py" \
-                "$split_hdf5_dir" \
-                "$merged_hdf5" \
-                --direction merge \
-                --mode copy \
-                --overwrite
-            convert_data_root="$conversion_tmp_dir"
-            convert_hdf5_name="$(basename "$merged_hdf5")"
+            echo "Split HDF5 input detected; converting episodes directly without a temporary merged HDF5."
+            converter_script="$TOOLS_DIR/dataset/convert_split_hdf5_to_lerobot_v30.py"
+            convert_data_root="$(dirname "$split_hdf5_dir")"
+            convert_hdf5_name="$(basename "$split_hdf5_dir")"
         fi
 
         local -a cmd=(
-            python isaaclab_arena_gr00t/data_utils/convert_hdf5_to_lerobot_v30.py
+            python "$converter_script"
             --yaml_file isaaclab_arena_gr00t/config/summit_franka_manip_config.yaml
             --data_root "$convert_data_root"
             --hdf5_name "$convert_hdf5_name"
@@ -668,9 +662,6 @@ do_convert() {
         local status=$?
         set -e
         popd > /dev/null
-        if [[ -n "$conversion_tmp_dir" ]]; then
-            rm -rf "$conversion_tmp_dir"
-        fi
         return "$status"
     fi
 
