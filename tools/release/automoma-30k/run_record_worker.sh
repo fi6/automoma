@@ -16,6 +16,8 @@ EPISODES_PER_SCENE=1000
 CHUNK_SIZE=25
 GPU_ID=0
 HEADLESS_FLAG="--headless"
+MAX_ATTEMPTS=3
+RETRY_DELAY_SEC=30
 EXTRA_RECORD_ARGS=()
 SCENES=()
 
@@ -35,6 +37,8 @@ Options:
   --episodes-per-scene N       Episodes per scene (default: 1000).
   --chunk-size N               Episodes per HDF5 chunk (default: 25).
   --gpu-id N                   CUDA_VISIBLE_DEVICES value (default: 0).
+  --max-attempts N             Attempts per chunk before failing (default: 3).
+  --retry-delay-sec N          Delay between chunk attempts (default: 30).
   --no-headless                Run with UI.
   --extra-record-arg ARG       Additional run_pipeline record arg; repeatable.
   --scenes SCENE...            Scene names to record.
@@ -83,6 +87,14 @@ while (($#)); do
       GPU_ID="$2"; shift 2 ;;
     --gpu-id=*)
       GPU_ID="${1#*=}"; shift ;;
+    --max-attempts)
+      MAX_ATTEMPTS="$2"; shift 2 ;;
+    --max-attempts=*)
+      MAX_ATTEMPTS="${1#*=}"; shift ;;
+    --retry-delay-sec)
+      RETRY_DELAY_SEC="$2"; shift 2 ;;
+    --retry-delay-sec=*)
+      RETRY_DELAY_SEC="${1#*=}"; shift ;;
     --no-headless)
       HEADLESS_FLAG="--no-headless"; shift ;;
     --extra-record-arg)
@@ -126,6 +138,14 @@ if ! [[ "$CHUNK_SIZE" =~ ^[0-9]+$ ]] || ((CHUNK_SIZE < 1)); then
   echo "--chunk-size must be positive: $CHUNK_SIZE" >&2
   exit 2
 fi
+if ! [[ "$MAX_ATTEMPTS" =~ ^[0-9]+$ ]] || ((MAX_ATTEMPTS < 1)); then
+  echo "--max-attempts must be positive: $MAX_ATTEMPTS" >&2
+  exit 2
+fi
+if ! [[ "$RETRY_DELAY_SEC" =~ ^[0-9]+$ ]]; then
+  echo "--retry-delay-sec must be a non-negative integer: $RETRY_DELAY_SEC" >&2
+  exit 2
+fi
 
 mkdir -p "$WORK_ROOT" "$READY_ROOT" "$LOG_ROOT"
 
@@ -141,6 +161,8 @@ echo "  gpu: $GPU_ID"
 echo "  scenes: ${SCENES[*]}"
 echo "  episodes/scene: $EPISODES_PER_SCENE"
 echo "  chunk_size: $CHUNK_SIZE"
+echo "  max_attempts: $MAX_ATTEMPTS"
+echo "  retry_delay_sec: $RETRY_DELAY_SEC"
 
 cd "$REPO_ROOT"
 export CUDA_VISIBLE_DEVICES="$GPU_ID"
@@ -182,28 +204,47 @@ for scene in "${SCENES[@]}"; do
       continue
     fi
 
-    rm -f "$recording_file"
-    echo
-    echo "[$(date -Is)] Recording $OBJECT_NAME $scene $chunk_name start=$start count=$count"
-    (
-      set -x
-      bash scripts/run_pipeline.sh record "$OBJECT_NAME" "$scene" "$count" \
-        "$HEADLESS_FLAG" \
-        --traj_file "$traj_file" \
-        --dataset_file "$recording_file" \
-        --start_episode "$start" \
-        --set_state \
-        --interpolated 1 \
-        --interpolation_type none \
-        "${EXTRA_RECORD_ARGS[@]}"
-    ) 2>&1 | tee "$log_file"
-    status="${PIPESTATUS[0]}"
+    attempt=1
+    status=1
+    : > "$log_file"
+    while ((attempt <= MAX_ATTEMPTS)); do
+      rm -f "$recording_file"
+      echo
+      echo "[$(date -Is)] Recording $OBJECT_NAME $scene $chunk_name start=$start count=$count attempt=$attempt/$MAX_ATTEMPTS"
+      (
+        set -x
+        bash scripts/run_pipeline.sh record "$OBJECT_NAME" "$scene" "$count" \
+          "$HEADLESS_FLAG" \
+          --traj_file "$traj_file" \
+          --dataset_file "$recording_file" \
+          --start_episode "$start" \
+          --set_state \
+          --interpolated 1 \
+          --interpolation_type none \
+          "${EXTRA_RECORD_ARGS[@]}"
+      ) 2>&1 | tee -a "$log_file"
+      status="${PIPESTATUS[0]}"
+      if ((status == 0)) && [[ -f "$recording_file" ]]; then
+        break
+      fi
+      if ((status == 0)); then
+        echo "Record command succeeded but did not produce $recording_file" >&2
+      else
+        echo "Record failed for $scene $chunk_name with status $status; see $log_file" >&2
+      fi
+      if ((attempt >= MAX_ATTEMPTS)); then
+        break
+      fi
+      echo "Retrying $scene $chunk_name after ${RETRY_DELAY_SEC}s"
+      sleep "$RETRY_DELAY_SEC"
+      attempt=$((attempt + 1))
+    done
     if ((status != 0)); then
-      echo "Record failed for $scene $chunk_name; see $log_file" >&2
+      echo "Record failed for $scene $chunk_name after $MAX_ATTEMPTS attempts; see $log_file" >&2
       exit "$status"
     fi
     if [[ ! -f "$recording_file" ]]; then
-      echo "Record command succeeded but did not produce $recording_file" >&2
+      echo "Record command succeeded but did not produce $recording_file after $MAX_ATTEMPTS attempts" >&2
       exit 1
     fi
     mv "$recording_file" "$ready_file"
