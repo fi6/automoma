@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert AutoMoMa HDF5 datasets between merged and per-episode layouts."""
+"""Convert AutoMoMa HDF5 datasets between merged and split layouts."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from pathlib import Path
 import h5py
 
 
-EPISODE_FILE_RE = re.compile(r"^episode_(\d{6})\.hdf5$")
+SPLIT_FILE_RE = re.compile(r"^(?:episode|chunk)_(\d{6})(?:_\d{6})?\.hdf5$")
 
 
 def _demo_sort_key(name: str) -> tuple[int, str]:
@@ -24,7 +24,7 @@ def _demo_sort_key(name: str) -> tuple[int, str]:
 
 
 def _episode_file_sort_key(path: Path) -> tuple[int, str]:
-    match = EPISODE_FILE_RE.match(path.name)
+    match = SPLIT_FILE_RE.match(path.name)
     if match:
         return int(match.group(1)), path.name
     return 1_000_000_000, path.name
@@ -50,13 +50,6 @@ def _demo_keys(data_group: h5py.Group) -> list[str]:
 
 def _split_file_path(output_dir: Path, episode_number: int) -> Path:
     return output_dir / f"episode_{episode_number:06d}.hdf5"
-
-
-def _single_demo_key(data_group: h5py.Group, source: Path) -> str:
-    keys = _demo_keys(data_group)
-    if len(keys) != 1:
-        raise ValueError(f"{source} must contain exactly one demo for split layout, found {len(keys)}")
-    return keys[0]
 
 
 def split_merged_hdf5(input_file: Path, output_dir: Path, *, move: bool, overwrite: bool) -> None:
@@ -105,9 +98,12 @@ def split_merged_hdf5(input_file: Path, output_dir: Path, *, move: bool, overwri
 def _episode_files(input_dir: Path) -> list[Path]:
     if not input_dir.is_dir():
         raise NotADirectoryError(input_dir)
-    files = sorted(input_dir.glob("episode_*.hdf5"), key=_episode_file_sort_key)
+    files = sorted(
+        [path for path in input_dir.glob("*.hdf5") if SPLIT_FILE_RE.match(path.name)],
+        key=_episode_file_sort_key,
+    )
     if not files:
-        raise ValueError(f"No episode_*.hdf5 files found in {input_dir}")
+        raise ValueError(f"No episode_*.hdf5 or chunk_*.hdf5 files found in {input_dir}")
     return files
 
 
@@ -131,15 +127,21 @@ def merge_split_hdf5(input_dir: Path, output_file: Path, *, move: bool, overwrit
     try:
         with h5py.File(tmp_name, "w") as dst:
             dst_data = dst.create_group("data")
-            for episode_idx, source in enumerate(files):
+            next_demo_index = 0
+            for source in files:
                 with h5py.File(source, "r") as src:
                     src_data = _require_data_group(src, source)
-                    if episode_idx == 0:
+                    if next_demo_index == 0:
                         _copy_attrs(src.attrs, dst.attrs)
                         _copy_attrs(src_data.attrs, dst_data.attrs)
-                    demo_key = _single_demo_key(src_data, source)
-                    src.copy(src_data[demo_key], dst_data, name=f"demo_{episode_idx}")
-                    total_samples += int(dst_data[f"demo_{episode_idx}"].attrs.get("num_samples", 0))
+                    for demo_key in _demo_keys(src_data):
+                        output_demo_key = f"demo_{next_demo_index}"
+                        src.copy(src_data[demo_key], dst_data, name=output_demo_key)
+                        demo = dst_data[output_demo_key]
+                        demo.attrs["split_source"] = str(source)
+                        demo.attrs["split_source_demo_key"] = demo_key
+                        total_samples += int(demo.attrs.get("num_samples", 0))
+                        next_demo_index += 1
                 dst_data.attrs["total"] = total_samples
                 dst_data.attrs["split_layout"] = False
                 dst.flush()
@@ -181,14 +183,14 @@ def validate_hdf5_file(path: Path) -> tuple[int, int]:
 
 
 def validate_split_dir(path: Path) -> tuple[int, int]:
+    count = 0
     total = 0
     files = _episode_files(path)
     for file_path in files:
         demo_count, samples = validate_hdf5_file(file_path)
-        if demo_count != 1:
-            raise ValueError(f"{file_path} has {demo_count} demos; expected 1")
+        count += demo_count
         total += samples
-    return len(files), total
+    return count, total
 
 
 def main() -> None:

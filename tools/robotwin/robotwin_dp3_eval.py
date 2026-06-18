@@ -303,6 +303,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output_dir", type=str, default=None)
     parser.add_argument("--traj_file", type=str, default=None)
     parser.add_argument("--traj_seed", type=int, default=42)
+    parser.add_argument("--traj_selection_mode", choices=("random", "sequential"), default="random")
     parser.add_argument("--headless", type=str2bool, default=True)
     parser.add_argument("--env.headless", dest="headless", type=str2bool)
     parser.add_argument("--max_episodes_rendered", type=int, default=10)
@@ -379,6 +380,7 @@ def build_env(args: argparse.Namespace):
         mobile_base_relative=args.mobile_base_relative,
         traj_file=str(traj_file),
         traj_seed=args.traj_seed,
+        traj_selection_mode=args.traj_selection_mode,
         openness_threshold=0.3,
         handle_distance_threshold=args.handle_distance_threshold,
         proximity_threshold=0.12,
@@ -637,6 +639,7 @@ def main() -> None:
             "mobile_base_relative": bool(args.mobile_base_relative),
             "traj_file": str(Path(args.traj_file).resolve()) if args.traj_file else "",
             "traj_seed": args.traj_seed,
+            "traj_selection_mode": args.traj_selection_mode,
             "debug_action_trace": bool(args.debug_action_trace),
             "action_trace_csv": str(action_trace_path) if args.debug_action_trace else "",
         }
