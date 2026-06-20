@@ -115,10 +115,25 @@ def iter_demos(chunk_file: Path) -> Iterator[tuple[Path, str]]:
             yield chunk_file, demo_key
 
 
-def count_frames_and_dims(chunk_files: list[Path], camera_view: str) -> tuple[int, int, int, int]:
+def resolve_action_dim(raw_action_dim: int, requested_action_dim: int) -> int:
+    if requested_action_dim < 0:
+        raise ValueError("--action-dim must be non-negative")
+    if requested_action_dim == 0:
+        return raw_action_dim
+    if requested_action_dim > raw_action_dim:
+        raise ValueError(f"--action-dim {requested_action_dim} exceeds source action dim {raw_action_dim}")
+    return requested_action_dim
+
+
+def count_frames_and_dims(
+    chunk_files: list[Path],
+    camera_view: str,
+    requested_action_dim: int,
+) -> tuple[int, int, int, int, int]:
     total_frames = 0
     demo_count = 0
     state_dim = 0
+    raw_action_dim = 0
     action_dim = 0
     for chunk_file in chunk_files:
         with h5py.File(chunk_file, "r") as root:
@@ -133,14 +148,22 @@ def count_frames_and_dims(chunk_files: list[Path], camera_view: str) -> tuple[in
                 steps = min(len(joint_pos), len(actions), len(rgb), len(depth))
                 if steps <= 0:
                     raise ValueError(f"{chunk_file}:{demo_key} has no usable steps")
+                current_state_dim = int(joint_pos.shape[1])
+                current_raw_action_dim = int(actions.shape[1])
                 total_frames += steps
                 demo_count += 1
                 if state_dim == 0:
-                    state_dim = int(joint_pos.shape[1])
-                    action_dim = int(actions.shape[1])
+                    state_dim = current_state_dim
+                    raw_action_dim = current_raw_action_dim
+                    action_dim = resolve_action_dim(raw_action_dim, requested_action_dim)
+                elif current_state_dim != state_dim or current_raw_action_dim != raw_action_dim:
+                    raise ValueError(
+                        f"{chunk_file}:{demo_key} has dims state={current_state_dim}, "
+                        f"action={current_raw_action_dim}; expected state={state_dim}, action={raw_action_dim}"
+                    )
     if demo_count == 0:
         raise ValueError("No demos found")
-    return demo_count, total_frames, state_dim, action_dim
+    return demo_count, total_frames, state_dim, raw_action_dim, action_dim
 
 
 def make_output_zarr(args: argparse.Namespace) -> Path:
@@ -163,6 +186,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--camera-view", choices=CAMERA_CHOICES, default="ego_topdown")
     parser.add_argument("--n-points", type=int, default=1024)
     parser.add_argument("--random-drop-points", type=int, default=5000)
+    parser.add_argument(
+        "--action-dim",
+        type=int,
+        default=0,
+        help="Number of leading processed_actions columns to export; 0 keeps all source columns.",
+    )
     parser.add_argument("--use-fps", type=str2bool, default=True)
     parser.add_argument("--use-rgb", type=str2bool, default=False)
     parser.add_argument("--fov-deg", type=float, default=60.0)
@@ -180,7 +209,11 @@ def main() -> int:
     record_root = args.record_root.expanduser().resolve()
     scene_names = scene_names_from_manifest(args.selection_manifest.expanduser().resolve()) if args.selection_manifest else None
     chunk_files = list(iter_chunk_files(record_root, args.object_name, args.scene_start, args.scene_count, scene_names))
-    demo_count, total_frames, state_dim, action_dim = count_frames_and_dims(chunk_files, args.camera_view)
+    demo_count, total_frames, state_dim, raw_action_dim, action_dim = count_frames_and_dims(
+        chunk_files,
+        args.camera_view,
+        args.action_dim,
+    )
     if demo_count != args.expert_data_num and not args.allow_count_mismatch:
         raise ValueError(f"Found {demo_count} demos, expected {args.expert_data_num}")
 
@@ -207,6 +240,9 @@ def main() -> int:
     print(f"chunks: {len(chunk_files)}")
     print(f"demos: {demo_count}")
     print(f"frames: {total_frames}")
+    print(f"state dim: {state_dim}")
+    print(f"source action dim: {raw_action_dim}")
+    print(f"export action dim: {action_dim}")
     print(f"zarr: {save_dir}")
 
     zarr_root = zarr.group(str(save_dir))
@@ -254,7 +290,7 @@ def main() -> int:
                 steps = min(len(joint_pos), len(actions), len(rgb), len(depth))
                 end = frame_offset + steps
                 state_arr[frame_offset:end] = joint_pos[:steps]
-                action_arr[frame_offset:end] = actions[:steps]
+                action_arr[frame_offset:end] = actions[:steps, :action_dim]
                 for idx in range(steps):
                     point_cloud_arr[frame_offset + idx] = rgbd_to_pointcloud(rgb[idx], depth[idx], pc_cfg, rng)
                 frame_offset = end
@@ -282,6 +318,9 @@ def main() -> int:
         "chunk_count": len(chunk_files),
         "demo_count": int(demo_count),
         "total_frames": int(total_frames),
+        "state_dim": int(state_dim),
+        "raw_action_dim": int(raw_action_dim),
+        "action_dim": int(action_dim),
         "output_zarr": str(save_dir),
         "camera_view": args.camera_view,
         "n_points": int(args.n_points),
