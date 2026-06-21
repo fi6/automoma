@@ -12,3 +12,4 @@
 [submodule "third_party/RoboTwin"]
 	path = third_party/RoboTwin
 	url = git@github.com:chang-xinhai/RoboTwin.git
+	branch = automoma
