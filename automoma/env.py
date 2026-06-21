@@ -82,7 +82,7 @@ def install_conda_hooks() -> None:
 export ISAACLAB_PATH="{isaaclab_path}"
 export IsaacSim_ROOT="{isaac_sim_path}"
 export AUTOMOMA_OBJECT_ROOT="{project_root}/assets/object"
-export AUTOMOMA_SCENE_ROOT="{project_root}/assets/scene/infinigen/kitchen_1130"
+export AUTOMOMA_SCENE_ROOT="{project_root}/assets/scene/infinigen/scene_v2"
 export AUTOMOMA_ROBOT_ROOT="{project_root}/assets/robot"
 
 # Source Isaac Sim environment

@@ -35,20 +35,20 @@ Inside the container, the repo is available at `/workspace/automoma`, `python` i
 ```bash
 # Plan
 bash docker/run_docker.sh --gpu 0 -- \
-  bash scripts/run_pipeline.sh plan 7221 scene_0_seed_0 train
+  bash scripts/run_pipeline.sh plan 7221 scene_0 train
 
 # Record one demo with cameras in headless IsaacLab-Arena
 bash docker/run_docker.sh --gpu 0 -- \
-  bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 1 --headless
+  bash scripts/run_pipeline.sh record microwave_7221 scene_0 1 --headless
 
 # Convert to LeRobot
 bash docker/run_docker.sh --gpu 0 -- \
-  bash scripts/run_pipeline.sh convert lerobot microwave_7221 scene_0_seed_0 1
+  bash scripts/run_pipeline.sh convert lerobot microwave_7221 scene_0 1
 
 # Eval a trained policy
 bash docker/run_docker.sh --gpu 0 -- \
-  bash scripts/run_pipeline.sh eval lerobot act microwave_7221 scene_0_seed_0 1 --headless \
-    --policy.path /workspace/automoma/outputs/train/lerobot/act_summit_franka_open-microwave_7221-scene_0_seed_0-1/checkpoints/last/pretrained_model
+  bash scripts/run_pipeline.sh eval lerobot act microwave_7221 scene_0 1 --headless \
+    --policy.path /workspace/automoma/outputs/train/lerobot/act_summit_franka_open-microwave_7221-scene_0-1/checkpoints/last/pretrained_model
 ```
 
 ## Real Test
@@ -64,8 +64,8 @@ The script writes test artifacts under:
 ```text
 data/docker_smoke/
 ├── trajs/...
-├── automoma/summit_franka_open-microwave_7221-scene_0_seed_0-1.hdf5
-└── lerobot/automoma/summit_franka_open-microwave_7221-scene_0_seed_0-1/
+├── automoma/summit_franka_open-microwave_7221-scene_0-1.hdf5
+└── lerobot/automoma/summit_franka_open-microwave_7221-scene_0-1/
 ```
 
 Visualize the converted LeRobot dataset with:
@@ -73,8 +73,8 @@ Visualize the converted LeRobot dataset with:
 ```bash
 conda activate automoma
 lerobot-dataset-viz \
-  --repo-id automoma/summit_franka_open-microwave_7221-scene_0_seed_0-1 \
-  --root data/docker_smoke/lerobot/automoma/summit_franka_open-microwave_7221-scene_0_seed_0-1 \
+  --repo-id automoma/summit_franka_open-microwave_7221-scene_0-1 \
+  --root data/docker_smoke/lerobot/automoma/summit_franka_open-microwave_7221-scene_0-1 \
   --episode-index 0 \
   --video-backend pyav
 ```

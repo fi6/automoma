@@ -19,9 +19,9 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 DATA_ROOT = REPO_ROOT / "data" / "automoma_30scenes"
 DEFAULT_INPUT_ROOT = DATA_ROOT / "automoma-30k-sort"
 DEFAULT_OUTPUT_ROOT = DATA_ROOT / "automoma-30k-convert"
-DEFAULT_REFERENCE = REPO_ROOT / "data" / "automoma" / "summit_franka_open-microwave_7221-scene_0_seed_0-10.hdf5"
+DEFAULT_REFERENCE = REPO_ROOT / "data" / "automoma" / "summit_franka_open-microwave_7221-scene_0-10.hdf5"
 
-SCENE_RE = re.compile(r"scene_(\d+)_seed_(\d+)$")
+SCENE_RE = re.compile(r"scene_(\d+)(?:_seed_(\d+))?$")
 EPISODE_RE = re.compile(r"episode(\d+)\.hdf5$")
 
 
@@ -32,7 +32,9 @@ def natural_scene_key(path: Path) -> tuple[int, int, str]:
     match = SCENE_RE.fullmatch(path.name)
     if not match:
         return (10**9, 10**9, path.name)
-    return (int(match.group(1)), int(match.group(2)), path.name)
+    scene_id = int(match.group(1))
+    seed_id = int(match.group(2)) if match.group(2) is not None else scene_id
+    return (scene_id, seed_id, path.name)
 
 
 def episode_key(path: Path) -> tuple[int, str]:

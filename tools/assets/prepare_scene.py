@@ -2,7 +2,7 @@
 """Prepare automoma scene assets: fix metadata rotation and scene Z-offset.
 
 This script processes scenes stored under
-``assets/scene/infinigen/kitchen_1130/{scene_name}/`` by applying:
+``assets/scene/infinigen/scene_v2/{scene_name}/`` by applying:
 1. **Metadata rotation fix** — Applies a 180° self-rotation around Z
    to every static object's 4×4 matrix, recalculates Euler angles,
    and re-transforms bounding-box corners.
@@ -12,7 +12,7 @@ This script processes scenes stored under
 
 Usage (from the AutoMoMa repo root):
     # Fix a single scene
-    python tools/assets/prepare_scene.py --scene_name scene_0_seed_0
+    python tools/assets/prepare_scene.py --scene_name scene_0
 
     # Fix all scenes
     python tools/assets/prepare_scene.py --scene_name all
@@ -34,7 +34,7 @@ def get_repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-SCENE_ROOT = get_repo_root() / "assets" / "scene" / "infinigen" / "kitchen_1130"
+SCENE_ROOT = get_repo_root() / "assets" / "scene" / "infinigen" / "scene_v2"
 Z_OFFSET = -0.12
 
 
@@ -267,7 +267,7 @@ def main():
         "--scene_name",
         type=str,
         default="all",
-        help="Scene name (e.g. scene_0_seed_0) or 'all'.",
+        help="Scene name (e.g. scene_0) or 'all'.",
     )
     parser.add_argument(
         "--fix_metadata_rotation",

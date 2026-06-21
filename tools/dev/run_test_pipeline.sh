@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-SCENE_NAME="${SCENE_NAME:-scene_54_seed_54}"
+SCENE_NAME="${SCENE_NAME:-scene_40}"
 OBJECT_ID="${OBJECT_ID:-7221}"
 OBJECT_NAME="${OBJECT_NAME:-microwave_${OBJECT_ID}}"
 POLICY="${POLICY:-act}"
@@ -20,7 +20,7 @@ EVAL_EXTRA_ARGS="${EVAL_EXTRA_ARGS:---env.headless=true}"
 FORCE="${FORCE:-0}"
 
 # OOD evaluation: comma-separated list of trained scenes and eval scenes
-# e.g., TRAIN_SCENES=scene_0_seed_0,scene_7_seed_7 EVAL_SCENES=scene_40_seed_40,scene_41_seed_41
+# e.g., TRAIN_SCENES=scene_0,scene_3 EVAL_SCENES=scene_29,scene_30
 TRAIN_SCENES="${TRAIN_SCENES:-${SCENE_NAME}}"
 EVAL_SCENES="${EVAL_SCENES:-}"
 

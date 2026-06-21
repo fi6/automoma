@@ -48,7 +48,7 @@ from tools.debug.record_drive_and_set.run_record_drive_and_set import (
 
 
 OBJECT_NAME = "microwave_7221"
-SCENE_NAME = "scene_0_seed_0"
+SCENE_NAME = "scene_0"
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "debug" / "2026-06-11_record_drive_and_set" / "output" / "middrop_7221"
 
 

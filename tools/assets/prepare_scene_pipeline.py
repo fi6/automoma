@@ -6,12 +6,14 @@ import other local project scripts; all processing logic is contained here.
 
 Usage:
     python tools/assets/prepare_scene_pipeline.py \
-        --scene-root assets/scene/infinigen/kitchen_1130_backup \
-        --scene-name scene_54_seed_54
+        --scene-root assets/scene/infinigen/scene_v2 \
+        --scene-name scene_0 \
+        --requirement-mode multi
 
     python tools/assets/prepare_scene_pipeline.py \
-        --scene-root assets/scene/infinigen/kitchen_1130 \
-        --scene-name all
+        --scene-root assets/scene/infinigen/scene_v1 \
+        --scene-name all \
+        --requirement-mode single
 """
 
 from __future__ import annotations
@@ -34,11 +36,11 @@ from scipy.spatial.transform import Rotation as R
 # =============================================================================
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_SCENE_ROOT = REPO_ROOT / "assets" / "scene" / "infinigen" / "kitchen_1130"
+DEFAULT_SCENE_ROOT = REPO_ROOT / "assets" / "scene" / "infinigen" / "scene_v2"
 
 # Set these to True/False instead of passing per-step command-line flags.
 RUN_STEP_1_VALIDATE = True
-RUN_STEP_2_INTERACTIVE_OBJECT_TRANSFORM = True
+RUN_STEP_2_INTERACTIVE_OBJECT_TRANSFORM = False
 RUN_STEP_3_COPY_REQUIREMENT = True
 RUN_STEP_4_CHECK_REQUIREMENT = True
 RUN_STEP_5_RESTRUCTURE_STAGE = True
@@ -60,15 +62,23 @@ KITCHENSPACE_Z_LOWERING_AMOUNT = 0.03
 # Step 8 final scene offset.
 FINAL_SCENE_Z_OFFSET = -0.12
 
-# Embedded requirement.json so this file is standalone.
-EMBEDDED_REQUIREMENT: dict[str, Any] = {
+MICROWAVE_7221_REQUIREMENT_OBJECT: dict[str, Any] = {
+    "asset_type": "Microwave",
+    "asset_id": "7221",
+    "urdf_path": "assets/object/Microwave/7221/mobility.urdf",
+    "scale": 0.3563,
+}
+
+# Embedded requirement.json variants so this file is standalone.
+SINGLE_OBJECT_REQUIREMENT: dict[str, Any] = {
     "static_objects": [
-        {
-            "asset_type": "Microwave",
-            "asset_id": "7221",
-            "urdf_path": "assets/object/Microwave/7221/mobility.urdf",
-            "scale": 0.3563,
-        },
+        MICROWAVE_7221_REQUIREMENT_OBJECT,
+    ]
+}
+
+MULTI_OBJECT_REQUIREMENT: dict[str, Any] = {
+    "static_objects": [
+        MICROWAVE_7221_REQUIREMENT_OBJECT,
         {
             "asset_type": "Dishwasher",
             "asset_id": "11622",
@@ -100,6 +110,11 @@ EMBEDDED_REQUIREMENT: dict[str, Any] = {
             "scale": 0.7231779244463762,
         },
     ]
+}
+
+REQUIREMENTS_BY_MODE: dict[str, dict[str, Any]] = {
+    "single": SINGLE_OBJECT_REQUIREMENT,
+    "multi": MULTI_OBJECT_REQUIREMENT,
 }
 
 
@@ -402,17 +417,31 @@ def run_interactive_object_transform(scene_dirs: list[Path]) -> bool:
 # Step 3/4: requirement copy/check
 # =============================================================================
 
-def copy_requirement(scene_dirs: list[Path]) -> bool:
+def copy_requirement(scene_dirs: list[Path], requirement: dict[str, Any]) -> bool:
     ok = True
     for scene_dir in scene_dirs:
         dst = scene_dir / "info" / "requirement.json"
         try:
-            save_json(dst, EMBEDDED_REQUIREMENT)
+            save_json(dst, requirement)
             print(f"  [wrote] {dst}")
         except Exception as exc:
             ok = False
             print(f"  [failed] {scene_dir.name}: {exc}")
     return ok
+
+
+def metadata_matches_requirement(
+    object_name: str,
+    obj_data: dict[str, Any],
+    asset_type: Any,
+    asset_id: str,
+) -> bool:
+    if (
+        str(obj_data.get("asset_type")) == str(asset_type)
+        and str(obj_data.get("asset_id")) == asset_id
+    ):
+        return True
+    return str(asset_type) in object_name and asset_id in object_name
 
 
 def check_requirement(scene_dirs: list[Path]) -> bool:
@@ -434,7 +463,10 @@ def check_requirement(scene_dirs: list[Path]) -> bool:
         for obj in required:
             asset_type = obj.get("asset_type")
             asset_id = str(obj.get("asset_id"))
-            found = any(asset_type in name and asset_id in name for name in static_objects)
+            found = any(
+                metadata_matches_requirement(name, data, asset_type, asset_id)
+                for name, data in static_objects.items()
+            )
             if not found:
                 missing.append(f"{asset_type}:{asset_id}")
 
@@ -839,7 +871,13 @@ def step8_final_prepare_scene(scene_dirs: list[Path]) -> bool:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Standalone AutoMoMa scene preparation pipeline.")
     parser.add_argument("--scene-root", type=Path, default=DEFAULT_SCENE_ROOT)
-    parser.add_argument("--scene-name", default="all", help="Scene name, e.g. scene_0_seed_0, or all")
+    parser.add_argument("--scene-name", default="all", help="Scene name, e.g. scene_0, or all")
+    parser.add_argument(
+        "--requirement-mode",
+        choices=sorted(REQUIREMENTS_BY_MODE),
+        default="multi",
+        help="Use the 1130 multi-object requirement or the 0913 single-object Microwave 7221 requirement.",
+    )
     return parser
 
 
@@ -857,7 +895,9 @@ def main() -> int:
 
     print(f"Scene root: {scene_root}")
     print(f"Scenes: {len(scene_dirs)}")
+    print(f"Requirement mode: {args.requirement_mode}")
     success = True
+    requirement = REQUIREMENTS_BY_MODE[args.requirement_mode]
 
     if RUN_STEP_1_VALIDATE:
         print_step(1, "Validate raw scene files")
@@ -875,7 +915,7 @@ def main() -> int:
 
     if RUN_STEP_3_COPY_REQUIREMENT:
         print_step(3, "Write embedded requirement.json")
-        success = copy_requirement(scene_dirs) and success
+        success = copy_requirement(scene_dirs, requirement) and success
 
     if RUN_STEP_4_CHECK_REQUIREMENT:
         print_step(4, "Check metadata against requirement.json")

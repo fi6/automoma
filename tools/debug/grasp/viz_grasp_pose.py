@@ -19,7 +19,7 @@ Example:
         --ik-seeds 64 \\
         summit_franka_grasp_viz \\
         --object_name microwave_7221 \\
-        --scene_name scene_0_seed_0 \\
+        --scene_name scene_0 \\
         --object_center
 
 Controls:
@@ -61,7 +61,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 os.environ.setdefault("AUTOMOMA_OBJECT_ROOT", str(REPO_ROOT / "assets" / "object"))
-os.environ.setdefault("AUTOMOMA_SCENE_ROOT", str(REPO_ROOT / "assets" / "scene" / "infinigen" / "kitchen_1130"))
+os.environ.setdefault("AUTOMOMA_SCENE_ROOT", str(REPO_ROOT / "assets" / "scene" / "infinigen" / "scene_v2"))
 os.environ.setdefault("AUTOMOMA_ROBOT_ROOT", str(REPO_ROOT / "assets" / "robot"))
 
 
@@ -137,7 +137,7 @@ class SummitFrankaGraspVizEnvironment(ExampleEnvironmentBase):
     @staticmethod
     def add_cli_args(parser: argparse.ArgumentParser) -> None:
         parser.add_argument("--object_name", type=str, default="microwave_7221")
-        parser.add_argument("--scene_name", type=str, default="scene_0_seed_0")
+        parser.add_argument("--scene_name", type=str, default="scene_0")
         parser.add_argument("--object_center", action="store_true", default=False)
 
 

@@ -4,9 +4,9 @@
 #   convert each object/scene pair into a LeRobot dataset.
 #
 # Example:
-#   bash tools/release/automoma-500k/run_test.sh scene_0_seed_0
-#   bash tools/release/automoma-500k/run_test.sh --dry-run scene_0_seed_0
-#   bash tools/release/automoma-500k/run_test.sh scene_0_seed_0 -- planner.traj.batch_size=10
+#   bash tools/release/automoma-500k/run_test.sh scene_0
+#   bash tools/release/automoma-500k/run_test.sh --dry-run scene_0
+#   bash tools/release/automoma-500k/run_test.sh scene_0 -- planner.traj.batch_size=10
 
 set -euo pipefail
 

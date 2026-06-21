@@ -3,10 +3,10 @@
 
 Examples:
     python tools/dataset/viz_hdf5.py \
-        data/automoma/summit_franka_open-microwave_7221-scene_0_seed_0-10.hdf5
+        data/automoma/summit_franka_open-microwave_7221-scene_0-10.hdf5
 
     python tools/dataset/viz_hdf5.py \
-        data/automoma/summit_franka_open-microwave_7221-scene_0_seed_0-10.hdf5 \
+        data/automoma/summit_franka_open-microwave_7221-scene_0-10.hdf5 \
         --demo-index 0 --save --output-dir outputs/viz
 """
 

@@ -9,7 +9,7 @@ Uses OmegaConf to load the YAML config and allows command-line overrides::
     python scripts/plan.py
 
     # Override from CLI
-    python scripts/plan.py scene_name=scene_1_seed_1 object_id=11622
+    python scripts/plan.py scene_name=scene_1 object_id=11622
 
     # Use a custom config file
     python scripts/plan.py --config my_custom_plan.yaml

@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import shutil
 import subprocess
 import sys
@@ -33,6 +34,10 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[2]
 DEFAULT_CONFIG = REPO_ROOT / "configs" / "plan.yaml"
 DEFAULT_STAT_SCRIPT = SCRIPT_DIR / "trajectory_statistics.py"
+
+
+def natural_scene_key(name: str) -> list[Any]:
+    return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", name)]
 
 TRAJ_KEYS = (
     "start_robot",
@@ -71,7 +76,7 @@ def scene_has_object(scene_dir: Path, scene_name: str, obj_cfg: dict[str, Any], 
 def discover_scenes(scene_dir: Path) -> list[str]:
     if not scene_dir.exists():
         return []
-    return sorted(p.name for p in scene_dir.iterdir() if p.is_dir())
+    return sorted((p.name for p in scene_dir.iterdir() if p.is_dir()), key=natural_scene_key)
 
 
 def canonical_traj_file(
@@ -348,7 +353,7 @@ def main() -> int:
 
     cfg = load_config(args.config)
     robot_name = cfg.get("robot_name", "summit_franka")
-    scene_dir = args.scene_dir or (REPO_ROOT / cfg.get("scene_dir", "assets/scene/infinigen/kitchen_1130"))
+    scene_dir = args.scene_dir or (REPO_ROOT / cfg.get("scene_dir", "assets/scene/infinigen/scene_v2"))
     if not scene_dir.is_absolute():
         scene_dir = REPO_ROOT / scene_dir
 

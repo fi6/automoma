@@ -27,7 +27,7 @@ from automoma_dp3_utils import PointCloudConfig, rgbd_to_pointcloud
 
 
 CAMERA_CHOICES = ("ego_topdown", "ego_wrist", "fix_local")
-SCENE_RE = re.compile(r"^scene_(\d+)_seed_(\d+)$")
+SCENE_RE = re.compile(r"^scene_(\d+)(?:_seed_(\d+))?$")
 CHUNK_RE = re.compile(r"^chunk_(\d{6})_(\d{6})\.hdf5$")
 
 
@@ -45,7 +45,9 @@ def str2bool(value: str | bool) -> bool:
 def scene_sort_key(path: Path) -> tuple[int, int, str]:
     match = SCENE_RE.match(path.name)
     if match:
-        return int(match.group(1)), int(match.group(2)), path.name
+        scene_id = int(match.group(1))
+        seed_id = int(match.group(2)) if match.group(2) is not None else scene_id
+        return scene_id, seed_id, path.name
     return 1_000_000_000, 1_000_000_000, path.name
 
 
@@ -81,7 +83,7 @@ def iter_scene_dirs(
     object_root = record_root / object_name
     if not object_root.is_dir():
         raise NotADirectoryError(object_root)
-    ordered_names = scene_names or [f"scene_{idx}_seed_{idx}" for idx in range(scene_start, scene_start + scene_count)]
+    ordered_names = scene_names or [f"scene_{idx}" for idx in range(scene_start, scene_start + scene_count)]
     wanted = set(ordered_names)
     scenes = sorted(
         [path for path in object_root.iterdir() if path.is_dir() and path.name in wanted],

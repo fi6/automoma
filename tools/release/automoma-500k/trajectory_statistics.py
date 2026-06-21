@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -34,6 +35,10 @@ TRAJ_KEYS = (
 )
 
 
+def natural_scene_key(name: str) -> list[Any]:
+    return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", name)]
+
+
 def load_config(path: Path) -> dict[str, Any]:
     return OmegaConf.to_container(OmegaConf.load(path), resolve=True)
 
@@ -46,7 +51,7 @@ def object_name(cfg: dict[str, Any], object_id: str) -> str:
 def discover_scenes(scene_dir: Path) -> list[str]:
     if not scene_dir.exists():
         return []
-    return sorted(p.name for p in scene_dir.iterdir() if p.is_dir())
+    return sorted((p.name for p in scene_dir.iterdir() if p.is_dir()), key=natural_scene_key)
 
 
 def discover_data_scenes(root: Path, robot_name: str, object_names: list[str], split: str) -> list[str]:
@@ -102,7 +107,7 @@ def summarize_file(path: Path) -> dict[str, Any]:
 def build_summary(args: argparse.Namespace) -> dict[str, Any]:
     cfg = load_config(args.config)
     robot_name = cfg.get("robot_name", "summit_franka")
-    scene_dir = args.scene_dir or (REPO_ROOT / cfg.get("scene_dir", "assets/scene/infinigen/kitchen_1130"))
+    scene_dir = args.scene_dir or (REPO_ROOT / cfg.get("scene_dir", "assets/scene/infinigen/scene_v2"))
     if not scene_dir.is_absolute():
         scene_dir = REPO_ROOT / scene_dir
 
@@ -111,7 +116,10 @@ def build_summary(args: argparse.Namespace) -> dict[str, Any]:
     if args.scenes:
         scenes = list(args.scenes)
     else:
-        scenes = sorted(set(discover_scenes(scene_dir)) | set(discover_data_scenes(args.root, robot_name, object_names, args.split)))
+        scenes = sorted(
+            set(discover_scenes(scene_dir)) | set(discover_data_scenes(args.root, robot_name, object_names, args.split)),
+            key=natural_scene_key,
+        )
 
     rows = []
     object_totals = defaultdict(int)

@@ -392,7 +392,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--traj_file",
-        default=str(root / "data/trajs/summit_franka/microwave_7221/scene_0_seed_0/train/traj_data_train.pt"),
+        default=str(root / "data/trajs/summit_franka/microwave_7221/scene_0/train/traj_data_train.pt"),
         help="Converted 12D AutoMoMa trajectory file.",
     )
     parser.add_argument(

@@ -159,7 +159,7 @@ repo = Path(sys.argv[1])
 config = Path(sys.argv[2])
 scene_dir_arg = sys.argv[3]
 cfg = OmegaConf.load(config)
-scene_dir = Path(scene_dir_arg) if scene_dir_arg else Path(cfg.get("scene_dir", "assets/scene/infinigen/kitchen_1130"))
+scene_dir = Path(scene_dir_arg) if scene_dir_arg else Path(cfg.get("scene_dir", "assets/scene/infinigen/scene_v2"))
 if not scene_dir.is_absolute():
     scene_dir = repo / scene_dir
 print(scene_dir)
@@ -168,12 +168,15 @@ PY
 
 mapfile -t ALL_SCENES < <("${PYTHON_BIN}" - "${SCENE_DIR_RESOLVED}" <<'PY'
 import sys
+import re
 from pathlib import Path
 
 scene_dir = Path(sys.argv[1])
 if not scene_dir.exists():
     raise SystemExit(f"No scene directory found: {scene_dir}")
-for scene in sorted(p.name for p in scene_dir.iterdir() if p.is_dir()):
+def natural_scene_key(name):
+    return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", name)]
+for scene in sorted((p.name for p in scene_dir.iterdir() if p.is_dir()), key=natural_scene_key):
     print(scene)
 PY
 )

@@ -22,7 +22,7 @@ REQUIRED_KEYS = (
     "traj_obj",
     "traj_success",
 )
-SCENE_RE = re.compile(r"^scene_(\d+)_seed_(\d+)$")
+SCENE_RE = re.compile(r"^scene_(\d+)(?:_seed_(\d+))?$")
 
 
 def repo_root() -> Path:
@@ -30,13 +30,15 @@ def repo_root() -> Path:
 
 
 def scene_name(scene_id: int) -> str:
-    return f"scene_{scene_id}_seed_{scene_id}"
+    return f"scene_{scene_id}"
 
 
 def scene_sort_key(name: str) -> tuple[int, int, str]:
     match = SCENE_RE.match(name)
     if match:
-        return int(match.group(1)), int(match.group(2)), name
+        scene_id = int(match.group(1))
+        seed_id = int(match.group(2)) if match.group(2) is not None else scene_id
+        return scene_id, seed_id, name
     return 1_000_000_000, 1_000_000_000, name
 
 
@@ -50,7 +52,7 @@ def discover_scenes(source_base: Path, *, scene_start: int, scene_count: int, sc
         if not match:
             continue
         scene_id = int(match.group(1))
-        seed_id = int(match.group(2))
+        seed_id = int(match.group(2)) if match.group(2) is not None else scene_id
         if scene_id != seed_id or scene_id < scene_start:
             continue
         traj = path / "train" / "traj_data_train.pt"

@@ -23,7 +23,7 @@ unset _SETUP_SIM_ENV_SOURCE _SETUP_SIM_ENV_SOURCED
 
 export ISAACLAB_PATH="${ISAACLAB_PATH:-$REPO_ROOT/third_party/IsaacLab-Arena/submodules/IsaacLab}"
 export AUTOMOMA_OBJECT_ROOT="${AUTOMOMA_OBJECT_ROOT:-$REPO_ROOT/assets/object}"
-export AUTOMOMA_SCENE_ROOT="${AUTOMOMA_SCENE_ROOT:-$REPO_ROOT/assets/scene/infinigen/kitchen_1130}"
+export AUTOMOMA_SCENE_ROOT="${AUTOMOMA_SCENE_ROOT:-$REPO_ROOT/assets/scene/infinigen/scene_v2}"
 export AUTOMOMA_ROBOT_ROOT="${AUTOMOMA_ROBOT_ROOT:-$REPO_ROOT/assets/robot}"
 
 if [[ -f "${ISAACLAB_PATH}/_isaac_sim/setup_conda_env.sh" ]]; then

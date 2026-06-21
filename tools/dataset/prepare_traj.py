@@ -11,10 +11,10 @@ This script:
 
 Usage (from the AutoMoMa repo root):
     # Process a single object / scene
-    python tools/dataset/prepare_traj.py --object_name microwave_7221 --scene_name scene_0_seed_0 --mode train
+    python tools/dataset/prepare_traj.py --object_name microwave_7221 --scene_name scene_0 --mode train
 
     # Process all objects for one scene
-    python tools/dataset/prepare_traj.py --scene_name scene_0_seed_0 --mode train
+    python tools/dataset/prepare_traj.py --scene_name scene_0 --mode train
 
     # Process everything
     python tools/dataset/prepare_traj.py --mode train
@@ -226,7 +226,7 @@ def main():
         "--scene_name",
         type=str,
         default="all",
-        help="Scene name (e.g. scene_0_seed_0) or 'all'.",
+        help="Scene name (e.g. scene_0) or 'all'.",
     )
     parser.add_argument(
         "--mode",

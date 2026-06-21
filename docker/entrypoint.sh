@@ -42,7 +42,7 @@ export LD_LIBRARY_PATH
 
 # Keep runtime mounts semantically aligned with scripts/run_pipeline.sh.
 export AUTOMOMA_OBJECT_ROOT="${AUTOMOMA_OBJECT_ROOT:-${AUTOMOMA_ROOT}/assets/object}"
-export AUTOMOMA_SCENE_ROOT="${AUTOMOMA_SCENE_ROOT:-${AUTOMOMA_ROOT}/assets/scene/infinigen/kitchen_1130}"
+export AUTOMOMA_SCENE_ROOT="${AUTOMOMA_SCENE_ROOT:-${AUTOMOMA_ROOT}/assets/scene/infinigen/scene_v2}"
 export AUTOMOMA_ROBOT_ROOT="${AUTOMOMA_ROBOT_ROOT:-${AUTOMOMA_ROOT}/assets/robot}"
 
 if [[ -d "${AUTOMOMA_ROOT}" ]]; then

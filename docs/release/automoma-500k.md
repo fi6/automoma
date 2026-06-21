@@ -11,7 +11,7 @@ python tools/release/automoma-500k/plan_automoma_500k.py
 Defaults:
 
 - reads the 5 objects from `configs/plan.yaml`
-- scans all scene directories under `assets/scene/infinigen/kitchen_1130`
+- scans all scene directories under `assets/scene/infinigen/scene_v2`
 - targets at least `100000` successful trajectories per object
 - writes canonical per-scene files to `data/trajs/summit_franka/<object>/<scene>/train/traj_data_train.pt`
 - writes each planning round to an isolated directory under `data/trajs/_automoma_500k_rounds` before merging only successful trajectories
@@ -20,7 +20,7 @@ Useful checks:
 
 ```bash
 python tools/release/automoma-500k/plan_automoma_500k.py --self-test
-python tools/release/automoma-500k/plan_automoma_500k.py --dry-run --scenes scene_0_seed_0
+python tools/release/automoma-500k/plan_automoma_500k.py --dry-run --scenes scene_0
 ```
 
 Pass extra `scripts/plan.py` overrides after `--`:

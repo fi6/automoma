@@ -26,7 +26,7 @@ import h5py
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ISAACLAB_ARENA = REPO_ROOT / "third_party" / "IsaacLab-Arena"
-DEFAULT_SELECTION = REPO_ROOT / "data" / "automoma" / "joint_error" / "scene_0_seed_0_random10_seed20260608.json"
+DEFAULT_SELECTION = REPO_ROOT / "data" / "automoma" / "joint_error" / "scene_0_random10_seed20260608.json"
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "debug" / "2026-06-11_record_drive_and_set" / "output"
 RECORD_SCRIPT = REPO_ROOT / "tools" / "debug" / "record_drive_and_set" / "record_selected_automoma.py"
 VIDEO_SCRIPT = REPO_ROOT / "tools" / "debug" / "record_drive_and_set" / "hdf5_to_video.py"
@@ -177,7 +177,7 @@ def _base_env(args: argparse.Namespace) -> dict[str, str]:
     env = os.environ.copy()
     env["PYTHONPATH"] = f"{REPO_ROOT}{os.pathsep}{env.get('PYTHONPATH', '')}"
     env["AUTOMOMA_OBJECT_ROOT"] = str(REPO_ROOT / "assets" / "object")
-    env["AUTOMOMA_SCENE_ROOT"] = str(REPO_ROOT / "assets" / "scene" / "infinigen" / "kitchen_1130")
+    env["AUTOMOMA_SCENE_ROOT"] = str(REPO_ROOT / "assets" / "scene" / "infinigen" / "scene_v2")
     env["AUTOMOMA_ROBOT_ROOT"] = str(REPO_ROOT / "assets" / "robot")
     env.setdefault("OMNI_KIT_ACCEPT_EULA", "YES")
     env.setdefault("ACCEPT_EULA", "Y")
