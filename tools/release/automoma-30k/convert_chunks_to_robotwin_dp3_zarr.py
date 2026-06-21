@@ -83,7 +83,7 @@ def iter_scene_dirs(
     object_root = record_root / object_name
     if not object_root.is_dir():
         raise NotADirectoryError(object_root)
-    ordered_names = scene_names or [f"scene_{idx}" for idx in range(scene_start, scene_start + scene_count)]
+    ordered_names = scene_names or [f"scene_{idx}_seed_{idx}" for idx in range(scene_start, scene_start + scene_count)]
     wanted = set(ordered_names)
     scenes = sorted(
         [path for path in object_root.iterdir() if path.is_dir() and path.name in wanted],

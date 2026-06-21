@@ -35,7 +35,7 @@ class PlanningPipeline:
     Usage::
 
         pipe = PlanningPipeline(cfg)
-        pipe.run(scene_name="scene_0", object_id="7221")
+        pipe.run(scene_name="scene_0_seed_0", object_id="7221")
     """
 
     def __init__(self, cfg: Dict[str, Any]):

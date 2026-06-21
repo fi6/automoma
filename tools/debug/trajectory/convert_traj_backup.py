@@ -5,7 +5,7 @@ Converts new-format per-grasp `traj_data.pt` files back to the old
 `filtered_traj_data.pt` format expected by original IsaacSim scripts.
 
 Usage:
-    python tools/debug/trajectory/convert_traj_backup.py --input_dir data/trajs/summit_franka/microwave_7221/scene_0
+    python tools/debug/trajectory/convert_traj_backup.py --input_dir data/trajs/summit_franka/microwave_7221/scene_0_seed_0
 """
 
 import argparse

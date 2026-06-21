@@ -30,7 +30,7 @@ def repo_root() -> Path:
 
 
 def scene_name(scene_id: int) -> str:
-    return f"scene_{scene_id}"
+    return f"scene_{scene_id}_seed_{scene_id}"
 
 
 def scene_sort_key(name: str) -> tuple[int, int, str]:

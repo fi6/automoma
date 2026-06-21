@@ -26,7 +26,7 @@ import h5py
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ISAACLAB_ARENA = REPO_ROOT / "third_party" / "IsaacLab-Arena"
-DEFAULT_SELECTION = REPO_ROOT / "data" / "automoma" / "joint_error" / "scene_0_random10_seed20260608.json"
+DEFAULT_SELECTION = REPO_ROOT / "data" / "automoma" / "joint_error" / "scene_0_seed_0_random10_seed20260608.json"
 DEFAULT_OUTPUT_ROOT = REPO_ROOT / "debug" / "2026-06-11_record_drive_and_set" / "output"
 RECORD_SCRIPT = REPO_ROOT / "tools" / "debug" / "record_drive_and_set" / "record_selected_automoma.py"
 VIDEO_SCRIPT = REPO_ROOT / "tools" / "debug" / "record_drive_and_set" / "hdf5_to_video.py"

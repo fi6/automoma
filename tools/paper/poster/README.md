@@ -39,7 +39,7 @@ python tools/paper/poster/plot_trajectory_workspace.py
 ```
 
 Default input:
-`data/trajs/summit_franka/microwave_7221/scene_0/train/traj_data_train.pt`.
+`data/trajs/summit_franka/microwave_7221/scene_0_seed_0/train/traj_data_train.pt`.
 
 Outputs are written to `outputs/paper/poster/trajectory_workspace_7221/`:
 

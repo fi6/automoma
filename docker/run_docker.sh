@@ -34,7 +34,7 @@ Options:
 
 Examples:
   bash docker/run_docker.sh
-  bash docker/run_docker.sh --gpu 0 -- bash scripts/run_pipeline.sh record microwave_7221 scene_0 1 --headless
+  bash docker/run_docker.sh --gpu 0 -- bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 1 --headless
 EOF_USAGE
 }
 

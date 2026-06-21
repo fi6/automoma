@@ -6,7 +6,7 @@ set -euo pipefail
 
 OBJECT_ID="${OBJECT_ID:-7221}"
 OBJECT_NAME="${OBJECT_NAME:-microwave_7221}"
-SCENE_NAME="${SCENE_NAME:-scene_0}"
+SCENE_NAME="${SCENE_NAME:-scene_0_seed_0}"
 SPLIT="${SPLIT:-train}"
 NUM_EPISODES="${NUM_EPISODES:-1}"
 BENCHMARK="${BENCHMARK:-lerobot}"

@@ -32,7 +32,7 @@ It writes:
 ```bash
 python tools/release/automoma-30k/convert_hdf5_format.py \
   --manifest data/automoma_30scenes/automoma-30k-sort/manifest.jsonl \
-  --scene scene_0 \
+  --scene scene_0_seed_0 \
   --limit 3 \
   --overwrite
 ```

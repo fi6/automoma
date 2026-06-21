@@ -9,7 +9,7 @@ TRAJ_UTIL="$SCRIPT_DIR/manage_validation_trajs.py"
 SUBSET_UTIL="$SCRIPT_DIR/build_validation_episode_manifest.py"
 SUMMARY_UTIL="$SCRIPT_DIR/summarize_validation_results.py"
 
-SCENE_NAME="${SCENE_NAME:-scene_0}"
+SCENE_NAME="${SCENE_NAME:-scene_0_seed_0}"
 OBJECT_ID="${OBJECT_ID:-7221}"
 OBJECT_NAME="${OBJECT_NAME:-microwave_${OBJECT_ID}}"
 TRAIN_MIN_PLANNED="${TRAIN_MIN_PLANNED:-7000}"

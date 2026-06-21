@@ -7,7 +7,7 @@ import other local project scripts; all processing logic is contained here.
 Usage:
     python tools/assets/prepare_scene_pipeline.py \
         --scene-root assets/scene/infinigen/scene_v2 \
-        --scene-name scene_0 \
+        --scene-name scene_0_seed_0 \
         --requirement-mode multi
 
     python tools/assets/prepare_scene_pipeline.py \
@@ -871,7 +871,7 @@ def step8_final_prepare_scene(scene_dirs: list[Path]) -> bool:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Standalone AutoMoMa scene preparation pipeline.")
     parser.add_argument("--scene-root", type=Path, default=DEFAULT_SCENE_ROOT)
-    parser.add_argument("--scene-name", default="all", help="Scene name, e.g. scene_0, or all")
+    parser.add_argument("--scene-name", default="all", help="Scene name, e.g. scene_0_seed_0, or all")
     parser.add_argument(
         "--requirement-mode",
         choices=sorted(REQUIREMENTS_BY_MODE),

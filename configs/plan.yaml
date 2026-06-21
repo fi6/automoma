@@ -3,12 +3,12 @@
 # =============================================================================
 # All hyper-parameters for the planning pipeline live here.
 # Override any value from the CLI using Hydra syntax:
-#   python scripts/plan.py scene_name=scene_1 object_id=11622
+#   python scripts/plan.py scene_name=scene_1_seed_1 object_id=11622
 # =============================================================================
 
 # --- Run settings ---
 scene_dir: assets/scene/infinigen/scene_v2
-scene_name: scene_0
+scene_name: scene_0_seed_0
 object_id: "7221"
 output_dir: data/trajs
 robot_name: summit_franka

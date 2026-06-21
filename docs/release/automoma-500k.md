@@ -20,7 +20,7 @@ Useful checks:
 
 ```bash
 python tools/release/automoma-500k/plan_automoma_500k.py --self-test
-python tools/release/automoma-500k/plan_automoma_500k.py --dry-run --scenes scene_0
+python tools/release/automoma-500k/plan_automoma_500k.py --dry-run --scenes scene_0_seed_0
 ```
 
 Pass extra `scripts/plan.py` overrides after `--`:

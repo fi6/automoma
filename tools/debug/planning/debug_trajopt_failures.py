@@ -21,16 +21,16 @@ def main():
     }
     scene_cfg = {
         "pose": cfg.scene.infinigen.pose,
-        "path": os.path.join(cfg.scene_dir, "scene_0", cfg.scene.infinigen.usd_subpath),
-        "metadata_path": os.path.join(cfg.scene_dir, "scene_0", cfg.scene.infinigen.metadata_subpath),
+        "path": os.path.join(cfg.scene_dir, "scene_0_seed_0", cfg.scene.infinigen.usd_subpath),
+        "metadata_path": os.path.join(cfg.scene_dir, "scene_0_seed_0", cfg.scene.infinigen.metadata_subpath),
     }
 
     planner.setup_env(scene_cfg, object_cfg)
 
     # Load IK
     from automoma.core.types import IKResult
-    start_ik_dict = torch.load("data/trajs/summit_franka/microwave_7221/scene_0/grasp_0000/ik_data.pt")
-    goal_ik_dict = torch.load("data/trajs/summit_franka/microwave_7221/scene_0/grasp_0000/ik_goal_data.pt")
+    start_ik_dict = torch.load("data/trajs/summit_franka/microwave_7221/scene_0_seed_0/grasp_0000/ik_data.pt")
+    goal_ik_dict = torch.load("data/trajs/summit_franka/microwave_7221/scene_0_seed_0/grasp_0000/ik_goal_data.pt")
     
     if isinstance(start_ik_dict, dict):
         start_iks = start_ik_dict.get("iks", start_ik_dict.get("start_ik", list(start_ik_dict.values())[0]))

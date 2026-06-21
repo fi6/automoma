@@ -12,7 +12,7 @@ This script processes scenes stored under
 
 Usage (from the AutoMoMa repo root):
     # Fix a single scene
-    python tools/assets/prepare_scene.py --scene_name scene_0
+    python tools/assets/prepare_scene.py --scene_name scene_0_seed_0
 
     # Fix all scenes
     python tools/assets/prepare_scene.py --scene_name all
@@ -267,7 +267,7 @@ def main():
         "--scene_name",
         type=str,
         default="all",
-        help="Scene name (e.g. scene_0) or 'all'.",
+        help="Scene name (e.g. scene_0_seed_0) or 'all'.",
     )
     parser.add_argument(
         "--fix_metadata_rotation",

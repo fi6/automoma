@@ -226,7 +226,7 @@ def _run_one(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--object_name", default="microwave_7221")
-    parser.add_argument("--scene_name", default="scene_0")
+    parser.add_argument("--scene_name", default="scene_0_seed_0")
     parser.add_argument("--num_episodes", type=int, default=10)
     parser.add_argument("--output_root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--tryout", type=str, default="", help="Write into ablation_study_tryout/<name> instead.")

@@ -212,7 +212,7 @@ conda activate automoma
 # Train a policy
 lerobot-train \
     --policy.type=act \
-    --dataset.repo_id=automoma/summit_franka_open-microwave_7221-scene_0-30 \
+    --dataset.repo_id=automoma/summit_franka_open-microwave_7221-scene_0_seed_0-30 \
     --dataset.root=/path/to/data/lerobot \
     --batch_size=128 \
     --steps=10000 \
@@ -255,7 +255,7 @@ branch in headless mode. Use one of these workarounds:
 
 # Short-term workaround on a local workstation with an active X session:
 export DISPLAY=:1
-bash scripts/run_pipeline.sh record microwave_7221 scene_0 30 --no-headless
+bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 30 --no-headless
 ```
 
 Also make sure no old planning or simulation process is still occupying GPU
@@ -275,14 +275,14 @@ For additional command examples, see `scripts/quickstart.sh` and `docs/workflows
 Generate trajectories for a specific object and scene:
 
 ```bash
-# Default: Microwave 7221, scene_0
+# Default: Microwave 7221, scene_0_seed_0
 python scripts/plan.py
 
 # Custom object and scene
-python scripts/plan.py object_id=7221 scene_name=scene_0
+python scripts/plan.py object_id=7221 scene_name=scene_0_seed_0
 
 # With collision visualization
-python scripts/plan.py object_id=7221 scene_name=scene_0 planner.visualize_collision=true
+python scripts/plan.py object_id=7221 scene_name=scene_0_seed_0 planner.visualize_collision=true
 ```
 
 ### 2. Record Trajectories in IsaacLab Arena
@@ -294,10 +294,10 @@ python tools/assets/prepare_object.py --object_type Microwave --object_id 7221
 # Record with 30 episodes.
 # Default replay timing is --interpolated 5 --interpolation_type cubic --decimation 1 --init_steps 5.
 # Base actions are absolute by default; add --mobile_base_relative only for relative-delta datasets.
-bash scripts/run_pipeline.sh record microwave_7221 scene_0 30
+bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 30
 
 # Override interpolation only when doing an ablation/debug run.
-bash scripts/run_pipeline.sh record microwave_7221 scene_1 30 --interpolated 2
+bash scripts/run_pipeline.sh record microwave_7221 scene_1_seed_1 30 --interpolated 2
 ```
 
 ### 2.1 Replay Trajectories Without Recording HDF5
@@ -306,7 +306,7 @@ Use `replay` when you want to inspect planner trajectories or collect lightweigh
 metrics without spending time or disk on camera/HDF5 recording.
 
 ```bash
-bash scripts/run_pipeline.sh replay microwave_7221 scene_0 4 \
+bash scripts/run_pipeline.sh replay microwave_7221 scene_0_seed_0 4 \
   --metrics \
   --metrics_file debug/replay_probe/microwave_scene0.csv \
   --episode_indices 0,1,2,3 \
@@ -341,12 +341,12 @@ python tools/debug/run_grasp_filter_metrics.py \
 
 ```bash
 # Convert recorded trajectories to LeRobot dataset
-bash scripts/run_pipeline.sh convert lerobot microwave_7221 scene_0 30
+bash scripts/run_pipeline.sh convert lerobot microwave_7221 scene_0_seed_0 30
 
 # Visualize converted LeRobot dataset
 lerobot-dataset-viz \
-    --repo-id automoma/summit_franka_open-microwave_7221-scene_0-30 \
-    --root data/lerobot/automoma/summit_franka_open-microwave_7221-scene_0-30 \
+    --repo-id automoma/summit_franka_open-microwave_7221-scene_0_seed_0-30 \
+    --root data/lerobot/automoma/summit_franka_open-microwave_7221-scene_0_seed_0-30 \
     --episode-index 0
 ```
 
@@ -357,16 +357,16 @@ Use `tools/dataset/viz_hdf5.py` to inspect raw AutoMoMa HDF5 recordings directly
 ```bash
 # Preview a small dataset (all demos become tabs)
 python tools/dataset/viz_hdf5.py \
-    data/automoma/summit_franka_open-microwave_7221-scene_0-10.hdf5
+    data/automoma/summit_franka_open-microwave_7221-scene_0_seed_0-10.hdf5
 
 # Preview specific demos only
 python tools/dataset/viz_hdf5.py \
-    data/automoma/summit_franka_open-microwave_7221-scene_0-10.hdf5 \
+    data/automoma/summit_franka_open-microwave_7221-scene_0_seed_0-10.hdf5 \
     --demo-index 1,3-4
 
 # Large datasets: load only one demo for fast inspection
 python tools/dataset/viz_hdf5.py \
-    data/automoma/code_validation/code_validation-microwave_7221-scene_0-6400-set_state.hdf5 \
+    data/automoma/code_validation/code_validation-microwave_7221-scene_0_seed_0-6400-set_state.hdf5 \
     --demo-index 123
 ```
 
@@ -391,7 +391,7 @@ python isaaclab_arena/scripts/record_automoma_demos.py \
   --num_episodes 1 \
   summit_franka_open_door \
   --object_name microwave_7221 \
-  --scene_name scene_1 \
+  --scene_name scene_1_seed_1 \
   --object_center
 ```
 
@@ -417,7 +417,7 @@ Each eval run writes a live CSV to `<output_dir>/per_episode_results.csv` with p
 Handle/robot debug markers are optional and remain off by default. Enable them for eval/debug runs with:
 
 ```bash
-DEBUG_VISUALIZE_HANDLE=true bash scripts/run_pipeline.sh eval lerobot act microwave_7221 scene_3 1000 \
+DEBUG_VISUALIZE_HANDLE=true bash scripts/run_pipeline.sh eval lerobot act microwave_7221 scene_7_seed_7 1000 \
   --output_dir=/path/to/eval_dir \
   --eval.n_episodes=10 \
   --env.headless=true
@@ -430,22 +430,22 @@ DEBUG_VISUALIZE_HANDLE=true bash scripts/run_pipeline.sh eval lerobot act microw
 ```bash
 # Prepare and record dishwasher trajectories
 python tools/assets/prepare_object.py --object_type Dishwasher --object_id 11622
-bash scripts/run_pipeline.sh record dishwasher_11622 scene_0 30 --set_state --disable_collision
-bash scripts/run_pipeline.sh convert lerobot dishwasher_11622 scene_0 30
+bash scripts/run_pipeline.sh record dishwasher_11622 scene_0_seed_0 30 --set_state --disable_collision
+bash scripts/run_pipeline.sh convert lerobot dishwasher_11622 scene_0_seed_0 30
 ```
 
 ### Debugging Trajectories
 
 ```bash
 # Debug IK solutions for a specific grasp
-bash scripts/run_pipeline.sh debug microwave_7221 scene_0 \
-  --debug_file data/trajs/summit_franka/microwave_7221/scene_0/grasp_0001/ik_data.pt \
+bash scripts/run_pipeline.sh debug microwave_7221 scene_0_seed_0 \
+  --debug_file data/trajs/summit_franka/microwave_7221/scene_0_seed_0/grasp_0001/ik_data.pt \
   --num_episodes 1000 \
   --set_state
 
 # Debug a specific per-grasp trajectory
-bash scripts/run_pipeline.sh debug microwave_7221 scene_0 \
-  --debug_file data/trajs/summit_franka/microwave_7221/scene_0/grasp_0001/traj_data.pt
+bash scripts/run_pipeline.sh debug microwave_7221 scene_0_seed_0 \
+  --debug_file data/trajs/summit_franka/microwave_7221/scene_0_seed_0/grasp_0001/traj_data.pt
 ```
 
 ## Dataset

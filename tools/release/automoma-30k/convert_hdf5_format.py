@@ -19,7 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 DATA_ROOT = REPO_ROOT / "data" / "automoma_30scenes"
 DEFAULT_INPUT_ROOT = DATA_ROOT / "automoma-30k-sort"
 DEFAULT_OUTPUT_ROOT = DATA_ROOT / "automoma-30k-convert"
-DEFAULT_REFERENCE = REPO_ROOT / "data" / "automoma" / "summit_franka_open-microwave_7221-scene_0-10.hdf5"
+DEFAULT_REFERENCE = REPO_ROOT / "data" / "automoma" / "summit_franka_open-microwave_7221-scene_0_seed_0-10.hdf5"
 
 SCENE_RE = re.compile(r"scene_(\d+)(?:_seed_(\d+))?$")
 EPISODE_RE = re.compile(r"episode(\d+)\.hdf5$")
