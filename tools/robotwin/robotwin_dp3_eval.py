@@ -80,7 +80,12 @@ SUMMIT_FRANKA_ACTION_JOINT_NAMES = (
 )
 
 CUAKR_SET_OBJECT_OPEN_TARGET = 1.57
-PLAN_GOAL_ANGLE_DEFAULT_INDEX = 2
+CUAKR_SET_OBJECT_DRIVE_TYPE = "acceleration"
+CUAKR_SET_OBJECT_DRIVE_DAMPING = 0.1
+CUAKR_SET_OBJECT_DRIVE_STIFFNESS = 0.5
+CUAKR_SET_OBJECT_DRIVE_MAX_FORCE = 0.05
+CUAKR_SET_SIM_STEPS_PER_ACTION = 10
+DEFAULT_SET_SIM_STEPS_PER_ACTION = 1
 
 
 def load_module(module_name: str, file_path: Path):
@@ -317,6 +322,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--drive", dest="action_execution", action="store_const", const="drive")
     parser.add_argument("--set_object_open_target", type=float, default=None)
     parser.add_argument("--set_object_open_velocity", type=float, default=0.3)
+    parser.add_argument("--set_sim_steps_per_action", type=int, default=DEFAULT_SET_SIM_STEPS_PER_ACTION)
     parser.add_argument("--debug_visualize_handle", type=str2bool, default=False)
     parser.add_argument("--debug_record_handle_diagnostics", type=str2bool, default=False)
     parser.add_argument("--debug_action_trace", type=str2bool, default=False)
@@ -369,28 +375,10 @@ def parse_env_identifiers(task_name: str, task_config: str) -> tuple[str, str]:
     return task_name, task_config
 
 
-def object_id_from_task_name(task_name: str) -> str:
-    parts = task_name.rsplit("_", 1)
-    return parts[1] if len(parts) == 2 else task_name
-
-
 def resolve_set_object_open_target(args: argparse.Namespace) -> tuple[float, str]:
     if args.set_object_open_target is not None:
         return float(args.set_object_open_target), "cli"
-
-    object_id = object_id_from_task_name(args.task_name)
-    plan_cfg_path = REPO_ROOT / "configs" / "plan.yaml"
-    try:
-        plan_cfg = OmegaConf.load(plan_cfg_path)
-        object_cfg = plan_cfg.get("objects", {}).get(object_id)
-        goal_angles = list(object_cfg.get("goal_angle", [])) if object_cfg is not None else []
-        if goal_angles:
-            angle_ix = min(PLAN_GOAL_ANGLE_DEFAULT_INDEX, len(goal_angles) - 1)
-            return float(goal_angles[angle_ix]), f"{plan_cfg_path}:objects.{object_id}.goal_angle[{angle_ix}]"
-    except Exception as exc:
-        print(f"Warning: failed to resolve set object open target from {plan_cfg_path}: {exc}", file=sys.stderr)
-
-    return CUAKR_SET_OBJECT_OPEN_TARGET, "cuakr_fallback"
+    return CUAKR_SET_OBJECT_OPEN_TARGET, "cuakr_default"
 
 
 def build_env(args: argparse.Namespace):
@@ -514,7 +502,50 @@ def scene_articulation_for_object(env):
     return None
 
 
-def set_object_open_joint_state(env, target: float, velocity: float) -> None:
+def configure_cuakr_object_drive(env) -> dict[str, object]:
+    object_entity = scene_articulation_for_object(env)
+    if object_entity is None:
+        raise RuntimeError("Could not access IsaacLab object articulation for set action execution.")
+    if int(getattr(object_entity, "num_joints", 0)) < 1:
+        raise RuntimeError("IsaacLab object articulation has no joints to drive during set action execution.")
+
+    if hasattr(object_entity, "write_joint_stiffness_to_sim"):
+        object_entity.write_joint_stiffness_to_sim(CUAKR_SET_OBJECT_DRIVE_STIFFNESS, joint_ids=[0])
+    if hasattr(object_entity, "write_joint_damping_to_sim"):
+        object_entity.write_joint_damping_to_sim(CUAKR_SET_OBJECT_DRIVE_DAMPING, joint_ids=[0])
+    if hasattr(object_entity, "write_joint_effort_limit_to_sim"):
+        object_entity.write_joint_effort_limit_to_sim(CUAKR_SET_OBJECT_DRIVE_MAX_FORCE, joint_ids=[0])
+
+    patched_joint_path = ""
+    try:
+        from pxr import UsdPhysics
+
+        root_physx_view = getattr(object_entity, "root_physx_view", None)
+        stage = getattr(object_entity, "stage", None)
+        dof_paths = getattr(root_physx_view, "dof_paths", None)
+        if stage is not None and dof_paths:
+            patched_joint_path = str(dof_paths[0][0])
+            joint_prim = stage.GetPrimAtPath(patched_joint_path)
+            drive_api = UsdPhysics.DriveAPI.Get(joint_prim, "angular")
+            if not drive_api.GetPrim().IsValid():
+                drive_api = UsdPhysics.DriveAPI.Apply(joint_prim, "angular")
+            drive_api.GetTypeAttr().Set(CUAKR_SET_OBJECT_DRIVE_TYPE)
+            drive_api.GetDampingAttr().Set(CUAKR_SET_OBJECT_DRIVE_DAMPING)
+            drive_api.GetStiffnessAttr().Set(CUAKR_SET_OBJECT_DRIVE_STIFFNESS)
+            drive_api.GetMaxForceAttr().Set(CUAKR_SET_OBJECT_DRIVE_MAX_FORCE)
+    except Exception as exc:
+        print(f"Warning: failed to patch object USD DriveAPI for cuakr set mode: {exc}", file=sys.stderr)
+
+    return {
+        "type": CUAKR_SET_OBJECT_DRIVE_TYPE,
+        "damping": CUAKR_SET_OBJECT_DRIVE_DAMPING,
+        "stiffness": CUAKR_SET_OBJECT_DRIVE_STIFFNESS,
+        "max_force": CUAKR_SET_OBJECT_DRIVE_MAX_FORCE,
+        "joint_path": patched_joint_path,
+    }
+
+
+def apply_object_open_target(env, target: float, velocity: float) -> None:
     raw_env = getattr(env, "_env", None)
     scene = getattr(raw_env, "scene", None)
     object_entity = scene_articulation_for_object(env)
@@ -523,17 +554,26 @@ def set_object_open_joint_state(env, target: float, velocity: float) -> None:
     if int(getattr(object_entity, "num_joints", 0)) < 1:
         raise RuntimeError("IsaacLab object articulation has no joints to open during set action execution.")
 
-    joint_pos = object_entity.data.joint_pos.clone()
-    joint_vel = torch.zeros_like(joint_pos)
-    joint_pos[:, 0] = target
-    joint_vel[:, 0] = velocity
+    # cuakr's RoboTwin set mode does not teleport the object joint open. It sets
+    # the robot pose directly, commands an object open target, then lets the
+    # simulator step so contact dynamics determine how the door moves.
+    joint_pos_target = object_entity.data.joint_pos.clone()
+    joint_vel_target = torch.zeros_like(joint_pos_target)
+    joint_pos_target[:, 0] = target
+    joint_vel_target[:, 0] = velocity
 
-    object_entity.write_joint_state_to_sim(joint_pos, joint_vel)
     if hasattr(object_entity, "set_joint_position_target"):
-        object_entity.set_joint_position_target(joint_pos)
+        object_entity.set_joint_position_target(joint_pos_target)
     if hasattr(object_entity, "set_joint_velocity_target"):
-        object_entity.set_joint_velocity_target(joint_vel)
-    scene.write_data_to_sim()
+        object_entity.set_joint_velocity_target(joint_vel_target)
+
+    root_physx_view = getattr(object_entity, "root_physx_view", None)
+    if root_physx_view is not None:
+        env_indices = getattr(object_entity, "_ALL_INDICES", None)
+        root_physx_view.set_dof_position_targets(joint_pos_target, env_indices)
+        root_physx_view.set_dof_velocity_targets(joint_vel_target, env_indices)
+    else:
+        scene.write_data_to_sim()
 
 
 def step_prepared_env_action(env, prepared_action):
@@ -585,12 +625,17 @@ def main() -> None:
     args = parse_args()
     if args.max_steps < 1:
         raise ValueError("--env.episode_length/--max_steps must be >= 1.")
+    if args.set_sim_steps_per_action < 1:
+        raise ValueError("--set_sim_steps_per_action must be >= 1.")
     torch.cuda.set_device(int(args.gpu_id))
 
     cfg = make_cfg(args)
     policy, env_runner = load_policy(cfg, args)
     env = build_env(args)
     set_object_open_target, set_object_open_target_source = resolve_set_object_open_target(args)
+    set_object_drive: dict[str, object] = {}
+    if args.action_execution == "set":
+        set_object_drive = configure_cuakr_object_drive(env)
 
     output_dir = Path(args.output_dir) if args.output_dir else REPO_ROOT / "outputs" / "eval" / "robotwin" / f"dp3_{args.task_name}-{args.task_config}-{args.expert_data_num}"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -657,35 +702,39 @@ def main() -> None:
                     actions = env_runner.get_action(policy, dp3_obs)
                 for action in actions:
                     raw_policy_action = np.asarray(action, dtype=np.float32).reshape(-1)
-                    sim_joint_pos_before = extract_joint_pos(obs)
                     prepared_action, prepared_action_np = prepare_env_action(env, raw_policy_action)
-                    if args.action_execution == "set":
-                        set_robot_joint_state(env, prepared_action_np)
-                        set_object_open_joint_state(
-                            env,
-                            target=set_object_open_target,
-                            velocity=args.set_object_open_velocity,
-                        )
-                    obs, _reward, terminated, truncated, info = step_prepared_env_action(env, prepared_action)
-                    steps += 1
-                    done = bool(terminated[0] or truncated[0])
-                    final_info = info.get("final_info", final_info)
-                    sim_joint_pos_after = extract_joint_pos(obs)
-                    if action_trace_logger is not None:
-                        action_trace_logger.write_step(
-                            episode_ix=episode_ix,
-                            policy_step_ix=steps - 1,
-                            terminated=bool(terminated[0]),
-                            truncated=bool(truncated[0]),
-                            raw_policy_action=raw_policy_action,
-                            prepared_action_abs=prepared_action_np,
-                            sim_joint_pos_before=sim_joint_pos_before,
-                            sim_joint_pos_after=sim_joint_pos_after,
-                        )
-                    if episode_ix < args.max_episodes_rendered:
-                        frame = render_frame(env)
-                        if frame is not None:
-                            frames.append(frame)
+                    sim_steps_per_action = args.set_sim_steps_per_action if args.action_execution == "set" else 1
+                    for _ in range(sim_steps_per_action):
+                        sim_joint_pos_before = extract_joint_pos(obs)
+                        if args.action_execution == "set":
+                            set_robot_joint_state(env, prepared_action_np)
+                            apply_object_open_target(
+                                env,
+                                target=set_object_open_target,
+                                velocity=args.set_object_open_velocity,
+                            )
+                        obs, _reward, terminated, truncated, info = step_prepared_env_action(env, prepared_action)
+                        steps += 1
+                        done = bool(terminated[0] or truncated[0])
+                        final_info = info.get("final_info", final_info)
+                        sim_joint_pos_after = extract_joint_pos(obs)
+                        if action_trace_logger is not None:
+                            action_trace_logger.write_step(
+                                episode_ix=episode_ix,
+                                policy_step_ix=steps - 1,
+                                terminated=bool(terminated[0]),
+                                truncated=bool(truncated[0]),
+                                raw_policy_action=raw_policy_action,
+                                prepared_action_abs=prepared_action_np,
+                                sim_joint_pos_before=sim_joint_pos_before,
+                                sim_joint_pos_after=sim_joint_pos_after,
+                            )
+                        if episode_ix < args.max_episodes_rendered:
+                            frame = render_frame(env)
+                            if frame is not None:
+                                frames.append(frame)
+                        if done or steps >= args.max_steps:
+                            break
                     point_cloud = extract_point_cloud(obs, args.camera_view, pc_cfg, rng)
                     joint_pos = extract_joint_pos(obs)
                     env_runner.update_obs(
@@ -753,6 +802,9 @@ def main() -> None:
             "set_object_open_target_source": set_object_open_target_source,
             "set_object_open_target_requested": maybe_scalar(args.set_object_open_target),
             "set_object_open_velocity": args.set_object_open_velocity,
+            "set_object_drive": set_object_drive,
+            "set_sim_steps_per_action": args.set_sim_steps_per_action,
+            "cuakr_set_sim_steps_reference": CUAKR_SET_SIM_STEPS_PER_ACTION,
             "max_steps": args.max_steps,
             "mobile_base_relative": bool(args.mobile_base_relative),
             "traj_file": str(Path(args.traj_file).resolve()) if args.traj_file else "",
