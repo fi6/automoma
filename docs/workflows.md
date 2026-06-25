@@ -1,6 +1,6 @@
 # AutoMoMa Workflows
 
-Run these commands from the repository root. `automoma/planning` remains the source of truth for the planner; the shell entrypoints only orchestrate planning, replay, conversion, training, and evaluation.
+Run these commands from the repository root. `automoma/planning` remains the source of truth for the planner; the shell entrypoints only orchestrate planning, replay, conversion, training, and evaluation. For the detailed end-to-end handoff guide, see `docs/pipeline.md`.
 
 ## Public Entrypoints
 
@@ -20,7 +20,7 @@ python scripts/plan.py object_id=7221 scene_name=scene_0_seed_0 mode=train
 python scripts/plan.py object_id=7221 scene_name=scene_0_seed_0 planner.visualize_collision=true
 ```
 
-Planning writes trajectory artifacts under `data/trajs/summit_franka/<object_name>/<scene_name>/`.
+Planning writes trajectory artifacts under `data/trajs/summit_franka/<object_name>/<scene_name>/<train|test>/`.
 
 ## Recording And Replay
 
@@ -51,7 +51,7 @@ Asset preparation helpers are maintainer tools, not primary public entrypoints:
 ```bash
 python tools/assets/prepare_object.py --object_type Microwave --object_id 7221
 python tools/assets/prepare_scene.py --scene_name scene_0_seed_0
-python tools/assets/prepare_scene_pipeline.py --scene_name scene_0_seed_0
+python tools/assets/prepare_scene_pipeline.py --scene-name scene_0_seed_0
 ```
 
 Use these only when preparing local assets. Keep planner asset roots aligned with IsaacLab-Arena asset roots.

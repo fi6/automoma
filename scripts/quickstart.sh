@@ -15,11 +15,14 @@ conda activate automoma
 
 # Optional: configure Isaac Sim / IsaacLab / asset roots for interactive sim tools.
 # If Isaac Sim is installed outside the active Python env, set IsaacSim_ROOT first.
-# export IsaacSim_ROOT=/path/to/isaac-sim
+# export IsaacSim_ROOT=<isaac-sim-root>
 source scripts/setup_sim_env.sh
 
 # Show this command reference.
 bash scripts/quickstart.sh
+
+# Read the full end-to-end pipeline handoff guide.
+less docs/pipeline.md
 
 # =============================================================================
 # 1. Asset preparation helpers
@@ -34,14 +37,20 @@ python tools/assets/prepare_object.py --object_type Microwave --object_id 7221
 python tools/assets/prepare_scene.py --scene_name scene_0_seed_0
 python tools/assets/prepare_scene.py --scene_name all
 
-# Run the standalone scene preparation pipeline.
-python tools/assets/prepare_scene_pipeline.py --scene-name scene_0_seed_0
+# Run the standalone scene preparation pipeline for generated scenes.
+python tools/assets/prepare_scene_pipeline.py \
+  --scene-root assets/scene/infinigen/scene_v2 \
+  --scene-name scene_0_seed_0 \
+  --requirement-mode multi
 
 # =============================================================================
 # 2. Planning
 # =============================================================================
 # Use configs/plan.yaml defaults.
 python scripts/plan.py
+
+# Use a custom planning config.
+python scripts/plan.py --config configs/plan.yaml object_id=7221 scene_name=scene_0_seed_0
 
 # Plan train/test trajectories for one object and scene.
 python scripts/plan.py object_id=7221 scene_name=scene_0_seed_0 mode=train
@@ -93,6 +102,13 @@ bash scripts/run_pipeline.sh replay microwave_7221 scene_0_seed_0 4 \
   --metrics \
   --metrics_file debug/replay_probe/microwave_scene0.csv \
   --episode_indices 0,1,2,3 \
+  --headless
+
+# Replay with IsaacLab-Arena set-state passthrough instead of physics drive.
+bash scripts/run_pipeline.sh replay microwave_7221 scene_0_seed_0 1 \
+  --set_state \
+  --object_joint_names joint_0 \
+  --episode_indices 0 \
   --headless
 
 # GUI replay for visual inspection on a machine with a display.
@@ -181,7 +197,9 @@ WANDB_MODE=disabled bash scripts/run_pipeline.sh train lerobot act microwave_722
   --wandb.enable=false
 
 # Evaluate a trained LeRobot policy. Base actions are absolute by default.
-bash scripts/run_pipeline.sh eval lerobot act microwave_7221 scene_0_seed_0 10 --headless
+bash scripts/run_pipeline.sh eval lerobot act microwave_7221 scene_0_seed_0 10 \
+  --headless \
+  --eval.n_episodes=10
 
 # Evaluate with explicit checkpoint, test trajectory, and output directory.
 bash scripts/run_pipeline.sh eval lerobot act microwave_7221 scene_0_seed_0 10 \
@@ -270,7 +288,15 @@ bash scripts/run_pipeline.sh train robotwin dp3 microwave_7221 scene_0_seed_0 10
 bash scripts/run_pipeline.sh eval robotwin dp3 microwave_7221 scene_0_seed_0 10 \
   --gpu_id 0 \
   --checkpoint_root outputs/train/robotwin/dp3_microwave_7221_scene_0_seed_0_10 \
-  --output_dir outputs/eval/robotwin/dp3_microwave_7221_scene_0_seed_0_10
+  --output_dir outputs/eval/robotwin/dp3_microwave_7221_scene_0_seed_0_10 \
+  --drive
+
+# Compare RoboTwin DP3 drive vs set execution with the same checkpoint and test trajectory.
+bash scripts/run_pipeline.sh eval robotwin dp3 microwave_7221 scene_0_seed_0 10 \
+  --gpu_id 0 \
+  --checkpoint_root outputs/train/robotwin/dp3_microwave_7221_scene_0_seed_0_10 \
+  --output_dir outputs/eval/robotwin/dp3_microwave_7221_scene_0_seed_0_10_set \
+  --set
 
 # =============================================================================
 # 8. Release and maintenance helpers
@@ -292,5 +318,5 @@ python tools/release/automoma-500k/verify_counts.py \
   --root data/trajs/summit_franka \
   --target-per-object 100000
 
-# More detailed workflow notes live in docs/workflows.md and docs/tools.md.
+# More detailed workflow notes live in docs/pipeline.md, docs/workflows.md, and docs/tools.md.
 COMMANDS

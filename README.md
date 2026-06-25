@@ -64,6 +64,10 @@ Whole-body mobile manipulation requires robots to coordinate mobile base and arm
 - [2026-04-09] AutoMoMa has been selected as a highlight paper!
 - [2026-01] AutoMoMa accepted to CVPR 2026!
 
+## Pipeline Guide
+
+For the detailed local handoff from asset preparation through planning, recording, conversion, training, and evaluation, see [`docs/pipeline.md`](docs/pipeline.md).
+
 ## Installation
 
 ### Prerequisites
@@ -84,7 +88,7 @@ Isaac Sim 5.1 and IsaacLab require Python 3.11. Do not use Python 3.12 for the f
 conda create -y -n automoma python=3.11
 conda activate automoma
 
-cd /path/to/automoma
+cd <repo-root>
 ```
 
 **2) Install common build tools and CUDA compiler**
@@ -151,7 +155,7 @@ ln -sf "$CONDA_PREFIX/lib/python3.11/site-packages/isaacsim" _isaac_sim
 # flatdict 4.0.1 needs the non-isolated build env with setuptools<81.
 pip install "flatdict==4.0.1" --no-build-isolation
 ./isaaclab.sh -i
-cd /path/to/automoma
+cd <repo-root>
 pip install -e ./third_party/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab --no-build-isolation
 pip install -e ./third_party/IsaacLab-Arena
 
@@ -213,10 +217,10 @@ conda activate automoma
 lerobot-train \
     --policy.type=act \
     --dataset.repo_id=automoma/summit_franka_open-microwave_7221-scene_0_seed_0-30 \
-    --dataset.root=/path/to/data/lerobot \
+    --dataset.root=data/lerobot \
     --batch_size=128 \
     --steps=10000 \
-    --output_dir=/path/to/outputs/train/act_example
+    --output_dir=outputs/train/act_example
 ```
 
 ### AutoMoMa pipeline dependency note
@@ -379,15 +383,15 @@ Notes:
 
 ```bash
 export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
-export AUTOMOMA_SCENE_ROOT=/path/to/assets/scene/infinigen/scene_v2
-export AUTOMOMA_OBJECT_ROOT=/path/to/assets/object
-export AUTOMOMA_ROBOT_ROOT=/path/to/assets/robot
+export AUTOMOMA_SCENE_ROOT="$PWD/assets/scene/infinigen/scene_v2"
+export AUTOMOMA_OBJECT_ROOT="$PWD/assets/object"
+export AUTOMOMA_ROBOT_ROOT="$PWD/assets/robot"
 
 cd third_party/IsaacLab-Arena
 python isaaclab_arena/scripts/record_automoma_demos.py \
   --enable_cameras \
-  --traj_file /path/to/traj_data_train.pt \
-  --dataset_file /path/to/test_gui.hdf5 \
+  --traj_file data/trajs/summit_franka/microwave_7221/scene_0_seed_0/train/traj_data_train.pt \
+  --dataset_file data/automoma/test_gui.hdf5 \
   --num_episodes 1 \
   summit_franka_open_door \
   --object_name microwave_7221 \
@@ -418,7 +422,7 @@ Handle/robot debug markers are optional and remain off by default. Enable them f
 
 ```bash
 DEBUG_VISUALIZE_HANDLE=true bash scripts/run_pipeline.sh eval lerobot act microwave_7221 scene_7_seed_7 1000 \
-  --output_dir=/path/to/eval_dir \
+  --output_dir=outputs/eval/debug_handle_markers \
   --eval.n_episodes=10 \
   --env.headless=true
 ```
@@ -439,13 +443,13 @@ bash scripts/run_pipeline.sh convert lerobot dishwasher_11622 scene_0_seed_0 30
 ```bash
 # Debug IK solutions for a specific grasp
 bash scripts/run_pipeline.sh debug microwave_7221 scene_0_seed_0 \
-  --debug_file data/trajs/summit_franka/microwave_7221/scene_0_seed_0/grasp_0001/ik_data.pt \
+  --debug_file data/trajs/summit_franka/microwave_7221/scene_0_seed_0/train/grasp_0001/ik_data.pt \
   --num_episodes 1000 \
   --set_state
 
 # Debug a specific per-grasp trajectory
 bash scripts/run_pipeline.sh debug microwave_7221 scene_0_seed_0 \
-  --debug_file data/trajs/summit_franka/microwave_7221/scene_0_seed_0/grasp_0001/traj_data.pt
+  --debug_file data/trajs/summit_franka/microwave_7221/scene_0_seed_0/train/grasp_0001/traj_data.pt
 ```
 
 ## Dataset
