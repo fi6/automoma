@@ -312,6 +312,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--action_execution", choices=("drive", "set"), default="drive")
     parser.add_argument("--set", dest="action_execution", action="store_const", const="set")
     parser.add_argument("--drive", dest="action_execution", action="store_const", const="drive")
+    parser.add_argument("--set_object_open_target", type=float, default=1.57)
+    parser.add_argument("--set_object_open_velocity", type=float, default=0.3)
     parser.add_argument("--debug_visualize_handle", type=str2bool, default=False)
     parser.add_argument("--debug_record_handle_diagnostics", type=str2bool, default=False)
     parser.add_argument("--debug_action_trace", type=str2bool, default=False)
@@ -471,6 +473,42 @@ def set_robot_joint_state(env, action: np.ndarray) -> None:
     scene.write_data_to_sim()
 
 
+def scene_articulation_for_object(env):
+    raw_env = getattr(env, "_env", None)
+    scene = getattr(raw_env, "scene", None)
+    if scene is None:
+        return None
+    for key in scene.keys():
+        if key == "robot":
+            continue
+        entity = scene[key]
+        if hasattr(entity, "write_joint_state_to_sim") and hasattr(entity, "num_joints"):
+            return entity
+    return None
+
+
+def set_object_open_joint_state(env, target: float, velocity: float) -> None:
+    raw_env = getattr(env, "_env", None)
+    scene = getattr(raw_env, "scene", None)
+    object_entity = scene_articulation_for_object(env)
+    if raw_env is None or scene is None or object_entity is None:
+        raise RuntimeError("Could not access IsaacLab object articulation for set action execution.")
+    if int(getattr(object_entity, "num_joints", 0)) < 1:
+        raise RuntimeError("IsaacLab object articulation has no joints to open during set action execution.")
+
+    joint_pos = object_entity.data.joint_pos.clone()
+    joint_vel = torch.zeros_like(joint_pos)
+    joint_pos[:, 0] = target
+    joint_vel[:, 0] = velocity
+
+    object_entity.write_joint_state_to_sim(joint_pos, joint_vel)
+    if hasattr(object_entity, "set_joint_position_target"):
+        object_entity.set_joint_position_target(joint_pos)
+    if hasattr(object_entity, "set_joint_velocity_target"):
+        object_entity.set_joint_velocity_target(joint_vel)
+    scene.write_data_to_sim()
+
+
 def step_prepared_env_action(env, prepared_action):
     if hasattr(env, "step_prepared_action"):
         return env.step_prepared_action(prepared_action)
@@ -595,6 +633,11 @@ def main() -> None:
                     prepared_action, prepared_action_np = prepare_env_action(env, raw_policy_action)
                     if args.action_execution == "set":
                         set_robot_joint_state(env, prepared_action_np)
+                        set_object_open_joint_state(
+                            env,
+                            target=args.set_object_open_target,
+                            velocity=args.set_object_open_velocity,
+                        )
                     obs, _reward, terminated, truncated, info = step_prepared_env_action(env, prepared_action)
                     steps += 1
                     done = bool(terminated[0] or truncated[0])
@@ -678,6 +721,8 @@ def main() -> None:
             eval_info["video_paths"] = video_paths
         eval_info["alignment"] = {
             "action_execution": args.action_execution,
+            "set_object_open_target": args.set_object_open_target,
+            "set_object_open_velocity": args.set_object_open_velocity,
             "max_steps": args.max_steps,
             "mobile_base_relative": bool(args.mobile_base_relative),
             "traj_file": str(Path(args.traj_file).resolve()) if args.traj_file else "",
