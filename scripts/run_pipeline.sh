@@ -43,7 +43,7 @@ Usage:
   bash scripts/run_pipeline.sh replay  <object_name> <scene_name> <num_ep> [--metrics [--metrics_file PATH]] [--headless|--no-headless] [overrides...]
   bash scripts/run_pipeline.sh convert <benchmark> <object_name> <scene_name> <num_ep> [--policy=POLICY] [overrides...]
   bash scripts/run_pipeline.sh train   <benchmark> <policy> <object_name> <scene_name> <num_ep> [overrides...]
-  bash scripts/run_pipeline.sh eval    <benchmark> <policy> <object_name> <scene_name> <num_ep> [--headless|--no-headless] [--mobile_base_relative] [overrides...]
+  bash scripts/run_pipeline.sh eval    <benchmark> <policy> <object_name> <scene_name> <num_ep> [--set|--drive] [--headless|--no-headless] [--mobile_base_relative] [overrides...]
   bash scripts/run_pipeline.sh record_dataset_eval <object_name> <scene_name> <num_ep> [--headless|--no-headless] [--mobile_base_relative] [overrides...]
   bash scripts/run_pipeline.sh debug   <object_name> <scene_name> [overrides...]
 
@@ -1015,6 +1015,7 @@ PY
     local use_rgb=""
     local legacy_cvpr26="false"
     local eval_mobile_base_relative="${EVAL_MOBILE_BASE_RELATIVE:-false}"
+    local eval_action_execution="${EVAL_ACTION_EXECUTION:-drive}"
     local seed_explicit="false"
     local checkpoint_root_explicit="false"
     local output_dir_explicit="false"
@@ -1053,6 +1054,12 @@ PY
                 fi
                 ;;
             --no-mobile_base_relative|--no-mobile-base-relative) eval_mobile_base_relative="false"; shift ;;
+            --set) eval_action_execution="set"; shift ;;
+            --drive) eval_action_execution="drive"; shift ;;
+            --action_execution=*) eval_action_execution="${1#*=}"; shift ;;
+            --action_execution) eval_action_execution="$2"; shift 2 ;;
+            --execution_mode=*) eval_action_execution="${1#*=}"; shift ;;
+            --execution_mode) eval_action_execution="$2"; shift 2 ;;
             --legacy_cvpr26)
                 legacy_cvpr26="true"
                 shift
@@ -1069,7 +1076,20 @@ PY
         esac
     done
 
+    eval_action_execution="$(echo "$eval_action_execution" | tr '[:upper:]' '[:lower:]')"
+    case "$eval_action_execution" in
+        drive|set) ;;
+        *)
+            echo "Error: Unsupported action execution '$eval_action_execution'. Use drive or set." >&2
+            exit 1
+            ;;
+    esac
+
     if [[ "$legacy_cvpr26" == "true" ]]; then
+        if [[ "$eval_action_execution" != "drive" ]]; then
+            echo "Error: --set is not supported with --legacy_cvpr26." >&2
+            exit 1
+        fi
         if [[ "$seed_explicit" == "false" ]]; then
             seed="0"
         fi
@@ -1079,6 +1099,9 @@ PY
         if [[ "$output_dir_explicit" == "false" ]]; then
             output_dir="$REPO_ROOT/outputs/eval/debug_eval/robotwin/${policy}_${name}"
         fi
+    fi
+    if [[ "$eval_action_execution" == "set" && "$output_dir_explicit" == "false" ]]; then
+        output_dir="${output_dir}_set"
     fi
 
     require_eval_traj_file "$traj_file"
@@ -1122,6 +1145,9 @@ PY
     fi
     if [[ -n "$use_rgb" ]]; then
         cmd+=(--use_rgb "$use_rgb")
+    fi
+    if [[ "$legacy_cvpr26" != "true" ]]; then
+        cmd+=(--action_execution "$eval_action_execution")
     fi
     cmd+=("${passthrough[@]}")
 

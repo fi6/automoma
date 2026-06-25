@@ -304,10 +304,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--traj_file", type=str, default=None)
     parser.add_argument("--traj_seed", type=int, default=42)
     parser.add_argument("--traj_selection_mode", choices=("random", "sequential"), default="random")
+    parser.add_argument("--env.episode_length", "--max_steps", dest="max_steps", type=int, default=300)
     parser.add_argument("--headless", type=str2bool, default=True)
     parser.add_argument("--env.headless", dest="headless", type=str2bool)
     parser.add_argument("--max_episodes_rendered", type=int, default=10)
     parser.add_argument("--mobile_base_relative", type=str2bool, nargs="?", const=True, default=False)
+    parser.add_argument("--action_execution", choices=("drive", "set"), default="drive")
+    parser.add_argument("--set", dest="action_execution", action="store_const", const="set")
+    parser.add_argument("--drive", dest="action_execution", action="store_const", const="drive")
     parser.add_argument("--debug_visualize_handle", type=str2bool, default=False)
     parser.add_argument("--debug_record_handle_diagnostics", type=str2bool, default=False)
     parser.add_argument("--debug_action_trace", type=str2bool, default=False)
@@ -373,7 +377,7 @@ def build_env(args: argparse.Namespace):
         action_dim=12,
         camera_height=240,
         camera_width=320,
-        episode_length=300,
+        episode_length=args.max_steps,
         object_name=object_name,
         scene_name=scene_name,
         object_center=True,
@@ -434,6 +438,39 @@ def prepare_env_action(env, action: np.ndarray) -> tuple[torch.Tensor | np.ndarr
     return prepared_action, prepared_action_np
 
 
+def set_robot_joint_state(env, action: np.ndarray) -> None:
+    raw_env = getattr(env, "_env", None)
+    scene = getattr(raw_env, "scene", None)
+    if raw_env is None or scene is None or "robot" not in scene.keys():
+        raise RuntimeError("Could not access IsaacLab robot for set action execution.")
+
+    robot = scene["robot"]
+    joint_pos = robot.data.joint_pos.clone()
+    joint_vel = torch.zeros_like(joint_pos)
+    action_tensor = torch.as_tensor(action, dtype=joint_pos.dtype, device=joint_pos.device).reshape(1, -1)
+
+    assigned = False
+    joint_names = getattr(robot.data, "joint_names", None)
+    if joint_names is not None:
+        name_to_ix = {name: ix for ix, name in enumerate(joint_names)}
+        if all(name in name_to_ix for name in SUMMIT_FRANKA_ACTION_JOINT_NAMES):
+            joint_ids = [name_to_ix[name] for name in SUMMIT_FRANKA_ACTION_JOINT_NAMES]
+            width = min(len(joint_ids), int(action_tensor.shape[1]))
+            joint_pos[:, joint_ids[:width]] = action_tensor[:, :width]
+            assigned = True
+
+    if not assigned:
+        width = min(int(action_tensor.shape[1]), int(joint_pos.shape[1]))
+        joint_pos[:, :width] = action_tensor[:, :width]
+
+    robot.write_joint_state_to_sim(joint_pos, joint_vel)
+    if hasattr(robot, "set_joint_position_target"):
+        robot.set_joint_position_target(joint_pos)
+    if hasattr(robot, "set_joint_velocity_target"):
+        robot.set_joint_velocity_target(joint_vel)
+    scene.write_data_to_sim()
+
+
 def step_prepared_env_action(env, prepared_action):
     if hasattr(env, "step_prepared_action"):
         return env.step_prepared_action(prepared_action)
@@ -481,6 +518,8 @@ def render_frame(env) -> np.ndarray | None:
 
 def main() -> None:
     args = parse_args()
+    if args.max_steps < 1:
+        raise ValueError("--env.episode_length/--max_steps must be >= 1.")
     torch.cuda.set_device(int(args.gpu_id))
 
     cfg = make_cfg(args)
@@ -537,7 +576,7 @@ def main() -> None:
             done = False
             final_info = {"is_success": np.array([False])}
             steps = 0
-            while not done and steps < 300:
+            while not done and steps < args.max_steps:
                 point_cloud = extract_point_cloud(obs, args.camera_view, pc_cfg, rng)
                 joint_pos = extract_joint_pos(obs)
                 dp3_obs = {
@@ -554,6 +593,8 @@ def main() -> None:
                     raw_policy_action = np.asarray(action, dtype=np.float32).reshape(-1)
                     sim_joint_pos_before = extract_joint_pos(obs)
                     prepared_action, prepared_action_np = prepare_env_action(env, raw_policy_action)
+                    if args.action_execution == "set":
+                        set_robot_joint_state(env, prepared_action_np)
                     obs, _reward, terminated, truncated, info = step_prepared_env_action(env, prepared_action)
                     steps += 1
                     done = bool(terminated[0] or truncated[0])
@@ -582,7 +623,7 @@ def main() -> None:
                             "agent_pos": joint_pos.astype(np.float32),
                         }
                     )
-                    if done or steps >= 300:
+                    if done or steps >= args.max_steps:
                         break
 
             metrics = get_success_metrics(final_info)
@@ -603,7 +644,7 @@ def main() -> None:
                 "final_door_openness": maybe_scalar(metrics["final_door_openness"]),
                 "final_engaged": maybe_scalar(metrics["final_engaged"]),
                 "final_handle_distance": maybe_scalar(metrics["final_handle_distance"]),
-                "steps": f"{steps}/{env_runner.n_action_steps}",
+                "steps": f"{steps}/{args.max_steps}",
                 "video_path": video_path,
             }
             append_per_episode_csv_row(csv_path, row)
@@ -636,10 +677,18 @@ def main() -> None:
         if video_paths:
             eval_info["video_paths"] = video_paths
         eval_info["alignment"] = {
+            "action_execution": args.action_execution,
+            "max_steps": args.max_steps,
             "mobile_base_relative": bool(args.mobile_base_relative),
             "traj_file": str(Path(args.traj_file).resolve()) if args.traj_file else "",
             "traj_seed": args.traj_seed,
             "traj_selection_mode": args.traj_selection_mode,
+            "checkpoint_root": str(Path(args.checkpoint_root).resolve()) if args.checkpoint_root else "",
+            "checkpoint_num": args.checkpoint_num,
+            "task_name": args.task_name,
+            "task_config": args.task_config,
+            "expert_data_num": args.expert_data_num,
+            "ckpt_setting": args.ckpt_setting,
             "debug_action_trace": bool(args.debug_action_trace),
             "action_trace_csv": str(action_trace_path) if args.debug_action_trace else "",
         }
