@@ -1,5 +1,5 @@
 # Specific to this project
-assets/
+/assets/
 !tools/assets/
 !tools/assets/render_object_foreground.py
 outputs/
@@ -12,6 +12,7 @@ logs/
 .claude/
 .codex/
 docs/superpowers
+docs/todo.md
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
