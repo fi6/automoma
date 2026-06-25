@@ -79,6 +79,9 @@ SUMMIT_FRANKA_ACTION_JOINT_NAMES = (
     "panda_finger_joint2",
 )
 
+CUAKR_SET_OBJECT_OPEN_TARGET = 1.57
+PLAN_GOAL_ANGLE_DEFAULT_INDEX = 2
+
 
 def load_module(module_name: str, file_path: Path):
     spec = __import__("importlib.util").util.spec_from_file_location(module_name, file_path)
@@ -312,7 +315,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--action_execution", choices=("drive", "set"), default="drive")
     parser.add_argument("--set", dest="action_execution", action="store_const", const="set")
     parser.add_argument("--drive", dest="action_execution", action="store_const", const="drive")
-    parser.add_argument("--set_object_open_target", type=float, default=1.57)
+    parser.add_argument("--set_object_open_target", type=float, default=None)
     parser.add_argument("--set_object_open_velocity", type=float, default=0.3)
     parser.add_argument("--debug_visualize_handle", type=str2bool, default=False)
     parser.add_argument("--debug_record_handle_diagnostics", type=str2bool, default=False)
@@ -364,6 +367,30 @@ def parse_env_identifiers(task_name: str, task_config: str) -> tuple[str, str]:
         object_name, scene_name = parts
         return object_name, scene_name
     return task_name, task_config
+
+
+def object_id_from_task_name(task_name: str) -> str:
+    parts = task_name.rsplit("_", 1)
+    return parts[1] if len(parts) == 2 else task_name
+
+
+def resolve_set_object_open_target(args: argparse.Namespace) -> tuple[float, str]:
+    if args.set_object_open_target is not None:
+        return float(args.set_object_open_target), "cli"
+
+    object_id = object_id_from_task_name(args.task_name)
+    plan_cfg_path = REPO_ROOT / "configs" / "plan.yaml"
+    try:
+        plan_cfg = OmegaConf.load(plan_cfg_path)
+        object_cfg = plan_cfg.get("objects", {}).get(object_id)
+        goal_angles = list(object_cfg.get("goal_angle", [])) if object_cfg is not None else []
+        if goal_angles:
+            angle_ix = min(PLAN_GOAL_ANGLE_DEFAULT_INDEX, len(goal_angles) - 1)
+            return float(goal_angles[angle_ix]), f"{plan_cfg_path}:objects.{object_id}.goal_angle[{angle_ix}]"
+    except Exception as exc:
+        print(f"Warning: failed to resolve set object open target from {plan_cfg_path}: {exc}", file=sys.stderr)
+
+    return CUAKR_SET_OBJECT_OPEN_TARGET, "cuakr_fallback"
 
 
 def build_env(args: argparse.Namespace):
@@ -563,6 +590,7 @@ def main() -> None:
     cfg = make_cfg(args)
     policy, env_runner = load_policy(cfg, args)
     env = build_env(args)
+    set_object_open_target, set_object_open_target_source = resolve_set_object_open_target(args)
 
     output_dir = Path(args.output_dir) if args.output_dir else REPO_ROOT / "outputs" / "eval" / "robotwin" / f"dp3_{args.task_name}-{args.task_config}-{args.expert_data_num}"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -635,7 +663,7 @@ def main() -> None:
                         set_robot_joint_state(env, prepared_action_np)
                         set_object_open_joint_state(
                             env,
-                            target=args.set_object_open_target,
+                            target=set_object_open_target,
                             velocity=args.set_object_open_velocity,
                         )
                     obs, _reward, terminated, truncated, info = step_prepared_env_action(env, prepared_action)
@@ -721,7 +749,9 @@ def main() -> None:
             eval_info["video_paths"] = video_paths
         eval_info["alignment"] = {
             "action_execution": args.action_execution,
-            "set_object_open_target": args.set_object_open_target,
+            "set_object_open_target": set_object_open_target,
+            "set_object_open_target_source": set_object_open_target_source,
+            "set_object_open_target_requested": maybe_scalar(args.set_object_open_target),
             "set_object_open_velocity": args.set_object_open_velocity,
             "max_steps": args.max_steps,
             "mobile_base_relative": bool(args.mobile_base_relative),
