@@ -24,14 +24,15 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "numpy>=1.26.0",
+    "numpy>=1.26.0,<2.0",
     "torch==2.7.0",
-    "scipy>=1.10.0",
+    "scipy>=1.10.0,<1.16",
     "PyYAML>=6.0",
     "h5py>=3.10",
     "ipywidgets>=8.0",
     "omegaconf>=2.3.0",
-    "yourdfpy>=0.0.53",
+    "yourdfpy>=0.0.57,<0.0.61",
+    "trimesh>=4.0",
     "scikit-learn>=1.3.0",
 ]
 dynamic = ["version"]

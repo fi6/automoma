@@ -30,6 +30,9 @@ python tools/dataset/convert_hdf5_layout.py <input_dir> <output.hdf5> --directio
 
 # Run replay metrics for grasp-filter diagnostics.
 python tools/debug/run_grasp_filter_metrics.py --max-objects 5 --scenes-per-object 1 --keep-going
+
+# Rebuild attached-object URDF/YAML assets; see docs/akr_asset_generation.md.
+python tools/assets/build_akr_assets.py --help
 ```
 
 ## Public Hygiene Rules
