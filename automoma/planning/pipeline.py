@@ -265,7 +265,6 @@ class PlanningPipeline:
             return ""
 
         merged = TrajResult.cat(all_raw)
-        merged = self._limit_successes(merged)
         print(f"\nMerged: {merged.num_samples} trajectories "
               f"({merged.success.sum().item()} successful)")
 

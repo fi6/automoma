@@ -139,8 +139,11 @@ def validate_compatible(existing: dict[str, torch.Tensor], new: dict[str, torch.
             raise ValueError(f"{label}: key {key} dtype mismatch {left.dtype} != {right.dtype}")
 
 
-def merge_successes(canonical: Path, round_file: Path, max_add: int) -> dict[str, Any]:
-    round_payload = filter_successful(load_payload(round_file), max_add)
+def merge_successes(canonical: Path, round_file: Path) -> dict[str, Any]:
+    # The planner stops after the grasp batch that reaches the requested
+    # deficit. Keep that whole successful batch instead of truncating the
+    # canonical file to an exact target.
+    round_payload = filter_successful(load_payload(round_file))
     added = int(round_payload["traj_success"].shape[0])
     replaced_empty_canonical = False
 
@@ -291,13 +294,13 @@ def self_test() -> int:
             "traj_success": torch.zeros(0, dtype=torch.bool),
         }
         torch.save(stale_empty, canonical)
-        report = merge_successes(canonical, round_file, max_add=2)
-        assert report["added_successful"] == 2, report
+        report = merge_successes(canonical, round_file)
+        assert report["added_successful"] == 3, report
         assert report["replaced_empty_canonical"], report
-        assert count_successes(canonical) == 2
-        report = merge_successes(canonical, round_file, max_add=1)
-        assert report["canonical_successful"] == 3, report
-    print("Self-test passed: success filtering, capped merge, and counting are working.")
+        assert count_successes(canonical) == 3
+        report = merge_successes(canonical, round_file)
+        assert report["canonical_successful"] == 6, report
+    print("Self-test passed: success filtering, whole-batch merge, and counting are working.")
     return 0
 
 
@@ -524,7 +527,7 @@ def main() -> int:
                 if not args.dry_run:
                     if not round_file.exists():
                         raise FileNotFoundError(f"Expected planning output not found: {round_file}")
-                    merge_report = merge_successes(canonical, round_file, max_successful)
+                    merge_report = merge_successes(canonical, round_file)
                     round_report.update(merge_report)
                     added_successful = int(merge_report["added_successful"])
                     canonical_successful = int(merge_report["canonical_successful"])
