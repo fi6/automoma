@@ -118,6 +118,28 @@ def expand_to_pairs(
     return start_exp, goal_exp
 
 
+def filter_pairs_by_joint_delta(
+    start_states: torch.Tensor,
+    goal_states: torch.Tensor,
+    *,
+    joint_index: int,
+    max_delta: float,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Keep paired states whose raw joint-coordinate delta is within a limit.
+
+    This intentionally does not wrap revolute coordinates. It is intended for
+    bounded joints such as Summit's ``base_z``; wrapping across the joint limits
+    would under-report the commanded motion.
+    """
+    if start_states.shape != goal_states.shape:
+        raise ValueError("start_states and goal_states must have matching shapes")
+    if max_delta < 0.0:
+        raise ValueError("max_delta must be non-negative")
+    delta = goal_states[:, joint_index] - start_states[:, joint_index]
+    mask = delta.abs() <= max_delta
+    return start_states[mask], goal_states[mask], mask
+
+
 def stack_iks_angle(iks: torch.Tensor, angle: float) -> torch.Tensor:
     """Append a scalar joint angle column to IK solutions."""
     col = torch.full((iks.shape[0], 1), angle, device=iks.device, dtype=iks.dtype)

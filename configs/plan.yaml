@@ -58,11 +58,14 @@ planner:
     num_graph_seeds: 12
     interpolation_dt: 0.05
     trajopt_tsteps: 32
+    gradient_trajopt_file: configs/curobo/gradient_trajopt_fixbase_object5x.yml
+    # base_z is bounded, so use the raw start/goal coordinate delta.
+    max_base_yaw_delta: 2.0
 
   # Trajectory filtering
   filter:
-    position_tolerance: 0.01
-    rotation_tolerance: 0.05
+    position_tolerance: 0.001
+    rotation_tolerance: 0.02
     base_rotation_limit: 6.2832   # 2π
 
   # Output format (11D→12D conversion for IsaacLab-Arena)

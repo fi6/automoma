@@ -32,13 +32,14 @@ from automoma.core.types import IKResult, StageType, TrajResult
 from automoma.utils.math_utils import (
     _convert_to_list,
     expand_to_pairs,
+    filter_pairs_by_joint_delta,
     ik_clustering,
     mark_cuboid_as_empty,
     pose_multiply,
     quaternion_distance,
     stack_iks_angle,
 )
-from automoma.utils.file_utils import load_robot_cfg, process_robot_cfg
+from automoma.utils.file_utils import get_project_dir, load_robot_cfg, process_robot_cfg
 
 
 class CuroboPlanner:
@@ -332,10 +333,14 @@ class CuroboPlanner:
         robot_cfg = load_robot_cfg(robot_cfg)
 
         traj_cfg = self.cfg.get("traj", {})
-        grad_file = traj_cfg.get(
-            "gradient_trajopt_file",
-            "gradient_trajopt_fixbase.yml" if fixed_base else "gradient_trajopt.yml",
+        grad_override = traj_cfg.get("gradient_trajopt_file")
+        grad_file = grad_override or (
+            "gradient_trajopt_fixbase.yml" if fixed_base else "gradient_trajopt.yml"
         )
+        if grad_override and not os.path.isabs(grad_file):
+            local_grad_file = os.path.join(get_project_dir(), grad_file)
+            if os.path.isfile(local_grad_file):
+                grad_file = local_grad_file
         coll = self._get_collision_checker(
             fixed_base=fixed_base,
             enable_collision=enable_collision,
@@ -514,6 +519,8 @@ class CuroboPlanner:
         ``plan_cfg`` keys:
             - ``batch_size`` (int): GPU batch size.
             - ``expand_to_pairs`` (bool): create Cartesian product of start/goal.
+            - ``max_base_yaw_delta`` (float): reject pairs with a larger raw
+              bounded-joint yaw delta before TrajOpt.
             - ``joint_cfg`` / ``enable_collision``: passed to optional world update.
         """
         if plan_cfg is None:
@@ -525,6 +532,28 @@ class CuroboPlanner:
 
         if plan_cfg.get("expand_to_pairs", False):
             start_iks, goal_iks = expand_to_pairs(start_iks, goal_iks)
+            traj_cfg = self.cfg.get("traj", {})
+            max_base_yaw_delta = plan_cfg.get(
+                "max_base_yaw_delta", traj_cfg.get("max_base_yaw_delta")
+            )
+            if max_base_yaw_delta is not None:
+                base_yaw_index = plan_cfg.get(
+                    "base_yaw_index", traj_cfg.get("base_yaw_index", 2)
+                )
+                start_iks, goal_iks, pair_mask = filter_pairs_by_joint_delta(
+                    start_iks,
+                    goal_iks,
+                    joint_index=base_yaw_index,
+                    max_delta=float(max_base_yaw_delta),
+                )
+                print(
+                    "Base-yaw pair filter:",
+                    f"kept={pair_mask.sum().item()}/{pair_mask.numel()}",
+                    f"max_delta={float(max_base_yaw_delta):.4f}",
+                )
+                if start_iks.shape[0] == 0:
+                    print("No IK pairs remain after base-yaw filtering.")
+                    return TrajResult.fallback(robot_dof=start_iks.shape[-1])
         assert start_iks.shape[0] == goal_iks.shape[0]
 
         robot_cfg = load_robot_cfg(robot_cfg)
