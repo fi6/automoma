@@ -65,7 +65,7 @@ planner:
   # Trajectory filtering
   filter:
     position_tolerance: 0.001
-    rotation_tolerance: 0.02
+    rotation_tolerance: 0.01
     base_rotation_limit: 6.2832   # 2π
 
   # Output format (11D→12D conversion for IsaacLab-Arena)

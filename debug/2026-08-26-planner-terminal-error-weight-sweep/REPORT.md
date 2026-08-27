@@ -78,13 +78,19 @@ and smoothness degradation observed when both weights were raised to 20x.
 - Reject IK pairs with raw `abs(goal_base_z - start_base_z) > 2.0` rad before
   TrajOpt.
 - Planner AKR waypoint filter: object-body position `< 0.001 m`, quaternion
-  angle `< 0.02 rad`.
+  angle `< 0.01 rad`.
 
 The final run produced 198 raw successes and retained 188 after filtering.
 Independent FK analysis confirmed that every retained trajectory satisfies the
 1 mm / 0.02 rad limits. Intermediate base-yaw overshoot can reach 2.243 rad even
 though endpoint pairs are limited to 2 rad; an explicit waypoint base-yaw
 boundary remains a separate follow-up.
+
+The checked-in rotation filter was subsequently tightened from 0.02 to 0.01 rad
+at the user's request. Post hoc, 186/188 (98.94%) of the final 10x-orientation
+outputs satisfy this stricter rotation limit; two trajectories have maxima
+between 0.01 and 0.01056 rad. A fresh multi-grasp 5x-versus-10x run with the
+0.01-rad filter is intentionally left to the next session.
 
 ## Important filter semantics and remaining work
 
