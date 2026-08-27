@@ -702,6 +702,10 @@ class CuroboPlanner:
                 self.tensor_args.to_device(goal_state[i : i + 1])
             )
             goal_ee = motion_gen.ik_solver.fk(goal_js.position).ee_pose
+            # cuRobo FK may reuse internal output buffers. Preserve the goal
+            # tensors before waypoint FK calls overwrite those buffers.
+            goal_position = goal_ee.position.detach().clone()
+            goal_quaternion = goal_ee.quaternion.detach().clone()
             trajectory_valid = True
             for j in range(trajectories.shape[1]):
                 wp_js = JointState.from_position(
@@ -709,11 +713,11 @@ class CuroboPlanner:
                 )
                 fk = motion_gen.ik_solver.fk(wp_js.position).ee_pose
                 pd = np.linalg.norm(
-                    goal_ee.position.cpu().numpy().flatten()
+                    goal_position.cpu().numpy().flatten()
                     - fk.position.cpu().numpy().flatten()
                 )
                 rd = quaternion_distance(
-                    goal_ee.quaternion.cpu().numpy().flatten(),
+                    goal_quaternion.cpu().numpy().flatten(),
                     fk.quaternion.cpu().numpy().flatten(),
                 )
                 pos_diffs.append(pd)

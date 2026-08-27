@@ -58,7 +58,7 @@ planner:
     num_graph_seeds: 12
     interpolation_dt: 0.05
     trajopt_tsteps: 32
-    gradient_trajopt_file: configs/curobo/gradient_trajopt_fixbase_object5x.yml
+    gradient_trajopt_file: configs/curobo/gradient_trajopt_fixbase_object_orientation10x.yml
     # base_z is bounded, so use the raw start/goal coordinate delta.
     max_base_yaw_delta: 2.0
 

@@ -17,12 +17,13 @@ model:
   return_full_act_buffer: true
 
 cost:
-  # AKR configures link_1 (the object body/base) as ee_link. These running pose
-  # weights are 5x cuRobo's fixed-base defaults to reduce object motion.
+  # AKR configures link_1 (the object body/base) as ee_link. Increase only the
+  # running orientation weight to 10x; the default position weight is already
+  # sufficient when the all-waypoint 1 mm filter is enforced correctly.
   pose_cfg:
     vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
     run_vec_weight: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-    weight: [10000.0, 250000.0, 30.0, 50.0]
+    weight: [20000.0, 50000.0, 30.0, 50.0]
     vec_convergence: [0.0, 0.0]
     terminal: false
     run_weight: 1.0

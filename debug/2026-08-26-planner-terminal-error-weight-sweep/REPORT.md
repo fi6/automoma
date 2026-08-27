@@ -52,20 +52,39 @@ effective fix is to reject large raw start/goal yaw differences after the IK
 Cartesian product and before TrajOpt. The 2 rad limit also selected trajectories
 with better object-rotation tails and smoother arm motion than the 3 rad limit.
 
+## Final orientation-only candidate
+
+The follow-up sweep separated orientation and position weights. With orientation
+at 10x (`20000`) and position left at its installed default 1x (`50000`), the
+fixed all-waypoint filter retained 188 trajectories from 198 raw successes:
+
+| Metric (per-trajectory maximum) | p50 | p95 | p99 | max |
+|---|---:|---:|---:|---:|
+| Object-body position | 0.264 mm | 0.988 mm | 0.998 mm | 0.999 mm |
+| Object-body rotation | 0.00183 rad | 0.00644 rad | 0.00982 rad | 0.01056 rad |
+| Base yaw excursion | 0.821 rad | 1.933 rad | 2.180 rad | 2.243 rad |
+
+All 188 retained trajectories satisfy both the 1 mm position and 0.02 rad
+rotation bounds at every waypoint. Before strict filtering, comparable runs
+already had about 96--98% of trajectories below 1 mm, so increasing the
+position cost was unnecessary. Orientation 10x materially improves the 5x/5x
+candidate's rotation tail (p95 0.01762 and p99 0.02580 rad) without the yield
+and smoothness degradation observed when both weights were raised to 20x.
+
 ## Recommended isolated-branch candidate
 
-- Running AKR object pose weights: orientation `10000`, position `250000` (5x
-  the installed fixed-base defaults).
+- Running AKR object pose weights: orientation `20000` (10x), position `50000`
+  (unchanged 1x default).
 - Reject IK pairs with raw `abs(goal_base_z - start_base_z) > 2.0` rad before
   TrajOpt.
 - Planner AKR waypoint filter: object-body position `< 0.001 m`, quaternion
   angle `< 0.02 rad`.
 
-The 2 rad run produced 121 trajectories under the old 1 cm / 0.05 rad planner
-filter. Applying the proposed 1 mm / 0.02 rad bounds post hoc retains 116
-(95.9%). Intermediate TrajOpt overshoot can reach 2.103 rad even though endpoint
-pairs are limited to 2 rad; an explicit waypoint base-yaw boundary remains a
-separate follow-up.
+The final run produced 198 raw successes and retained 188 after filtering.
+Independent FK analysis confirmed that every retained trajectory satisfies the
+1 mm / 0.02 rad limits. Intermediate base-yaw overshoot can reach 2.243 rad even
+though endpoint pairs are limited to 2 rad; an explicit waypoint base-yaw
+boundary remains a separate follow-up.
 
 ## Important filter semantics and remaining work
 
@@ -74,6 +93,11 @@ separate follow-up.
   microwave door joint. They do not measure AKR `link_1` body/base drift.
 - The planner's position/rotation filter does measure AKR `link_1` at every
   waypoint, because the grasp model configures `ee_link=link_1`.
+- The first strict-filter run exposed that cuRobo FK reused its output buffer:
+  waypoint FK calls overwrote the saved goal pose, making the position test
+  ineffective. The planner now clones the goal position and quaternion before
+  walking the trajectory. The final 188-trajectory result is from the fixed
+  implementation and was independently rechecked from exported tensors.
 - Postprocess must gain a separate per-waypoint AKR object-body FK check and
   repeat it after KS. This is recorded in the repository backlog.
 - `base_rotation_limit` is currently not consumed by `filter_traj()`; the
@@ -82,6 +106,12 @@ separate follow-up.
   comparable numeric collision-clearance margin.
 - Results cover one grasp and two goal angles. Validate the selected candidate
   across multiple grasps before using it for a production wave.
+
+At a representative 0.30--0.38 m radius from the microwave body rotation axis
+to the door handle/edge, 0.02 rad corresponds to about 0.60--0.76 cm of lateral
+point displacement (`2 r sin(theta/2)`, approximately `r theta`). This is an
+object-body orientation-drift interpretation, not the microwave door-joint
+opening error.
 
 ## Validation
 
