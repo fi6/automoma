@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1.7
+ARG BASE_IMAGE=automoma:isaacsim5.1-sm86
+FROM ${BASE_IMAGE}
+
+ARG TRAJECTORY_SMOOTHING_COMMIT
+
+USER root
+WORKDIR /opt/build
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libeigen3-dev && \
+    rm -rf /var/lib/apt/lists/* && \
+    python -m pip install --no-deps distro==1.9.0 scikit-build==0.19.1 nanobind==3.0.0 && \
+    git clone https://github.com/balakumar-s/trajectory_smoothing.git && \
+    git -C trajectory_smoothing checkout --detach "${TRAJECTORY_SMOOTHING_COMMIT}" && \
+    python -m pip install ./trajectory_smoothing --no-build-isolation && \
+    rm -rf trajectory_smoothing
+
+COPY third_party/curobo /opt/build/curobo
+ARG CUROBO_COMMIT
+RUN (find /opt/build/curobo/src/curobo/curobolib -type f -name '*.so' -delete || true) && \
+    SETUPTOOLS_SCM_PRETEND_VERSION=0.7.4.post1.dev6 \
+        python -m pip install /opt/build/curobo --force-reinstall --no-deps --no-build-isolation && \
+    rm -rf /opt/build/curobo
+
+LABEL org.automoma.curobo.commit=${CUROBO_COMMIT} \
+      org.automoma.trajectory-smoothing.commit=${TRAJECTORY_SMOOTHING_COMMIT}
+
+WORKDIR /workspace/automoma

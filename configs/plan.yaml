@@ -64,7 +64,8 @@ planner:
 
   # Trajectory filtering
   filter:
-    position_tolerance: 0.001
+    # Shared AKR waypoint acceptance threshold for raw planning and post-KS validation.
+    position_tolerance: 0.002
     rotation_tolerance: 0.01
     base_rotation_limit: 6.2832   # 2π
 
