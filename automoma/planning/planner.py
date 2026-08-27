@@ -74,6 +74,8 @@ class CuroboPlanner:
         self.world_voxel_collision_traj = None
         self.motion_gen = None
         self.motion_gen_akr = None
+        self.last_traj_diagnostics: Dict[str, Any] = {}
+        self.last_filter_diagnostics: Dict[str, Any] = {}
 
     # ====================================================================
     # Environment setup
@@ -526,12 +528,19 @@ class CuroboPlanner:
         if plan_cfg is None:
             plan_cfg = {}
 
+        self.last_traj_diagnostics = {
+            "cartesian_pairs": 0,
+            "yaw_filter_retained": 0,
+            "attempted_pairs": 0,
+            "raw_success": 0,
+        }
         if start_iks.shape[0] == 0:
             print("No IK solutions to plan trajectories for.")
             return TrajResult.fallback()
 
         if plan_cfg.get("expand_to_pairs", False):
             start_iks, goal_iks = expand_to_pairs(start_iks, goal_iks)
+            self.last_traj_diagnostics["cartesian_pairs"] = int(start_iks.shape[0])
             traj_cfg = self.cfg.get("traj", {})
             max_base_yaw_delta = plan_cfg.get(
                 "max_base_yaw_delta", traj_cfg.get("max_base_yaw_delta")
@@ -554,7 +563,11 @@ class CuroboPlanner:
                 if start_iks.shape[0] == 0:
                     print("No IK pairs remain after base-yaw filtering.")
                     return TrajResult.fallback(robot_dof=start_iks.shape[-1])
+        else:
+            self.last_traj_diagnostics["cartesian_pairs"] = int(start_iks.shape[0])
         assert start_iks.shape[0] == goal_iks.shape[0]
+        self.last_traj_diagnostics["yaw_filter_retained"] = int(start_iks.shape[0])
+        self.last_traj_diagnostics["attempted_pairs"] = int(start_iks.shape[0])
 
         robot_cfg = load_robot_cfg(robot_cfg)
         joint_cfg = plan_cfg.get("joint_cfg")
@@ -637,7 +650,9 @@ class CuroboPlanner:
                 )
                 pbar.update(1)
 
-        return TrajResult.cat(all_results)
+        combined = TrajResult.cat(all_results)
+        self.last_traj_diagnostics["raw_success"] = int(combined.success.sum().item())
+        return combined
 
     # ====================================================================
     # Trajectory filtering
@@ -652,6 +667,9 @@ class CuroboPlanner:
         motion_gen: Optional[MotionGen] = None,
     ) -> TrajResult:
         """Filter trajectories using cuAKR-style success + waypoint FK checks."""
+        self.last_filter_diagnostics = self._empty_filter_diagnostics(
+            traj_result.num_samples
+        )
         if traj_result.num_samples == 0:
             return TrajResult.fallback(
                 robot_dof=traj_result.start_states.shape[-1] if traj_result.start_states.ndim == 2 else 0
@@ -694,8 +712,12 @@ class CuroboPlanner:
         step_1_count = goal_state.shape[0]
         print(f"Step 1: Filtered from {indices_count} to {step_1_count} trajectories based on success.")
 
-        # Step 2: waypoint-level FK validation against the goal EE pose.
+        # Step 2: waypoint-level FK validation against the goal EE pose. Compute
+        # every waypoint even after the first violation so diagnostics can
+        # distinguish position-only, rotation-only, and joint rejection.
         pos_diffs, rot_diffs = [], []
+        position_max = torch.full((indices_count,), float("nan"), dtype=torch.float64)
+        rotation_max = torch.full((indices_count,), float("nan"), dtype=torch.float64)
         fk_succ_indices = []
         for i in tqdm(range(goal_state.shape[0]), desc="FK filter"):
             goal_js = JointState.from_position(
@@ -706,7 +728,8 @@ class CuroboPlanner:
             # tensors before waypoint FK calls overwrite those buffers.
             goal_position = goal_ee.position.detach().clone()
             goal_quaternion = goal_ee.quaternion.detach().clone()
-            trajectory_valid = True
+            trajectory_position_max = 0.0
+            trajectory_rotation_max = 0.0
             for j in range(trajectories.shape[1]):
                 wp_js = JointState.from_position(
                     self.tensor_args.to_device(trajectories[i : i + 1, j])
@@ -722,9 +745,16 @@ class CuroboPlanner:
                 )
                 pos_diffs.append(pd)
                 rot_diffs.append(rd)
-                if pd >= pos_tol or rd >= rot_tol:
-                    trajectory_valid = False
-                    break
+                trajectory_position_max = max(trajectory_position_max, float(pd))
+                trajectory_rotation_max = max(trajectory_rotation_max, float(rd))
+
+            raw_index = int(filtered_indices[i].item())
+            position_max[raw_index] = trajectory_position_max
+            rotation_max[raw_index] = trajectory_rotation_max
+            trajectory_valid = (
+                trajectory_position_max < pos_tol
+                and trajectory_rotation_max < rot_tol
+            )
 
             if trajectory_valid:
                 fk_succ_indices.append(i)
@@ -734,6 +764,24 @@ class CuroboPlanner:
         if rot_diffs:
             print(f"Rotation diff — mean: {np.mean(rot_diffs):.4f}, max: {np.max(rot_diffs):.4f}")
         print(f"FK success indices: {len(fk_succ_indices)}")
+
+        raw_success_mask = traj_result.success.cpu().bool()
+        position_failed = raw_success_mask & (position_max >= pos_tol)
+        rotation_failed = raw_success_mask & (rotation_max >= rot_tol)
+        retained_mask = raw_success_mask & ~position_failed & ~rotation_failed
+        self.last_filter_diagnostics = {
+            "position_max": position_max,
+            "rotation_max": rotation_max,
+            "raw_success_mask": raw_success_mask,
+            "retained_mask": retained_mask,
+            "position_tolerance": float(pos_tol),
+            "rotation_tolerance": float(rot_tol),
+            "raw_success": int(raw_success_mask.sum().item()),
+            "filtered_success": int(retained_mask.sum().item()),
+            "reject_position_only": int((position_failed & ~rotation_failed).sum().item()),
+            "reject_rotation_only": int((~position_failed & rotation_failed).sum().item()),
+            "reject_both": int((position_failed & rotation_failed).sum().item()),
+        }
 
         filtered_indices = torch.tensor(fk_succ_indices, device=goal_state.device, dtype=torch.long)
         if filtered_indices.shape[0] == 0:
@@ -754,3 +802,19 @@ class CuroboPlanner:
             trajectories=trajectories,
             success=success,
         )
+
+    @staticmethod
+    def _empty_filter_diagnostics(num_samples: int) -> Dict[str, Any]:
+        return {
+            "position_max": torch.full((num_samples,), float("nan"), dtype=torch.float64),
+            "rotation_max": torch.full((num_samples,), float("nan"), dtype=torch.float64),
+            "raw_success_mask": torch.zeros(num_samples, dtype=torch.bool),
+            "retained_mask": torch.zeros(num_samples, dtype=torch.bool),
+            "position_tolerance": None,
+            "rotation_tolerance": None,
+            "raw_success": 0,
+            "filtered_success": 0,
+            "reject_position_only": 0,
+            "reject_rotation_only": 0,
+            "reject_both": 0,
+        }

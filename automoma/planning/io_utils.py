@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import os
+import json
 import tempfile
 from pathlib import Path
 from typing import Any, Dict
@@ -51,6 +52,47 @@ class PlanningIO:
         )
         print(f"Trajectory data saved to {path} ({merged.success.shape[0]} total)")
         return merged
+
+    def save_traj_snapshot(self, traj_result: TrajResult, path: str) -> None:
+        """Atomically save an exact, non-appending trajectory snapshot."""
+        self._atomic_save(
+            {
+                "start_states": traj_result.start_states.cpu(),
+                "goal_states": traj_result.goal_states.cpu(),
+                "trajectories": traj_result.trajectories.cpu(),
+                "success": traj_result.success.cpu(),
+            },
+            path,
+        )
+
+    def save_tensor_snapshot(self, payload: Dict[str, Any], path: str) -> None:
+        """Atomically save diagnostic tensors without append semantics."""
+        cpu_payload = {
+            key: value.cpu() if isinstance(value, torch.Tensor) else value
+            for key, value in payload.items()
+        }
+        self._atomic_save(cpu_payload, path)
+
+    def save_json_snapshot(self, payload: Dict[str, Any], path: str) -> None:
+        """Atomically save a JSON diagnostic manifest."""
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=target.parent,
+            prefix=f".{target.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as tmp:
+            json.dump(payload, tmp, indent=2, sort_keys=True)
+            tmp.write("\n")
+            tmp_path = Path(tmp.name)
+        try:
+            os.replace(tmp_path, target)
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink()
 
     def save_converted(self, payload: Dict[str, torch.Tensor], path: str) -> dict[str, torch.Tensor]:
         merged = payload

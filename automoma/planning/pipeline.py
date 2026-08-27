@@ -10,6 +10,8 @@ files directly.
 from __future__ import annotations
 
 import os
+import re
+import json
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -46,6 +48,7 @@ class PlanningPipeline:
         self.planning_io = PlanningIO()
 
         self.output_cfg = planner_cfg.get("output", {})
+        self.diagnostics_cfg = planner_cfg.get("diagnostics", {})
         self.max_successful_trajectories = self.output_cfg.get("max_successful_trajectories")
 
     # ====================================================================
@@ -153,7 +156,9 @@ class PlanningPipeline:
             grasp_goal_iks: List[IKResult] = []
             grasp_trajs: List[TrajResult] = []
 
-            for goal_angle in goal_angles:
+            for goal_index, goal_angle in enumerate(goal_angles):
+                self.planner.last_traj_diagnostics = {}
+                self.planner.last_filter_diagnostics = {}
                 # --- IK planning ---
                 # Start IK (closed state)
                 start_target = get_open_ee_pose(
@@ -196,6 +201,15 @@ class PlanningPipeline:
 
                 if len(start_ik) == 0 or (goal_ik is not None and len(goal_ik) == 0):
                     print(f"  No IK solutions, skipping grasp {g_idx}")
+                    self._save_angle_diagnostics(
+                        grasp_output,
+                        grasp_id=g_idx,
+                        goal_index=goal_index,
+                        goal_angle=goal_angle,
+                        raw=TrajResult.fallback(),
+                        filtered=TrajResult.fallback(),
+                        status="no_ik",
+                    )
                     continue
 
                 # --- Clustering ---
@@ -225,11 +239,22 @@ class PlanningPipeline:
                 )
                 print(f"  TrajOpt raw: {traj_result.success.sum().item()}/{traj_result.num_samples} ok")
 
+                raw_traj_result = traj_result
+
                 # --- Filtering ---
                 traj_result = self.planner.filter_traj(
                     traj_result, akr_robot_cfg,
                 )
                 print(f"  TrajOpt filtered: {traj_result.success.sum().item()}/{traj_result.num_samples} ok")
+                self._save_angle_diagnostics(
+                    grasp_output,
+                    grasp_id=g_idx,
+                    goal_index=goal_index,
+                    goal_angle=goal_angle,
+                    raw=raw_traj_result,
+                    filtered=traj_result,
+                    status="complete",
+                )
 
                 grasp_start_iks.append(start_ik)
                 grasp_goal_iks.append(goal_ik)
@@ -350,6 +375,69 @@ class PlanningPipeline:
     def _has_enough_successes(self, count: int) -> bool:
         limit = self.max_successful_trajectories
         return limit is not None and int(limit) > 0 and count >= int(limit)
+
+    def _save_angle_diagnostics(
+        self,
+        grasp_output: str,
+        *,
+        grasp_id: int,
+        goal_index: int,
+        goal_angle: float,
+        raw: TrajResult,
+        filtered: TrajResult,
+        status: str,
+    ) -> None:
+        """Save exact per-angle raw/filtered artifacts for experiment analysis."""
+        if not self.diagnostics_cfg.get("save_per_goal_angle", False):
+            return
+
+        angle_label = re.sub(r"[^0-9A-Za-z_.-]", "_", f"{float(goal_angle):.6f}")
+        diag_dir = os.path.join(
+            grasp_output,
+            "diagnostics",
+            f"goal_{goal_index:02d}_{angle_label}",
+        )
+        self.planning_io.save_traj_snapshot(raw, os.path.join(diag_dir, "trajopt_raw.pt"))
+        self.planning_io.save_traj_snapshot(
+            filtered, os.path.join(diag_dir, "trajopt_filtered.pt")
+        )
+
+        filter_diag = dict(self.planner.last_filter_diagnostics)
+        tensor_diag = {
+            key: value
+            for key, value in filter_diag.items()
+            if isinstance(value, torch.Tensor)
+        }
+        if tensor_diag:
+            self.planning_io.save_tensor_snapshot(
+                tensor_diag, os.path.join(diag_dir, "online_fk_metrics.pt")
+            )
+
+        counts = {
+            "status": status,
+            "grasp_id": int(grasp_id),
+            "goal_index": int(goal_index),
+            "goal_angle": float(goal_angle),
+            **{
+                key: int(value)
+                for key, value in self.planner.last_traj_diagnostics.items()
+                if isinstance(value, (int, np.integer))
+            },
+            **{
+                key: int(value)
+                for key, value in filter_diag.items()
+                if isinstance(value, (int, np.integer))
+            },
+        }
+        counts.setdefault("cartesian_pairs", 0)
+        counts.setdefault("yaw_filter_retained", 0)
+        counts.setdefault("attempted_pairs", int(raw.num_samples))
+        counts.setdefault("raw_success", int(raw.success.sum().item()))
+        counts.setdefault("filtered_success", int(filtered.success.sum().item()))
+        counts["raw_tensor_samples"] = int(raw.num_samples)
+        counts["filtered_tensor_samples"] = int(filtered.num_samples)
+        self.planning_io.save_json_snapshot(counts, os.path.join(diag_dir, "counts.json"))
+        print("DIAGNOSTIC_COUNTS " + json.dumps(counts, sort_keys=True))
 
     def _limit_successes(self, result: TrajResult) -> TrajResult:
         limit = self.max_successful_trajectories
