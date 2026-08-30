@@ -1,6 +1,6 @@
 # AutoMoMa Workflows
 
-Run these commands from the repository root. `automoma/planning` remains the source of truth for the planner; the shell entrypoints only orchestrate planning, replay, conversion, training, and evaluation. For the detailed end-to-end handoff guide, see `docs/pipeline.md`.
+Run these commands from the repository root. `automoma/planning` remains the source of truth for the planner; the shell entrypoints only orchestrate planning, replay, conversion, training, and evaluation. For the detailed local pipeline, see `docs/pipeline.md`. Before a new large-scale or multi-GPU production, also read `docs/production_data.md` for restart, validation, quarantine, and publication requirements.
 
 ## Public Entrypoints
 

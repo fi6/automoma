@@ -32,6 +32,16 @@ from omegaconf import OmegaConf
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from automoma.planning.metadata import (
+    METADATA_SCALAR_KEYS,
+    METADATA_TENSOR_KEYS,
+    validate_planning_metadata,
+)
+
+
 DEFAULT_CONFIG = REPO_ROOT / "configs" / "plan.yaml"
 DEFAULT_STAT_SCRIPT = SCRIPT_DIR / "trajectory_statistics.py"
 
@@ -39,7 +49,7 @@ DEFAULT_STAT_SCRIPT = SCRIPT_DIR / "trajectory_statistics.py"
 def natural_scene_key(name: str) -> list[Any]:
     return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", name)]
 
-TRAJ_KEYS = (
+TRAJ_TENSOR_KEYS = (
     "start_robot",
     "start_obj",
     "goal_robot",
@@ -47,7 +57,9 @@ TRAJ_KEYS = (
     "traj_robot",
     "traj_obj",
     "traj_success",
+    *METADATA_TENSOR_KEYS,
 )
+TRAJ_KEYS = TRAJ_TENSOR_KEYS + METADATA_SCALAR_KEYS
 
 
 def load_config(path: Path) -> dict[str, Any]:
@@ -92,43 +104,46 @@ def canonical_traj_file(
 def count_successes(path: Path) -> int:
     if not path.exists():
         return 0
-    data = torch.load(path, weights_only=False)
-    if "traj_success" in data:
-        success = data["traj_success"]
-        if isinstance(success, torch.Tensor):
-            return int(success.bool().sum().item())
-    if "traj_robot" in data and isinstance(data["traj_robot"], torch.Tensor):
-        return int(data["traj_robot"].shape[0])
-    return 0
+    data = load_payload(path)
+    return int(data["traj_success"].bool().sum().item())
 
 
-def load_payload(path: Path) -> dict[str, torch.Tensor]:
+def load_payload(path: Path) -> dict[str, Any]:
     payload = torch.load(path, weights_only=False)
     missing = [key for key in TRAJ_KEYS if key not in payload]
     if missing:
         raise ValueError(f"{path} is missing required trajectory keys: {missing}")
-    for key in TRAJ_KEYS:
+    for key in TRAJ_TENSOR_KEYS:
         if not isinstance(payload[key], torch.Tensor):
             raise TypeError(f"{path}:{key} must be a torch.Tensor, got {type(payload[key]).__name__}")
+    for key in METADATA_SCALAR_KEYS:
+        if not isinstance(payload[key], str) or not payload[key]:
+            raise TypeError(f"{path}:{key} must be a non-empty string")
+    count = int(payload["traj_success"].shape[0])
+    for key in TRAJ_TENSOR_KEYS:
+        if payload[key].ndim < 1 or int(payload[key].shape[0]) != count:
+            raise ValueError(f"{path}:{key} is not aligned to {count} trajectory rows")
+    validate_planning_metadata(payload, count, label=str(path))
     return payload
 
 
-def shape_report(payload: dict[str, torch.Tensor]) -> dict[str, list[int]]:
-    return {key: list(payload[key].shape) for key in TRAJ_KEYS}
+def shape_report(payload: dict[str, Any]) -> dict[str, list[int]]:
+    return {key: list(payload[key].shape) for key in TRAJ_TENSOR_KEYS}
 
 
-def filter_successful(payload: dict[str, torch.Tensor], limit: int | None = None) -> dict[str, torch.Tensor]:
+def filter_successful(payload: dict[str, Any], limit: int | None = None) -> dict[str, Any]:
     success = payload["traj_success"].bool()
     idx = torch.nonzero(success, as_tuple=False).flatten()
     if limit is not None:
         idx = idx[: max(0, int(limit))]
-    filtered = {key: payload[key][idx].cpu() for key in TRAJ_KEYS}
+    filtered = {key: payload[key][idx].cpu() for key in TRAJ_TENSOR_KEYS}
+    filtered.update({key: payload[key] for key in METADATA_SCALAR_KEYS})
     filtered["traj_success"] = torch.ones(idx.shape[0], dtype=payload["traj_success"].dtype)
     return filtered
 
 
-def validate_compatible(existing: dict[str, torch.Tensor], new: dict[str, torch.Tensor], label: str) -> None:
-    for key in TRAJ_KEYS:
+def validate_compatible(existing: dict[str, Any], new: dict[str, Any], label: str) -> None:
+    for key in TRAJ_TENSOR_KEYS:
         left = existing[key]
         right = new[key]
         if left.ndim != right.ndim:
@@ -137,6 +152,9 @@ def validate_compatible(existing: dict[str, torch.Tensor], new: dict[str, torch.
             raise ValueError(f"{label}: key {key} shape mismatch {tuple(left.shape)} != {tuple(right.shape)}")
         if left.dtype != right.dtype:
             raise ValueError(f"{label}: key {key} dtype mismatch {left.dtype} != {right.dtype}")
+    for key in METADATA_SCALAR_KEYS:
+        if existing[key] != new[key]:
+            raise ValueError(f"{label}: key {key} mismatch {existing[key]!r} != {new[key]!r}")
 
 
 def merge_successes(canonical: Path, round_file: Path) -> dict[str, Any]:
@@ -154,7 +172,11 @@ def merge_successes(canonical: Path, round_file: Path) -> dict[str, Any]:
             replaced_empty_canonical = True
         else:
             validate_compatible(base_payload, round_payload, f"merge {round_file} into {canonical}")
-            merged = {key: torch.cat([base_payload[key], round_payload[key]], dim=0).cpu() for key in TRAJ_KEYS}
+            merged = {
+                key: torch.cat([base_payload[key], round_payload[key]], dim=0).cpu()
+                for key in TRAJ_TENSOR_KEYS
+            }
+            merged.update({key: base_payload[key] for key in METADATA_SCALAR_KEYS})
     else:
         merged = round_payload
 
@@ -280,6 +302,11 @@ def self_test() -> int:
             "traj_robot": torch.zeros(5, 36, 12),
             "traj_obj": torch.zeros(5, 36, 1),
             "traj_success": torch.tensor([True, False, True, True, False]),
+            "grasp_id": torch.tensor([2, 2, 3, 4, 4]),
+            "grasp_pose": torch.arange(35, dtype=torch.float32).reshape(5, 7),
+            "goal_angle": torch.tensor([1.333, 1.333, 1.23, 1.074, 1.074]),
+            "scene_id": "scene_x",
+            "object_id": "7221",
         }
         round_file.parent.mkdir(parents=True)
         torch.save(payload, round_file)
@@ -292,6 +319,11 @@ def self_test() -> int:
             "traj_robot": torch.zeros(0, 5, 12),
             "traj_obj": torch.zeros(0, 5, 1),
             "traj_success": torch.zeros(0, dtype=torch.bool),
+            "grasp_id": torch.zeros(0, dtype=torch.int64),
+            "grasp_pose": torch.zeros(0, 7),
+            "goal_angle": torch.zeros(0),
+            "scene_id": "scene_x",
+            "object_id": "7221",
         }
         torch.save(stale_empty, canonical)
         report = merge_successes(canonical, round_file)

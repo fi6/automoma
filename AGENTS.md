@@ -24,6 +24,8 @@ Current architecture:
 - `tools/`: first-party maintainer utilities, diagnostics, release helpers, and non-public workflow wrappers.
 - `scripts/quickstart.sh`: concise public workflow examples.
 - `configs/plan.yaml`: planning configuration source of truth.
+- `docs/production_data.md`: restart-safe production contract and the starting
+  point for new large-scale data runs.
 
 ## Data Directory Structure
 
@@ -112,6 +114,11 @@ If validation is blocked by environment limits, missing assets, GPU requirements
 - Debug trajectory replay: `bash scripts/run_pipeline.sh debug <object_name> <scene_name> --debug_file <path>`
 
 Use `scripts/quickstart.sh` and `docs/workflows.md` as quick references for known working command patterns, but verify assumptions against the actual implementation before changing code.
+
+For a new production run, read `docs/production_data.md` before adapting any
+historical batch launcher. AutoMoMa provides pipeline stages; a fixed shard
+launcher is not a durable dynamic scheduler, and a renderer exit code alone is
+not a publication decision.
 
 ## Response Expectations
 When reporting completed work, include:

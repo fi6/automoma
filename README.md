@@ -66,7 +66,7 @@ Whole-body mobile manipulation requires robots to coordinate mobile base and arm
 
 ## Pipeline Guide
 
-For the detailed local handoff from asset preparation through planning, recording, conversion, training, and evaluation, see [`docs/pipeline.md`](docs/pipeline.md).
+For the detailed local handoff from asset preparation through planning, recording, conversion, training, and evaluation, see [`docs/pipeline.md`](docs/pipeline.md). For restart-safe large-scale production, validation, quarantine, and publication rules, read [`docs/production_data.md`](docs/production_data.md) before adapting historical batch launchers.
 
 ## Installation
 

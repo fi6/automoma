@@ -18,6 +18,12 @@ from curobo.types.math import Pose
 
 from automoma.core.types import IKResult, TrajResult, aggregate_grasp_goal_results
 from automoma.planning.io_utils import PlanningIO
+from automoma.planning.metadata import (
+    cat_planning_metadata,
+    make_planning_metadata,
+    planning_metadata,
+    validate_planning_metadata,
+)
 from automoma.planning.planner import CuroboPlanner
 from automoma.utils.file_utils import (
     get_grasp_poses,
@@ -109,6 +115,7 @@ class PlanningPipeline:
         robot_name = cfg.get("robot_name", "summit_franka")
 
         all_raw: List[TrajResult] = []
+        all_metadata: List[Dict[str, Any]] = []
         planned_success = 0
 
         for g_idx in grasp_ids:
@@ -120,7 +127,13 @@ class PlanningPipeline:
             if resume and os.path.exists(final_pt):
                 print(f"\n--- Grasp {g_idx}: resuming from {final_pt}")
                 raw = load_traj(final_pt)
+                raw_payload = torch.load(final_pt, map_location="cpu", weights_only=False)
+                metadata = planning_metadata(raw_payload, raw.num_samples, label=final_pt)
                 all_raw.append(raw)
+                all_metadata.append(metadata)
+                planned_success += int(raw.success.sum().item())
+                if self._has_enough_successes(planned_success):
+                    break
                 continue
 
             print(f"\n--- Grasp {g_idx} ---")
@@ -152,6 +165,7 @@ class PlanningPipeline:
             grasp_start_iks: List[IKResult] = []
             grasp_goal_iks: List[IKResult] = []
             grasp_trajs: List[TrajResult] = []
+            grasp_metadata: List[Dict[str, Any]] = []
 
             for goal_angle in goal_angles:
                 # --- IK planning ---
@@ -234,6 +248,17 @@ class PlanningPipeline:
                 grasp_start_iks.append(start_ik)
                 grasp_goal_iks.append(goal_ik)
                 grasp_trajs.append(traj_result)
+                grasp_metadata.append(
+                    make_planning_metadata(
+                        traj_result.num_samples,
+                        grasp_id=g_idx,
+                        grasp_pose=grasp_raw,
+                        goal_angle=goal_angle,
+                        scene_id=scene_name,
+                        object_id=object_id,
+                        device=traj_result.success.device,
+                    )
+                )
                 planned_success += int(traj_result.success.sum().item())
                 self.planner.free_cuda_cache()
                 if self._has_enough_successes(planned_success):
@@ -252,10 +277,16 @@ class PlanningPipeline:
                 grasp_goal_iks,
                 grasp_trajs,
             )
+            merged_metadata = cat_planning_metadata(
+                grasp_metadata, label=f"grasp {g_idx} goal-angle metadata"
+            )
             merged_start_ik = self.planning_io.save_ik(merged_start_ik, ik_path)
             merged_goal_ik = self.planning_io.save_ik(merged_goal_ik, goal_ik_path)
-            merged_traj = self.planning_io.save_traj(merged_traj, final_pt)
+            merged_traj, merged_metadata = self.planning_io.save_traj_with_metadata(
+                merged_traj, merged_metadata, final_pt
+            )
             all_raw.append(merged_traj)
+            all_metadata.append(merged_metadata)
             if self._has_enough_successes(planned_success):
                 break
 
@@ -265,12 +296,16 @@ class PlanningPipeline:
             return ""
 
         merged = TrajResult.cat(all_raw)
+        merged_metadata = cat_planning_metadata(all_metadata, label="scene metadata")
         print(f"\nMerged: {merged.num_samples} trajectories "
               f"({merged.success.sum().item()} successful)")
 
         converted = self._convert_to_12d(merged)
+        converted.update(merged_metadata)
         out_path = os.path.join(output_dir, f"traj_data_{mode}.pt")
-        converted = self.planning_io.save_converted(converted, out_path)
+        # This file is a materialized view of all per-grasp results. Rebuild it
+        # on resume instead of appending the already represented rows again.
+        converted = self.planning_io.save_converted(converted, out_path, append=False)
         self._verify(converted)
         return out_path
 
@@ -384,13 +419,15 @@ class PlanningPipeline:
         }
         return load_object_from_metadata(scene_cfg["metadata_path"], obj_cfg)
 
-    def _verify(self, converted: Dict[str, torch.Tensor]) -> None:
+    def _verify(self, converted: Dict[str, Any]) -> None:
         """Print quick sanity checks on the converted output."""
         prepend = self.output_cfg.get("prepend_grasp_steps", 4)
         gripper_open = self.output_cfg.get("gripper_open", 0.04)
         gripper_closed = self.output_cfg.get("gripper_closed", 0.0)
 
-        if converted["traj_robot"].shape[0] == 0:
+        count = int(converted["traj_robot"].shape[0])
+        validate_planning_metadata(converted, count, label="converted planner output")
+        if count == 0:
             print("  Verify: no successful trajectories to inspect")
             return
         g = converted["traj_robot"][0, :, 10]  # left gripper of first traj
