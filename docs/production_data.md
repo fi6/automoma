@@ -70,6 +70,15 @@ python -c "import isaacsim, isaaclab, curobo; print('runtime ok')"
 bash -n scripts/run_pipeline.sh
 ```
 
+The operational replay/evaluation default is the `f4e200` contact profile:
+robot/object static and dynamic friction are both `4.0`, and the Summit-Franka
+gripper simulation effort limit is `200.0`. `scripts/run_pipeline.sh` exports
+these values explicitly. They remain individually overridable through
+`AUTOMOMA_ROBOT_OBJECT_STATIC_FRICTION`,
+`AUTOMOMA_ROBOT_OBJECT_DYNAMIC_FRICTION`, and
+`AUTOMOMA_GRIPPER_EFFORT_LIMIT`; any override is part of the immutable run
+configuration and must be recorded with the output.
+
 ### 2. Validate assets and trajectory identity
 
 Confirm the required object, robot, and scene files exist under the documented
