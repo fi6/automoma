@@ -12,6 +12,10 @@ This folder provides the main-branch Docker workflow for AutoMoMa. It follows th
 
 The image contains the plan, record, convert, train, and eval Python environments. Runtime scripts bind-mount the repo so generated `data/`, `logs/`, and `outputs/` remain on the host.
 
+For the RTX 3090 Isaac Sim 6.0.1 bring-up status, synthetic render smoke, and
+the still-open full-recording blockers, see
+[`docs/isaacsim_6_0_1_rtx3090.md`](../docs/isaacsim_6_0_1_rtx3090.md).
+
 ## Build
 
 ```bash
