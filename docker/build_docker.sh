@@ -6,11 +6,11 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # shellcheck source=docker/common.sh
 source "${SCRIPT_DIR}/common.sh"
 
-IMAGE_TAG="${AUTOMOMA_DOCKER_IMAGE:-automoma:main-isaacsim5.1.0}"
-ISAACSIM_VERSION="${ISAACSIM_VERSION:-5.1.0}"
+IMAGE_TAG="${AUTOMOMA_DOCKER_IMAGE:-automoma:isaacsim6.0.1}"
+ISAACSIM_VERSION="${ISAACSIM_VERSION:-6.0.1}"
 ISAACSIM_BASE_IMAGE="${ISAACSIM_BASE_IMAGE:-nvcr.io/nvidia/isaac-sim}"
 CUDA_TOOLKIT_VERSION="${CUDA_TOOLKIT_VERSION:-12-8}"
-TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST:-8.9+PTX}"
+TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST:-8.6;8.9+PTX}"
 CUROBO_PRETEND_VERSION="${CUROBO_PRETEND_VERSION:-0.7.4.post1.dev6}"
 
 usage() {
@@ -18,11 +18,11 @@ usage() {
 Usage: bash docker/build_docker.sh [--tag IMAGE] [--isaacsim VERSION] [--arch TORCH_CUDA_ARCH_LIST] [--no-cache] [extra docker build args...]
 
 Environment overrides:
-  AUTOMOMA_DOCKER_IMAGE     default: automoma:main-isaacsim5.1.0
-  ISAACSIM_VERSION          default: 5.1.0
+  AUTOMOMA_DOCKER_IMAGE     default: automoma:isaacsim6.0.1
+  ISAACSIM_VERSION          default: 6.0.1
   ISAACSIM_BASE_IMAGE       default: nvcr.io/nvidia/isaac-sim
   CUDA_TOOLKIT_VERSION      default: 12-8
-  TORCH_CUDA_ARCH_LIST      default: 8.9+PTX (RTX 4090)
+  TORCH_CUDA_ARCH_LIST      default: 8.6;8.9+PTX (RTX 3090/4090)
 EOF_USAGE
 }
 

@@ -74,18 +74,17 @@ For the detailed local handoff from asset preparation through planning, recordin
 
 - NVIDIA GPU with CUDA support
 - Linux (Ubuntu 22.04 / 24.04)
-- Python 3.11
+- Python 3.12
 - CUDA 12.8 recommended for CUDA extensions and PyTorch cu128
-- NVIDIA driver R580 is recommended for Isaac Sim 5.1 camera rendering. Driver R590
-  can segfault in headless `--enable_cameras` runs during RTX renderer startup.
+- NVIDIA driver 595.58.03 or newer is NVIDIA's tested Linux baseline for Isaac Sim 6.0.1.
 
-Isaac Sim 5.1 and IsaacLab require Python 3.11. Do not use Python 3.12 for the full local pipeline.
+Isaac Sim 6.0.1 and the pinned IsaacLab release require Python 3.12.
 
 ### Installation Steps
 
 **1) Create and activate conda environment**
 ```bash
-conda create -y -n automoma python=3.11
+conda create -y -n automoma python=3.12
 conda activate automoma
 
 cd <repo-root>
@@ -115,7 +114,7 @@ EOF
 
 **3) Install CUDA-enabled PyTorch**
 ```bash
-pip install torch==2.7.0 torchvision==0.22.0 --index-url https://download.pytorch.org/whl/cu128
+pip install torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cu128
 ```
 
 **4) Install AutoMoMa base package**
@@ -195,7 +194,7 @@ automoma check
 
 **Environment Notes**
 - `automoma install-hooks` sets env vars on `conda activate` (no manual sourcing).
-- `pip install -e ".[sim]" --extra-index-url https://pypi.nvidia.com` installs Isaac Sim 5.1.0 from NVIDIA's PyPI index as declared in `pyproject.toml`.
+- `pip install -e ".[sim]" --extra-index-url https://pypi.nvidia.com` installs Isaac Sim 6.0.1 from NVIDIA's PyPI index as declared in `pyproject.toml`.
 - `pip install -e ".[train]"` installs conversion/training dependencies, but LeRobot itself is installed from `third_party/lerobot`.
 
 ### Mode Dependencies
@@ -203,7 +202,7 @@ automoma check
 | Mode | Description |
 |------|-------------|
 | **plan** | Base + curobo (GPU motion planning) |
-| **sim** | plan build deps + Isaac Sim 5.1.0 + IsaacLab + IsaacLab-Arena |
+| **sim** | plan build deps + Isaac Sim 6.0.1 + IsaacLab + IsaacLab-Arena |
 | **train** | LeRobot conversion/training dependencies (ACT, DP, dataset conversion, etc.) |
 | **dev** | development tools; combine with other extras as needed |
 
@@ -241,26 +240,17 @@ If you need to clean curobo build artifacts before rebuilding, use:
 ./tools/dev/clean_curobo_build.sh
 ```
 
-### Isaac Sim Headless Camera Crash
+### Isaac Sim Driver Check
 
-If `record` or `eval` crashes in headless mode with `--enable_cameras` and a
-backtrace in `librtx.scenedb.plugin.so` / `libcarb.scenerenderer-rtx.plugin.so`,
-check the NVIDIA driver version:
+Before running `record` or `eval` with cameras, check the NVIDIA driver version:
 
 ```bash
 nvidia-smi
 ```
 
-Isaac Sim 5.1 camera rendering is known to be unstable with the R590 driver
-branch in headless mode. Use one of these workarounds:
-
-```bash
-# Preferred long-term fix: use an R580 production driver such as 580.65.06.
-
-# Short-term workaround on a local workstation with an active X session:
-export DISPLAY=:1
-bash scripts/run_pipeline.sh record microwave_7221 scene_0_seed_0 30 --no-headless
-```
+NVIDIA tests Isaac Sim 6.0.1 on Linux with driver 595.58.03. Older drivers may
+work through CUDA minor-version compatibility, but run the repository's
+camera-recording smoke test on each target host before production.
 
 Also make sure no old planning or simulation process is still occupying GPU
 memory before starting camera recording:

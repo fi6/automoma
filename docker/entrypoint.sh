@@ -7,7 +7,7 @@ export OMNI_KIT_ALLOW_ROOT="${OMNI_KIT_ALLOW_ROOT:-1}"
 export AUTOMOMA_ROOT="${AUTOMOMA_ROOT:-/workspace/automoma}"
 export ISAACLAB_PATH="${ISAACLAB_PATH:-${AUTOMOMA_ROOT}/third_party/IsaacLab-Arena/submodules/IsaacLab}"
 export CUDA_HOME="${CUDA_HOME:-/usr/local/cuda-12.8}"
-export ISAACSIM_ML_PIP="${ISAACSIM_ML_PIP:-/isaac-sim/exts/omni.isaac.ml_archive/pip_prebundle}"
+export ISAACSIM_ML_PIP="${ISAACSIM_ML_PIP:-/isaac-sim/extsDeprecated/omni.isaac.ml_archive/pip_prebundle}"
 export PATH="${CUDA_HOME}/bin:/isaac-sim/kit/python/bin:${PATH}"
 
 # Keep the NGC Isaac Sim filesystem layout compatible with the conda package

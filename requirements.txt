@@ -2,10 +2,10 @@
 # These are the essential packages needed for the project
 
 # Core dependencies
-numpy>=1.26.0
+numpy>=2.0,<2.4
 # Install CUDA-enabled torch explicitly before this file:
-# pip install torch==2.7.0 torchvision==0.22.0 --index-url https://download.pytorch.org/whl/cu128
-torch==2.7.0
+# pip install torch==2.11.0 torchvision==0.26.0 --index-url https://download.pytorch.org/whl/cu128
+torch==2.11.0
 scipy>=1.10.0
 PyYAML>=6.0
 h5py>=3.10

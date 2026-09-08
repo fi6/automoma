@@ -2,10 +2,10 @@
 
 This folder provides the main-branch Docker workflow for AutoMoMa. It follows the older `cvpr26` Isaac Sim container pattern, updated for the current working stack:
 
-- Isaac Sim 5.1.0 base image (`nvcr.io/nvidia/isaac-sim:5.1.0`)
+- Isaac Sim 6.0.1 base image (`nvcr.io/nvidia/isaac-sim:6.0.1`)
 - CUDA toolkit 12.8 for compiling cuRobo
-- Python 3.11 through `/isaac-sim/python.sh`
-- Torch 2.7.0 + CUDA 12.8 wheels
+- Python 3.12 through `/isaac-sim/python.sh`
+- Torch 2.11.0 + CUDA 12.8 wheels
 - Local editable installs for `automoma`, `third_party/IsaacLab-Arena`, `third_party/lerobot`, and `third_party/curobo`
 - Runtime pins mirrored from the local `automoma` conda environment for conversion/training dependencies
 - Isaac Sim extension-cache compatibility so headless record/eval uses the same `Grey_Studio` lighting as the working conda environment
@@ -18,7 +18,7 @@ The image contains the plan, record, convert, train, and eval Python environment
 bash docker/build_docker.sh
 ```
 
-Useful overrides: `bash docker/build_docker.sh --tag automoma:test --arch 8.9+PTX`
+Useful overrides: `bash docker/build_docker.sh --tag automoma:test --arch '8.6;8.9+PTX'`
 
 If Docker reports permission errors, the helper scripts try `sudo -E docker ...` automatically and may prompt for your sudo password. You can also add the current user to the `docker` group.
 
@@ -81,7 +81,7 @@ lerobot-dataset-viz \
 
 ## Files
 
-- `Dockerfile`: Isaac Sim 5.1.0 + CUDA/cuRobo + IsaacLab-Arena + LeRobot runtime.
+- `Dockerfile`: Isaac Sim 6.0.1 + CUDA/cuRobo + IsaacLab-Arena + LeRobot runtime.
 - `requirements-automoma.txt`: dependency pins copied from the working local conda environment, excluding Isaac Sim and torch.
 - `build_docker.sh`, `run_docker.sh`, `common.sh`: build/run helpers with GPU, cache, repo mounts, and sudo fallback.
 - `smoke_plan_record_convert.sh`: in-container real plan/record/convert validation.

@@ -6,7 +6,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-IMAGE_TAG="${AUTOMOMA_DOCKER_IMAGE:-automoma:main-isaacsim5.1.0}"
+IMAGE_TAG="${AUTOMOMA_DOCKER_IMAGE:-automoma:isaacsim6.0.1}"
 GPU_SPEC="${AUTOMOMA_DOCKER_GPUS:-0}"
 CONDA_ENV="${EXTERNAL_AUTOMOMA_ENV:-automoma}"
 OBJECT_ID="${OBJECT_ID:-7221}"

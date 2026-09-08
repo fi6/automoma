@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1.7
 # AutoMoMa Docker image for planning, IsaacLab-Arena recording/eval, and LeRobot conversion/training.
-# The image follows the cvpr26-style Isaac Sim base image, updated to Isaac Sim 5.1.0,
-# CUDA 12.8, Python 3.11, torch 2.7.0+cu128, and the current automoma conda runtime pins.
+# The image follows the cvpr26-style Isaac Sim base image, updated to Isaac Sim 6.0.1,
+# CUDA 12.8, Python 3.12, torch 2.11.0+cu128, and the current automoma runtime pins.
 
-ARG ISAACSIM_VERSION=5.1.0
+ARG ISAACSIM_VERSION=6.0.1
 ARG ISAACSIM_BASE_IMAGE=nvcr.io/nvidia/isaac-sim
 FROM ${ISAACSIM_BASE_IMAGE}:${ISAACSIM_VERSION} AS automoma
 
@@ -11,7 +11,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG CUDA_TOOLKIT_VERSION=12-8
-ARG TORCH_CUDA_ARCH_LIST="8.9+PTX"
+ARG TORCH_CUDA_ARCH_LIST="8.6;8.9+PTX"
 ARG CUROBO_PRETEND_VERSION="0.7.4.post1.dev6"
 ARG AUTOMOMA_ROOT=/workspace/automoma
 ARG ISAACLAB_PATH=/workspace/automoma/third_party/IsaacLab-Arena/submodules/IsaacLab
@@ -150,23 +150,27 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         "setuptools>=71.0.0,<81.0.0" \
         "setuptools-scm>=9.2.0" && \
     python -m pip install --force-reinstall --no-deps --index-url https://download.pytorch.org/whl/cu128 \
-        "torch==2.7.0" \
-        "torchvision==0.22.0" \
-        "torchaudio==2.7.0" && \
+        "torch==2.11.0" \
+        "torchvision==0.26.0" \
+        "torchaudio==2.11.0" && \
+    python -m pip install --ignore-installed --no-deps -r ${AUTOMOMA_ROOT}/docker/requirements-automoma.txt && \
     python -m pip install -r ${AUTOMOMA_ROOT}/docker/requirements-automoma.txt && \
-    python -m pip install --no-deps rerun-sdk==0.26.2 && \
+    python -m pip install --no-deps rerun-sdk==0.37.1 && \
     python -m pip install -e ${AUTOMOMA_ROOT} --no-deps
 
-# Install IsaacLab source extensions for record/eval, then IsaacLab-Arena.
+# Install the IsaacLab core package for record/eval, then IsaacLab-Arena.
+# The IsaacLab CLI force-installs Torch 2.10; use the editable package directly
+# so Isaac Sim 6.0.1 keeps its matching Torch 2.11/NCCL 2.28 runtime.
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python -m pip install --no-build-isolation flatdict==4.0.1 && \
-    ${ISAACLAB_PATH}/isaaclab.sh --install none && \
+    python -m pip install --no-build-isolation flatdict==4.0.0 && \
+    python -m pip install --no-deps -e ${ISAACLAB_PATH}/source/isaaclab && \
     python -m pip install -e ${AUTOMOMA_ROOT}/third_party/IsaacLab-Arena --no-deps
 
 # Install LeRobot entrypoints against the pinned dependency set, then build cuRobo from the
 # checked-out third_party source. cuRobo is intentionally installed non-editable so
 # runtime bind-mounts do not hide the compiled CUDA extensions.
-ENV ISAACSIM_ML_PIP=/isaac-sim/exts/omni.isaac.ml_archive/pip_prebundle
+ENV ISAACSIM_ML_PIP=/isaac-sim/extsDeprecated/omni.isaac.ml_archive/pip_prebundle
+ENV PYTHONPATH=${ISAACSIM_ML_PIP}
 ENV LD_LIBRARY_PATH=${ISAACSIM_ML_PIP}/cusparselt/lib:${ISAACSIM_ML_PIP}/nvidia/cublas/lib:${ISAACSIM_ML_PIP}/nvidia/cuda_cupti/lib:${ISAACSIM_ML_PIP}/nvidia/cuda_nvrtc/lib:${ISAACSIM_ML_PIP}/nvidia/cuda_runtime/lib:${ISAACSIM_ML_PIP}/nvidia/cudnn/lib:${ISAACSIM_ML_PIP}/nvidia/cufft/lib:${ISAACSIM_ML_PIP}/nvidia/cufile/lib:${ISAACSIM_ML_PIP}/nvidia/curand/lib:${ISAACSIM_ML_PIP}/nvidia/cusolver/lib:${ISAACSIM_ML_PIP}/nvidia/cusparse/lib:${ISAACSIM_ML_PIP}/nvidia/nccl/lib:${ISAACSIM_ML_PIP}/nvidia/nvjitlink/lib:${ISAACSIM_ML_PIP}/nvidia/nvtx/lib:${LD_LIBRARY_PATH}
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --no-deps "huggingface-hub==0.35.3" "packaging==23.0" && \
@@ -175,7 +179,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     (find ${AUTOMOMA_ROOT}/third_party/curobo/src/curobo/curobolib -type f -name '*.so' -delete || true) && \
     SETUPTOOLS_SCM_PRETEND_VERSION=${CUROBO_PRETEND_VERSION} \
         python -m pip install "${AUTOMOMA_ROOT}/third_party/curobo[isaacsim]" --no-build-isolation && \
-    python -m pip install --no-deps "packaging==23.0" "warp-lang==1.12.1" "huggingface-hub==0.35.3"
+    python -m pip install --no-deps "packaging==23.0" "warp-lang==1.12.0" "huggingface-hub==0.35.3"
 
 # Persistent cache targets used by docker/run_docker.sh.
 RUN mkdir -p \

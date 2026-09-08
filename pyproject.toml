@@ -10,7 +10,7 @@ authors = [
 description = "A Python package for robot trajectory generation using curobo as planner"
 readme = "README.md"
 license = {file = "LICENSE"}
-requires-python = ">=3.11,<3.12"
+requires-python = ">=3.12,<3.13"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -18,14 +18,14 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Physics",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "numpy>=1.26.0",
-    "torch==2.7.0",
+    "numpy>=2.0,<2.4",
+    "torch==2.11.0",
     "scipy>=1.10.0",
     "PyYAML>=6.0",
     "h5py>=3.10",
@@ -53,13 +53,13 @@ plan = [
 
 # Sim mode: plan + isaacsim + IsaacLab + IsaacLab-Arena
 sim = [
-    "isaacsim[all,extscache]==5.1.0",
-    "numpy==1.26.0",
+    "isaacsim[all,extscache]==6.0.1.0",
+    "numpy==2.3.1",
     "tomli>=2.0.0",
     "wheel>=0.40.0",
     "ninja>=1.11.0",
     "setuptools>=71.0.0,<81.0.0",
-    "torchvision==0.22.0",
+    "torchvision==0.26.0",
     "click==8.1.7",
     "lightwheel-sdk==1.0.1",
     "onnxruntime==1.23.2",
@@ -77,13 +77,13 @@ train = [
     "opencv-python-headless>=4.9.0,<4.13.0",
     "av>=15.0.0,<16.0.0",
     "jsonlines>=4.0.0,<5.0.0",
-    "packaging>=24.2,<26.0",
+    "packaging==23.0",
     "pynput>=1.7.7,<1.9.0",
     "pyserial>=3.5,<4.0",
     "wandb>=0.24.0,<0.25.0",
     "draccus==0.10.0",
-    "gymnasium>=1.1.1,<2.0.0",
-    "rerun-sdk>=0.24.0,<0.27.0",
+    "gymnasium==1.2.1",
+    "rerun-sdk>=0.29.0,<0.38.0",
     "deepdiff>=7.0.1,<9.0.0",
     "imageio[ffmpeg]>=2.34.0,<3.0.0",
     "termcolor>=2.4.0,<4.0.0",
@@ -134,7 +134,7 @@ automoma = "automoma.env:main"
 
 [tool.black]
 line-length = 120
-target-version = ['py311']
+target-version = ['py312']
 include = '\.pyi?$'
 extend-exclude = '''
 /(
@@ -211,7 +211,7 @@ exclude_lines = [
 ]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

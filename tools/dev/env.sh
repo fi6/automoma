@@ -2,7 +2,7 @@
 # =============================================================================
 # env.sh - AutoMoMa environment setup script
 #
-# This script sets up the AutoMoMa development environment with Python 3.11
+# This script sets up the AutoMoMa development environment with Python 3.12
 # =============================================================================
 
 set -euo pipefail
@@ -23,7 +23,7 @@ fi
 
 # Environment name
 ENV_NAME="${ENV_NAME:-automoma}"
-PYTHON_VERSION="${PYTHON_VERSION:-3.11}"
+PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
 
 # CUDA detection
 detect_cuda_home() {
@@ -38,6 +38,7 @@ detect_cuda_home() {
         "/usr/local/cuda-12.1"
         "/usr/local/cuda-12.4"
         "/usr/local/cuda-12.6"
+        "/usr/local/cuda-12.8"
         "/opt/cuda"
     )
 

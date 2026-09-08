@@ -54,11 +54,10 @@ def main() -> int:
 
     import isaacsim
 
-    lighting_ext = (
-        Path(isaacsim.__file__).resolve().parent
-        / "extscache"
-        / "omni.kit.viewport.menubar.lighting-107.3.1+107.3.0"
-    )
+    extension_cache = Path(isaacsim.__file__).resolve().parent / "extscache"
+    lighting_ext = next(extension_cache.glob("omni.kit.viewport.menubar.lighting-*"), None)
+    if lighting_ext is None:
+        raise RuntimeError("Isaac Sim viewport lighting extension is not available")
     lighting_usd = lighting_ext / "data" / "usd" / "Grey_Studio.usda"
     if str(lighting_ext) not in sys.path:
         sys.path.append(str(lighting_ext))

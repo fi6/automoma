@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # shellcheck source=docker/common.sh
 source "${SCRIPT_DIR}/common.sh"
 
-IMAGE_TAG="${AUTOMOMA_DOCKER_IMAGE:-automoma:main-isaacsim5.1.0}"
+IMAGE_TAG="${AUTOMOMA_DOCKER_IMAGE:-automoma:isaacsim6.0.1}"
 CONTAINER_NAME="${AUTOMOMA_DOCKER_NAME:-automoma-main}"
 GPU_SPEC="${AUTOMOMA_DOCKER_GPUS:-all}"
 SHM_SIZE="${AUTOMOMA_DOCKER_SHM_SIZE:-32g}"

@@ -52,15 +52,15 @@ def install_conda_hooks() -> None:
     isaaclab_path = project_root / "third_party" / "IsaacLab-Arena" / "submodules" / "IsaacLab"
     isaac_sim_path = os.environ.get(
         "IsaacSim_ROOT",
-        "/home/xinhai/isaac-sim-5.1.0"  # default fallback
+        "/home/xinhai/isaac-sim-6.0.1"  # default fallback
     )
 
     # Also search for Isaac Sim at common locations if default doesn't exist
     if not Path(isaac_sim_path).exists():
         possible_paths = [
-            Path.home() / "isaac-sim-5.1.0",
-            Path("/opt/isaac-sim-5.1.0"),
-            Path("/usr/local/isaac-sim-5.1.0"),
+            Path.home() / "isaac-sim-6.0.1",
+            Path("/opt/isaac-sim-6.0.1"),
+            Path("/usr/local/isaac-sim-6.0.1"),
         ]
         for p in possible_paths:
             if p.exists():
@@ -213,7 +213,7 @@ def main():
     install_parser.add_argument(
         "--isaac-sim-root",
         default=None,
-        help="Path to Isaac Sim installation (default: auto-detect or /home/xinhai/isaac-sim-5.1.0)"
+        help="Path to Isaac Sim installation (default: auto-detect or /home/xinhai/isaac-sim-6.0.1)"
     )
 
     # uninstall-hooks command
