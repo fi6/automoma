@@ -6,6 +6,8 @@ This folder provides the main-branch Docker workflow for AutoMoMa. It follows th
 - CUDA toolkit 12.8 for compiling cuRobo
 - Python 3.12 through `/isaac-sim/python.sh`
 - Torch 2.11.0 + CUDA 12.8 wheels
+- Arena `release/0.3.0` (`3032c788`), merged with the AutoMoMa extensions
+- IsaacLab `af1bab4d` (3.0 Beta 2 release branch), pinned by Arena; Warp 1.13.0
 - Local editable installs for `automoma`, `third_party/IsaacLab-Arena`, `third_party/lerobot`, and `third_party/curobo`
 - Runtime pins mirrored from the local `automoma` conda environment for conversion/training dependencies
 - Isaac Sim extension-cache compatibility so headless record/eval uses the same `Grey_Studio` lighting as the working conda environment
@@ -15,6 +17,25 @@ The image contains the plan, record, convert, train, and eval Python environment
 For the RTX 3090 Isaac Sim 6.0.1 bring-up status, synthetic render smoke, and
 the still-open full-recording blockers, see
 [`docs/isaacsim_6_0_1_rtx3090.md`](../docs/isaacsim_6_0_1_rtx3090.md).
+
+## Version pairing and configuration check
+
+The Arena submodule includes the Summit Franka and AutoMoMa replay extensions.
+Keep its pinned IsaacLab revision: the upstream pair targets Isaac Sim 6.0.1
+and includes IsaacLab's SimulationManager callback ownership fix (PR #5358).
+The custom camera and root poses use IsaacLab 3.0's XYZW convention. Metadata
+Euler angles and stored 12-DOF planner actions keep their existing formats.
+
+Run this focused check inside the image without starting Kit:
+
+```bash
+python third_party/IsaacLab-Arena/isaaclab_arena/scripts/check_automoma_config.py
+```
+
+It checks CLI registration, camera configuration, quaternion conversion and
+replay policy construction. Real environment initialization and recording
+remain separate acceptance gates. This update does not establish that the
+previous three-camera initialization failure is resolved.
 
 ## Build
 

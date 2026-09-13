@@ -136,6 +136,7 @@ RUN ln -sfn /isaac-sim ${ISAACLAB_PATH}/_isaac_sim && \
     if [[ ! -e /isaac-sim/python_packages/isaacsim/extscache ]]; then \
         ln -s /isaac-sim/extscache /isaac-sim/python_packages/isaacsim/extscache; \
     fi && \
+    chmod a+rx /isaac-sim && \
     chmod +x ${ISAACLAB_PATH}/isaaclab.sh && \
     chmod +x ${AUTOMOMA_ROOT}/scripts/run_pipeline.sh
 
@@ -160,16 +161,13 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --no-deps rerun-sdk==0.37.1 rsl-rl-lib==5.0.1 && \
     python -m pip install -e ${AUTOMOMA_ROOT} --no-deps
 
-# Install the IsaacLab core package for record/eval, then IsaacLab-Arena.
-# The IsaacLab CLI force-installs Torch 2.10; use the editable package directly
-# so Isaac Sim 6.0.1 keeps its matching Torch 2.11/NCCL 2.28 runtime.
+# Lab 3.0 no longer adds sibling source packages to sys.path. Install all
+# source packages without resolving optional engines or replacing Torch/NCCL.
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python -m pip install --no-build-isolation flatdict==4.0.0 && \
-    python -m pip install --no-deps -e ${ISAACLAB_PATH}/source/isaaclab && \
-    python -m pip install --no-deps -e ${ISAACLAB_PATH}/source/isaaclab_contrib && \
-    python -m pip install --no-deps -e ${ISAACLAB_PATH}/source/isaaclab_ov && \
-    python -m pip install --no-deps -e ${ISAACLAB_PATH}/source/isaaclab_teleop && \
-    python -m pip install --no-deps -e ${ISAACLAB_PATH}/source/isaaclab_visualizers && \
+    python -m pip install --no-build-isolation flatdict==4.1.0 && \
+    for package in ${ISAACLAB_PATH}/source/isaaclab*/; do \
+        python -m pip install --no-deps -e "$package" || exit; \
+    done && \
     python -m pip install -e ${AUTOMOMA_ROOT}/third_party/IsaacLab-Arena --no-deps
 
 # Install LeRobot entrypoints against the pinned dependency set, then build cuRobo from the
@@ -185,7 +183,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     (find ${AUTOMOMA_ROOT}/third_party/curobo/src/curobo/curobolib -type f -name '*.so' -delete || true) && \
     SETUPTOOLS_SCM_PRETEND_VERSION=${CUROBO_PRETEND_VERSION} \
         python -m pip install "${AUTOMOMA_ROOT}/third_party/curobo[isaacsim]" --no-build-isolation && \
-    python -m pip install --no-deps "packaging==23.0" "warp-lang==1.12.0" "huggingface-hub==0.35.3"
+    python -m pip install --no-deps "packaging==23.0" "warp-lang==1.13.0" "huggingface-hub==0.35.3"
 
 # Persistent cache targets used by docker/run_docker.sh.
 RUN mkdir -p \
@@ -200,7 +198,8 @@ RUN mkdir -p \
         ${AUTOMOMA_ROOT}/data \
         ${AUTOMOMA_ROOT}/logs \
         ${AUTOMOMA_ROOT}/outputs && \
-    python ${AUTOMOMA_ROOT}/docker/check_env.py
+    python ${AUTOMOMA_ROOT}/docker/check_env.py && \
+    python ${AUTOMOMA_ROOT}/third_party/IsaacLab-Arena/isaaclab_arena/scripts/check_automoma_config.py
 
 COPY docker/entrypoint.sh /opt/automoma/entrypoint.sh
 RUN chmod +x /opt/automoma/entrypoint.sh && \

@@ -147,12 +147,12 @@ pip install -e "./third_party/curobo[isaacsim]" --no-build-isolation
 
 # Create link for IsaacLab (pip default path)
 cd third_party/IsaacLab-Arena/submodules/IsaacLab
-ln -sf "$CONDA_PREFIX/lib/python3.11/site-packages/isaacsim" _isaac_sim
+ln -sf "$CONDA_PREFIX/lib/python3.12/site-packages/isaacsim" _isaac_sim
 # If Isaac Sim is installed elsewhere, update the path above accordingly.
 
 # Install IsaacLab + Arena
-# flatdict 4.0.1 needs the non-isolated build env with setuptools<81.
-pip install "flatdict==4.0.1" --no-build-isolation
+# Use the flatdict version required by the pinned IsaacLab release.
+pip install "flatdict==4.1.0" --no-build-isolation
 ./isaaclab.sh -i
 cd <repo-root>
 pip install -e ./third_party/IsaacLab-Arena/submodules/IsaacLab/source/isaaclab --no-build-isolation
