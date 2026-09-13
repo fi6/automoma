@@ -15,6 +15,7 @@ ARG TORCH_CUDA_ARCH_LIST="8.6;8.9+PTX"
 ARG CUROBO_PRETEND_VERSION="0.7.4.post1.dev6"
 ARG AUTOMOMA_ROOT=/workspace/automoma
 ARG ISAACLAB_PATH=/workspace/automoma/third_party/IsaacLab-Arena/submodules/IsaacLab
+ARG ISAACSIM_PINK_PIP=/isaac-sim/exts/isaacsim.robot_motion.pink/pip_prebundle
 
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
@@ -26,6 +27,7 @@ ENV LANG=C.UTF-8 \
     ISAACSIM_ROOT_PATH=/isaac-sim \
     AUTOMOMA_ROOT=${AUTOMOMA_ROOT} \
     ISAACLAB_PATH=${ISAACLAB_PATH} \
+    ISAACSIM_PINK_PIP=${ISAACSIM_PINK_PIP} \
     CUDA_HOME=/usr/local/cuda-12.8 \
     TORCH_CUDA_ARCH_LIST=${TORCH_CUDA_ARCH_LIST} \
     PIP_NO_CACHE_DIR=0 \
@@ -155,7 +157,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         "torchaudio==2.11.0" && \
     python -m pip install --ignore-installed --no-deps -r ${AUTOMOMA_ROOT}/docker/requirements-automoma.txt && \
     python -m pip install -r ${AUTOMOMA_ROOT}/docker/requirements-automoma.txt && \
-    python -m pip install --no-deps rerun-sdk==0.37.1 && \
+    python -m pip install --no-deps rerun-sdk==0.37.1 rsl-rl-lib==5.0.1 && \
     python -m pip install -e ${AUTOMOMA_ROOT} --no-deps
 
 # Install the IsaacLab core package for record/eval, then IsaacLab-Arena.
@@ -164,14 +166,18 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --no-build-isolation flatdict==4.0.0 && \
     python -m pip install --no-deps -e ${ISAACLAB_PATH}/source/isaaclab && \
+    python -m pip install --no-deps -e ${ISAACLAB_PATH}/source/isaaclab_contrib && \
+    python -m pip install --no-deps -e ${ISAACLAB_PATH}/source/isaaclab_ov && \
+    python -m pip install --no-deps -e ${ISAACLAB_PATH}/source/isaaclab_teleop && \
+    python -m pip install --no-deps -e ${ISAACLAB_PATH}/source/isaaclab_visualizers && \
     python -m pip install -e ${AUTOMOMA_ROOT}/third_party/IsaacLab-Arena --no-deps
 
 # Install LeRobot entrypoints against the pinned dependency set, then build cuRobo from the
 # checked-out third_party source. cuRobo is intentionally installed non-editable so
 # runtime bind-mounts do not hide the compiled CUDA extensions.
 ENV ISAACSIM_ML_PIP=/isaac-sim/extsDeprecated/omni.isaac.ml_archive/pip_prebundle
-ENV PYTHONPATH=${ISAACSIM_ML_PIP}
-ENV LD_LIBRARY_PATH=${ISAACSIM_ML_PIP}/cusparselt/lib:${ISAACSIM_ML_PIP}/nvidia/cublas/lib:${ISAACSIM_ML_PIP}/nvidia/cuda_cupti/lib:${ISAACSIM_ML_PIP}/nvidia/cuda_nvrtc/lib:${ISAACSIM_ML_PIP}/nvidia/cuda_runtime/lib:${ISAACSIM_ML_PIP}/nvidia/cudnn/lib:${ISAACSIM_ML_PIP}/nvidia/cufft/lib:${ISAACSIM_ML_PIP}/nvidia/cufile/lib:${ISAACSIM_ML_PIP}/nvidia/curand/lib:${ISAACSIM_ML_PIP}/nvidia/cusolver/lib:${ISAACSIM_ML_PIP}/nvidia/cusparse/lib:${ISAACSIM_ML_PIP}/nvidia/nccl/lib:${ISAACSIM_ML_PIP}/nvidia/nvjitlink/lib:${ISAACSIM_ML_PIP}/nvidia/nvtx/lib:${LD_LIBRARY_PATH}
+ENV PYTHONPATH=${ISAACSIM_PINK_PIP}/cmeel.prefix/lib/python3.12/site-packages:${ISAACSIM_ML_PIP}
+ENV LD_LIBRARY_PATH=${ISAACSIM_PINK_PIP}/cmeel.prefix/lib:${ISAACSIM_ML_PIP}/cusparselt/lib:${ISAACSIM_ML_PIP}/nvidia/cublas/lib:${ISAACSIM_ML_PIP}/nvidia/cuda_cupti/lib:${ISAACSIM_ML_PIP}/nvidia/cuda_nvrtc/lib:${ISAACSIM_ML_PIP}/nvidia/cuda_runtime/lib:${ISAACSIM_ML_PIP}/nvidia/cudnn/lib:${ISAACSIM_ML_PIP}/nvidia/cufft/lib:${ISAACSIM_ML_PIP}/nvidia/cufile/lib:${ISAACSIM_ML_PIP}/nvidia/curand/lib:${ISAACSIM_ML_PIP}/nvidia/cusolver/lib:${ISAACSIM_ML_PIP}/nvidia/cusparse/lib:${ISAACSIM_ML_PIP}/nvidia/nccl/lib:${ISAACSIM_ML_PIP}/nvidia/nvjitlink/lib:${ISAACSIM_ML_PIP}/nvidia/nvtx/lib:${LD_LIBRARY_PATH}
 RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --no-deps "huggingface-hub==0.35.3" "packaging==23.0" && \
     python -m pip install -e ${AUTOMOMA_ROOT}/third_party/lerobot --no-deps && \
