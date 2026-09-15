@@ -15,7 +15,12 @@ metrics for the same replay settings.
 from isaaclab.app import AppLauncher
 
 from isaaclab_arena.cli.isaaclab_arena_cli import get_isaaclab_arena_cli_parser
-from isaaclab_arena.examples.example_environments.cli import add_example_environments_cli_args
+try:
+    # Arena 0.3 moved the externally maintained example environments into a
+    # top-level package.
+    from isaaclab_arena_environments.cli import add_example_environments_cli_args
+except ImportError:  # Arena 0.2 / Isaac Sim 5.1 compatibility
+    from isaaclab_arena.examples.example_environments.cli import add_example_environments_cli_args
 from isaaclab_arena.scripts.automoma_replay_common import (
     add_automoma_replay_args,
     add_episode_selection_args,

@@ -33,11 +33,14 @@ from lerobot.utils.io_utils import write_video
 from lerobot.utils.random_utils import set_seed
 from lerobot.utils.utils import init_logging
 
+from physical_success import classify_physical_success
+
 
 PER_EPISODE_CSV_COLUMNS = [
     "episode_ix",
     "seed",
     "success",
+    "failure_reason",
     "final_door_open",
     "final_door_openness",
     "final_engaged",
@@ -119,6 +122,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--interpolation_type", default="linear")
     parser.add_argument("--mobile_base_relative", type=str2bool, nargs="?", const=True, default=False)
     parser.add_argument("--openness_threshold", type=float, default=0.3)
+    parser.add_argument("--handle_distance_threshold", type=float, default=0.1)
     parser.add_argument("--proximity_threshold", type=float, default=0.12)
     parser.add_argument("--proximity_window_steps", type=int, default=8)
     parser.add_argument("--proximity_required_steps", type=int, default=5)
@@ -130,6 +134,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--robot_object_dynamic_friction", type=float, default=None)
     parser.add_argument("--debug_action_trace", type=str2bool, default=False)
     parser.add_argument("--action_trace_csv", default=None)
+    parser.add_argument(
+        "--episode_length_source",
+        choices=("fixed", "trajectory_valid_steps"),
+        default="fixed",
+        help=(
+            "Use the fixed --max_steps budget or stop each sequential trajectory-start "
+            "episode at its production trajectory_valid_steps boundary."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -282,6 +295,7 @@ def make_isaaclab_arena_cfg(args: argparse.Namespace) -> IsaaclabArenaEnv:
         "proximity_threshold": args.proximity_threshold,
         "proximity_window_steps": args.proximity_window_steps,
         "proximity_required_steps": args.proximity_required_steps,
+        "handle_distance_threshold": args.handle_distance_threshold,
         "disable_fingertip_proximity": args.disable_fingertip_proximity,
         "debug_visualize_handle": args.debug_visualize_handle,
         "debug_record_handle_diagnostics": args.debug_record_handle_diagnostics,
@@ -446,12 +460,78 @@ def first_scalar(value: Any, default: Any = None) -> Any:
     return value
 
 
-def success_from_final_info(final_info: dict[str, Any]) -> bool:
-    if "is_success" in final_info:
-        return bool(first_scalar(final_info["is_success"], False))
-    return bool(first_scalar(final_info.get("final_door_open"), False)) and bool(
-        first_scalar(final_info.get("final_engaged"), False)
+def success_from_final_info(
+    final_info: dict[str, Any],
+    *,
+    openness_threshold: float = 0.3,
+    handle_distance_threshold: float = 0.1,
+) -> bool:
+    success, _ = classify_physical_success(
+        float(first_scalar(final_info.get("final_door_openness"), np.nan)),
+        float(first_scalar(final_info.get("final_handle_distance"), np.nan)),
+        openness_threshold_rad=openness_threshold,
+        handle_distance_threshold_m=handle_distance_threshold,
     )
+    return success
+
+
+def evaluate_current_success(env: Any, args: argparse.Namespace) -> dict[str, Any]:
+    raw_env = getattr(env, "_env", None)
+    arena_env = getattr(getattr(raw_env, "cfg", None), "isaaclab_arena_env", None)
+    openable_object = getattr(getattr(arena_env, "task", None), "openable_object", None)
+    if raw_env is None or openable_object is None:
+        openness = distance = float("nan")
+    else:
+        from isaaclab_arena.metrics.handle_proximity_rate import (
+            compute_handle_proximity_distance,
+        )
+
+        with torch.no_grad():
+            openness = float(openable_object.get_openness(raw_env).detach().cpu().flatten()[0])
+            distance = float(
+                compute_handle_proximity_distance(
+                    raw_env,
+                    openable_object,
+                    use_fingertips=not args.disable_fingertip_proximity,
+                ).detach().cpu().flatten()[0]
+            )
+    success, failure_reason = classify_physical_success(
+        openness,
+        distance,
+        openness_threshold_rad=args.openness_threshold,
+        handle_distance_threshold_m=args.handle_distance_threshold,
+    )
+    return {
+        "is_success": np.asarray([success]),
+        "final_door_open": np.asarray(
+            [np.isfinite(openness) and openness >= args.openness_threshold]
+        ),
+        "final_door_openness": np.asarray([openness], dtype=np.float32),
+        "final_engaged": np.asarray(
+            [np.isfinite(distance) and distance <= args.handle_distance_threshold]
+        ),
+        "final_handle_distance": np.asarray([distance], dtype=np.float32),
+        "failure_reason": failure_reason,
+    }
+
+
+def load_trajectory_valid_steps(args: argparse.Namespace) -> list[int] | None:
+    if args.episode_length_source == "fixed":
+        return None
+    if args.traj_selection_mode != "sequential":
+        raise ValueError("trajectory_valid_steps requires --traj_selection_mode=sequential")
+    payload = torch.load(args.traj_file, map_location="cpu", weights_only=True)
+    if "trajectory_valid_steps" not in payload:
+        raise KeyError(f"trajectory_valid_steps missing from {args.traj_file}")
+    lengths = payload["trajectory_valid_steps"].detach().cpu().to(dtype=torch.long)
+    if "traj_success" in payload:
+        mask = payload["traj_success"].detach().cpu().bool()
+        if bool(mask.any()):
+            lengths = lengths[mask]
+    result = [int(value) for value in lengths.tolist()]
+    if not result or any(value < 1 for value in result):
+        raise ValueError("trajectory_valid_steps must contain positive episode lengths")
+    return result
 
 
 def build_policy_and_processors(args: argparse.Namespace, env_cfg: IsaaclabArenaEnv):
@@ -514,6 +594,7 @@ def run_episode(
     action_executor: Any,
     action_trace_logger: ActionTraceLogger | None,
     render_video: bool,
+    args: argparse.Namespace,
 ) -> dict[str, Any]:
     policy.reset()
     action_executor.reset()
@@ -531,8 +612,6 @@ def run_episode(
     done = False
     sim_steps = 0
     policy_steps = 0
-    latest_final_info: dict[str, Any] = {}
-
     while not done and sim_steps < max_steps:
         policy_obs = prepare_policy_observation(env, observation, env_preprocessor, preprocessor)
         with torch.inference_mode():
@@ -549,7 +628,6 @@ def run_episode(
         for step_result in step_results:
             observation = step_result.obs
             sim_steps += 1
-            latest_final_info = step_result.info.get("final_info", latest_final_info)
             done = bool(step_result.terminated[0] or step_result.truncated[0])
             if action_trace_logger is not None:
                 sim_state_after = step_result.sim_state_after
@@ -578,9 +656,14 @@ def run_episode(
             if done or sim_steps >= max_steps:
                 break
 
+    strict_final_info = evaluate_current_success(env, args)
     return {
-        "success": success_from_final_info(latest_final_info),
-        "final_info": latest_final_info,
+        "success": success_from_final_info(
+            strict_final_info,
+            openness_threshold=args.openness_threshold,
+            handle_distance_threshold=args.handle_distance_threshold,
+        ),
+        "final_info": strict_final_info,
         "sim_steps": sim_steps,
         "policy_steps": policy_steps,
         "frames": frames,
@@ -600,6 +683,7 @@ def main() -> None:
         raise ValueError("--init_steps must be >= 0.")
     if args.decimation is not None and args.decimation < 1:
         raise ValueError("--decimation must be >= 1.")
+    trajectory_valid_steps = load_trajectory_valid_steps(args)
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -657,6 +741,11 @@ def main() -> None:
         with torch.no_grad(), amp_context:
             for episode_ix in range(args.n_episodes):
                 episode_seed = args.seed + episode_ix
+                episode_max_steps = (
+                    args.max_steps
+                    if trajectory_valid_steps is None
+                    else min(args.max_steps, trajectory_valid_steps[episode_ix % len(trajectory_valid_steps)])
+                )
                 render_video = episode_ix < args.max_episodes_rendered
                 result = run_episode(
                     episode_ix=episode_ix,
@@ -667,11 +756,12 @@ def main() -> None:
                     preprocessor=preprocessor,
                     postprocessor=postprocessor,
                     seed=episode_seed,
-                    max_steps=args.max_steps,
+                    max_steps=episode_max_steps,
                     init_steps=args.init_steps,
                     action_executor=action_executor,
                     action_trace_logger=action_trace_logger,
                     render_video=render_video,
+                    args=args,
                 )
 
                 video_path = ""
@@ -688,11 +778,12 @@ def main() -> None:
                     "episode_ix": episode_ix,
                     "seed": episode_seed,
                     "success": bool(result["success"]),
+                    "failure_reason": final_info["failure_reason"],
                     "final_door_open": first_scalar(final_info.get("final_door_open"), ""),
                     "final_door_openness": first_scalar(final_info.get("final_door_openness"), ""),
                     "final_engaged": first_scalar(final_info.get("final_engaged"), ""),
                     "final_handle_distance": first_scalar(final_info.get("final_handle_distance"), ""),
-                    "steps": f"{result['sim_steps']}/{args.max_steps}",
+                    "steps": f"{result['sim_steps']}/{episode_max_steps}",
                     "policy_steps": result["policy_steps"],
                     "video_path": video_path,
                 }
@@ -702,6 +793,7 @@ def main() -> None:
                         "episode_ix": episode_ix,
                         "seed": episode_seed,
                         "success": row["success"],
+                        "failure_reason": row["failure_reason"],
                         "final_door_openness": row["final_door_openness"],
                         "final_handle_distance": row["final_handle_distance"],
                     }
@@ -729,6 +821,7 @@ def main() -> None:
         "video_paths": video_paths,
         "alignment": {
             "max_steps": args.max_steps,
+            "episode_length_source": args.episode_length_source,
             "decimation": args.decimation,
             "init_steps": args.init_steps,
             "interpolated": args.interpolated,

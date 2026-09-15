@@ -32,6 +32,7 @@ from lerobot.utils.random_utils import set_seed
 from lerobot.utils.utils import init_logging
 
 from ee_pose_trace import EE_TRACE_COLUMNS, ee_trace_values, empty_ee_trace_values, make_ee_fk
+from physical_success import classify_physical_success
 
 
 PER_EPISODE_CSV_COLUMNS = [
@@ -40,6 +41,7 @@ PER_EPISODE_CSV_COLUMNS = [
     "seed",
     "record_success",
     "success",
+    "failure_reason",
     "final_door_open",
     "final_door_openness",
     "final_engaged",
@@ -448,6 +450,15 @@ class ActionTraceLogger:
 
 def make_isaaclab_arena_cfg(args: argparse.Namespace, episode_length: int) -> IsaaclabArenaEnv:
     kwargs = {
+        # Arena 0.3's builder consumes a typed-config-shaped namespace.  Keep
+        # these explicit so the EnvHub adapter works with both the legacy and
+        # Isaac Sim 6.0.1/Arena 0.3 layouts.
+        "env_spacing": 30.0,
+        "solve_relations": True,
+        "placement_seed": None,
+        "resolve_on_reset": None,
+        "presets": None,
+        "language_instruction": None,
         "object_name": args.object_name,
         "scene_name": args.scene_name,
         "object_center": True,
@@ -735,12 +746,22 @@ def evaluate_current_success(env: Any, args: argparse.Namespace) -> dict[str, An
             return value.detach().cpu().flatten()[0].item()
         return first_scalar(value, default)
 
-    final_door_open = bool(tensor_value("door_open", False))
     final_openness = float(tensor_value("openness", np.nan))
     final_handle_distance = float(tensor_value("handle_distance", np.nan))
-    final_engaged = bool(np.isfinite(final_handle_distance) and final_handle_distance <= args.handle_distance_threshold)
+    success, failure_reason = classify_physical_success(
+        final_openness,
+        final_handle_distance,
+        openness_threshold_rad=args.openness_threshold,
+        handle_distance_threshold_m=args.handle_distance_threshold,
+    )
+    final_door_open = bool(np.isfinite(final_openness) and final_openness >= args.openness_threshold)
+    final_engaged = bool(
+        np.isfinite(final_handle_distance)
+        and final_handle_distance <= args.handle_distance_threshold
+    )
     return {
-        "success": bool(final_door_open and final_engaged),
+        "success": success,
+        "failure_reason": failure_reason,
         "final_door_open": final_door_open,
         "final_door_openness": final_openness,
         "final_engaged": final_engaged,
@@ -1003,6 +1024,7 @@ def main() -> None:
                 "seed": episode_seed,
                 "record_success": "" if episode.record_success is None else bool(episode.record_success),
                 "success": bool(result["success"]),
+                "failure_reason": result["failure_reason"],
                 "final_door_open": result["final_door_open"],
                 "final_door_openness": result["final_door_openness"],
                 "final_engaged": result["final_engaged"],
@@ -1020,6 +1042,7 @@ def main() -> None:
                     "demo_key": episode.demo_key,
                     "record_success": row["record_success"],
                     "success": row["success"],
+                    "failure_reason": result["failure_reason"],
                     "final_door_openness": row["final_door_openness"],
                     "final_handle_distance": row["final_handle_distance"],
                     "max_abs_eval_vs_record_state": row.get("max_abs_eval_vs_record_state", ""),
