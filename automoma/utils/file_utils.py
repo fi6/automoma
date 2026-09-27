@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 from pathlib import Path
@@ -51,6 +52,28 @@ def load_robot_cfg(robot_cfg_path: Union[str, Dict]) -> Dict[str, Any]:
     loaded = load_yaml(robot_cfg_path)["robot_cfg"]
     print(f"Robot configuration loaded from {robot_cfg_path}")
     return loaded
+
+
+def override_joint_distance_weights(
+    robot_cfg: Dict[str, Any], overrides: Dict[str, float]
+) -> Dict[str, Any]:
+    """Copy a cuRobo robot config and override named path-length weights."""
+    updated = copy.deepcopy(robot_cfg)
+    cspace = updated["kinematics"]["cspace"]
+    joint_names = cspace["joint_names"]
+    weights = list(cspace["cspace_distance_weight"])
+    unknown = sorted(set(overrides) - set(joint_names))
+    if unknown:
+        raise ValueError(f"Unknown joint distance weight overrides: {unknown}")
+    for joint_name, weight in overrides.items():
+        value = float(weight)
+        if not np.isfinite(value) or value <= 0.0:
+            raise ValueError(
+                f"Joint distance weight for {joint_name} must be finite and positive"
+            )
+        weights[joint_names.index(joint_name)] = value
+    cspace["cspace_distance_weight"] = weights
+    return updated
 
 
 # ============================================================================

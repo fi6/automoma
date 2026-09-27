@@ -85,6 +85,14 @@ Confirm the required object, robot, and scene files exist under the documented
 asset roots. Record checksums for production inputs. Generate trajectories with
 `scripts/plan.py`, or validate a frozen trajectory set before reuse.
 
+For Microwave 7221, the maintained planning profile prefers arm motion over
+mobile-base travel. It applies path-length weights of `2/2/10` to
+`base_x/base_y/base_z`, filters start-to-goal base displacement at `1.0 m` and
+`0.35 rad`, and filters full raw-trajectory excursion at `1.0 m` and `0.35 rad`.
+These limits apply to newly planned trajectories. Downstream smoothing must
+repeat the full-path excursion checks because interpolation can overshoot the
+raw path; replay must never clip a finalized action sequence.
+
 A logical sample identity must come from its scene, trajectory or episode,
 seed, and immutable renderer configuration. GPU number, worker number, retry
 number, and array position are execution details and must not define sample

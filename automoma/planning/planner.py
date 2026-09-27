@@ -33,13 +33,21 @@ from automoma.utils.math_utils import (
     _convert_to_list,
     expand_to_pairs,
     filter_pairs_by_joint_delta,
+    filter_pairs_by_planar_delta,
+    joint_excursion_mask,
     ik_clustering,
     mark_cuboid_as_empty,
     pose_multiply,
+    planar_excursion_mask,
     quaternion_distance,
     stack_iks_angle,
 )
-from automoma.utils.file_utils import get_project_dir, load_robot_cfg, process_robot_cfg
+from automoma.utils.file_utils import (
+    get_project_dir,
+    load_robot_cfg,
+    override_joint_distance_weights,
+    process_robot_cfg,
+)
 
 
 class CuroboPlanner:
@@ -333,6 +341,12 @@ class CuroboPlanner:
         robot_cfg = load_robot_cfg(robot_cfg)
 
         traj_cfg = self.cfg.get("traj", {})
+        distance_weight_overrides = traj_cfg.get("joint_distance_weight_overrides", {})
+        if distance_weight_overrides:
+            robot_cfg = override_joint_distance_weights(
+                robot_cfg, distance_weight_overrides
+            )
+            print("Joint distance weight overrides:", distance_weight_overrides)
         grad_override = traj_cfg.get("gradient_trajopt_file")
         grad_file = grad_override or (
             "gradient_trajopt_fixbase.yml" if fixed_base else "gradient_trajopt.yml"
@@ -519,6 +533,8 @@ class CuroboPlanner:
         ``plan_cfg`` keys:
             - ``batch_size`` (int): GPU batch size.
             - ``expand_to_pairs`` (bool): create Cartesian product of start/goal.
+            - ``max_base_xy_delta`` (float): reject pairs with larger planar
+              base displacement before TrajOpt.
             - ``max_base_yaw_delta`` (float): reject pairs with a larger raw
               bounded-joint yaw delta before TrajOpt.
             - ``joint_cfg`` / ``enable_collision``: passed to optional world update.
@@ -533,6 +549,25 @@ class CuroboPlanner:
         if plan_cfg.get("expand_to_pairs", False):
             start_iks, goal_iks = expand_to_pairs(start_iks, goal_iks)
             traj_cfg = self.cfg.get("traj", {})
+            max_base_xy_delta = plan_cfg.get(
+                "max_base_xy_delta", traj_cfg.get("max_base_xy_delta")
+            )
+            if max_base_xy_delta is not None:
+                start_iks, goal_iks, pair_mask = filter_pairs_by_planar_delta(
+                    start_iks,
+                    goal_iks,
+                    x_index=int(plan_cfg.get("base_x_index", 0)),
+                    y_index=int(plan_cfg.get("base_y_index", 1)),
+                    max_delta=float(max_base_xy_delta),
+                )
+                print(
+                    "Base-XY pair filter:",
+                    f"kept={pair_mask.sum().item()}/{pair_mask.numel()}",
+                    f"max_delta={float(max_base_xy_delta):.4f}",
+                )
+                if start_iks.shape[0] == 0:
+                    print("No IK pairs remain after base-XY filtering.")
+                    return TrajResult.fallback(robot_dof=start_iks.shape[-1])
             max_base_yaw_delta = plan_cfg.get(
                 "max_base_yaw_delta", traj_cfg.get("max_base_yaw_delta")
             )
@@ -693,6 +728,43 @@ class CuroboPlanner:
 
         step_1_count = goal_state.shape[0]
         print(f"Step 1: Filtered from {indices_count} to {step_1_count} trajectories based on success.")
+
+        max_base_xy_excursion = cfg.get("max_base_xy_excursion")
+        max_base_yaw_excursion = cfg.get("max_base_yaw_excursion")
+        if max_base_xy_excursion is not None or max_base_yaw_excursion is not None:
+            excursion_mask = torch.ones(
+                len(start_state), dtype=torch.bool, device=start_state.device
+            )
+            if max_base_xy_excursion is not None:
+                excursion_mask &= planar_excursion_mask(
+                    start_state,
+                    trajectories,
+                    x_index=int(cfg.get("base_x_index", 0)),
+                    y_index=int(cfg.get("base_y_index", 1)),
+                    max_excursion=float(max_base_xy_excursion),
+                )
+            if max_base_yaw_excursion is not None:
+                base_yaw_index = int(cfg.get("base_yaw_index", 2))
+                excursion_mask &= joint_excursion_mask(
+                    start_state,
+                    trajectories,
+                    joint_index=base_yaw_index,
+                    max_excursion=float(max_base_yaw_excursion),
+                )
+            kept = torch.nonzero(excursion_mask, as_tuple=False).flatten()
+            goal_state = goal_state[kept]
+            start_state = start_state[kept]
+            trajectories = trajectories[kept]
+            success = success[kept]
+            print(
+                "Base excursion filter:",
+                f"kept={len(kept)}/{step_1_count}",
+                f"max_xy={max_base_xy_excursion}",
+                f"max_yaw={max_base_yaw_excursion}",
+            )
+            if len(kept) == 0:
+                return TrajResult.fallback(robot_dof=start_state.shape[-1])
+            step_1_count = len(kept)
 
         # Step 2: waypoint-level FK validation against the goal EE pose.
         pos_diffs, rot_diffs = [], []

@@ -140,6 +140,67 @@ def filter_pairs_by_joint_delta(
     return start_states[mask], goal_states[mask], mask
 
 
+def filter_pairs_by_planar_delta(
+    start_states: torch.Tensor,
+    goal_states: torch.Tensor,
+    *,
+    x_index: int,
+    y_index: int,
+    max_delta: float,
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Keep paired states within a planar start-to-goal displacement."""
+    if start_states.shape != goal_states.shape:
+        raise ValueError("start_states and goal_states must have matching shapes")
+    if max_delta < 0.0:
+        raise ValueError("max_delta must be non-negative")
+    delta = goal_states[:, [x_index, y_index]] - start_states[:, [x_index, y_index]]
+    mask = torch.linalg.vector_norm(delta, dim=1) <= max_delta
+    return start_states[mask], goal_states[mask], mask
+
+
+def joint_excursion_mask(
+    start_states: torch.Tensor,
+    trajectories: torch.Tensor,
+    *,
+    joint_index: int,
+    max_excursion: float,
+) -> torch.Tensor:
+    """Return trajectories that stay within a raw joint delta from their start.
+
+    Coordinates are intentionally not wrapped. This matches
+    :func:`filter_pairs_by_joint_delta` and is appropriate for bounded mobile
+    base yaw joints, where wrapping could hide a large commanded rotation.
+    """
+    if start_states.ndim != 2 or trajectories.ndim != 3:
+        raise ValueError("start_states must be 2D and trajectories must be 3D")
+    if start_states.shape[0] != trajectories.shape[0]:
+        raise ValueError("start_states and trajectories must have matching batches")
+    if max_excursion < 0.0:
+        raise ValueError("max_excursion must be non-negative")
+    delta = trajectories[..., joint_index] - start_states[:, None, joint_index]
+    return delta.abs().amax(dim=1) <= max_excursion
+
+
+def planar_excursion_mask(
+    start_states: torch.Tensor,
+    trajectories: torch.Tensor,
+    *,
+    x_index: int,
+    y_index: int,
+    max_excursion: float,
+) -> torch.Tensor:
+    """Return trajectories that stay within a planar radius of their start."""
+    if start_states.ndim != 2 or trajectories.ndim != 3:
+        raise ValueError("start_states must be 2D and trajectories must be 3D")
+    if start_states.shape[0] != trajectories.shape[0]:
+        raise ValueError("start_states and trajectories must have matching batches")
+    if max_excursion < 0.0:
+        raise ValueError("max_excursion must be non-negative")
+    indices = [x_index, y_index]
+    delta = trajectories[..., indices] - start_states[:, None, indices]
+    return torch.linalg.vector_norm(delta, dim=-1).amax(dim=1) <= max_excursion
+
+
 def stack_iks_angle(iks: torch.Tensor, angle: float) -> torch.Tensor:
     """Append a scalar joint angle column to IK solutions."""
     col = torch.full((iks.shape[0], 1), angle, device=iks.device, dtype=iks.dtype)

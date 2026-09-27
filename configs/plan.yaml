@@ -59,15 +59,26 @@ planner:
     interpolation_dt: 0.05
     trajopt_tsteps: 32
     gradient_trajopt_file: configs/curobo/gradient_trajopt_fixbase_object_orientation10x.yml
-    # base_z is bounded, so use the raw start/goal coordinate delta.
-    max_base_yaw_delta: 2.0
+    # Prefer arm motion over mobile-base travel when selecting trajectories.
+    # In particular, make base yaw much more expensive than either XY travel.
+    joint_distance_weight_overrides:
+      base_x: 2.0
+      base_y: 2.0
+      base_z: 10.0
+    # base_z is bounded, so use the raw start/goal coordinate delta. Planning is
+    # cheap relative to rendering, so reject large rotations before TrajOpt.
+    max_base_xy_delta: 1.0
+    max_base_yaw_delta: 0.35
 
   # Trajectory filtering
   filter:
     # Pre-KS AKR all-waypoint gate; post-KS validation uses 0.002 m.
     position_tolerance: 0.001
     rotation_tolerance: 0.01
-    base_rotation_limit: 6.2832   # 2π
+    # Also reject any raw trajectory that swings farther than this between its
+    # start and an intermediate waypoint.
+    max_base_xy_excursion: 1.0
+    max_base_yaw_excursion: 0.35
 
   # Output format (11D→12D conversion for IsaacLab-Arena)
   output:
