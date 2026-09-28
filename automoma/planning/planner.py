@@ -45,6 +45,7 @@ from automoma.utils.math_utils import (
 from automoma.utils.file_utils import (
     get_project_dir,
     load_robot_cfg,
+    override_joint_distance_weight,
     process_robot_cfg,
 )
 
@@ -340,6 +341,14 @@ class CuroboPlanner:
         robot_cfg = load_robot_cfg(robot_cfg)
 
         traj_cfg = self.cfg.get("traj", {})
+        base_yaw_distance_weight = traj_cfg.get("base_yaw_distance_weight")
+        if fixed_base and base_yaw_distance_weight is not None:
+            robot_cfg = override_joint_distance_weight(
+                robot_cfg,
+                joint_name="base_z",
+                weight=float(base_yaw_distance_weight),
+            )
+            print("Base-yaw distance weight:", float(base_yaw_distance_weight))
         grad_override = traj_cfg.get("gradient_trajopt_file")
         grad_file = grad_override or (
             "gradient_trajopt_fixbase.yml" if fixed_base else "gradient_trajopt.yml"

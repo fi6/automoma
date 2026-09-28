@@ -85,9 +85,12 @@ Confirm the required object, robot, and scene files exist under the documented
 asset roots. Record checksums for production inputs. Generate trajectories with
 `scripts/plan.py`, or validate a frozen trajectory set before reuse.
 
-For Microwave 7221, the maintained planning profile filters start-to-goal base
-displacement at `1.0 m` and `0.35 rad`, and filters full raw-trajectory
-excursion at `1.0 m` and `0.35 rad`.
+For Microwave 7221, the maintained planning profile uses a `base_z` path-length
+weight of `10`, filters start-to-goal base displacement at `1.0 m` and
+`0.5 rad`, and filters full raw-trajectory excursion at `1.0 m` and `0.5 rad`.
+The yaw weight comes from an identical-pair sweep where it reduced avoidable
+path motion without reducing retained count; the explicit limits control the
+endpoint requirement that the weight cannot remove.
 These limits apply to newly planned trajectories. Downstream smoothing must
 repeat the full-path excursion checks because interpolation can overshoot the
 raw path; replay must never clip a finalized action sequence.

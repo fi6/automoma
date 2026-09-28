@@ -59,10 +59,13 @@ planner:
     interpolation_dt: 0.05
     trajopt_tsteps: 32
     gradient_trajopt_file: configs/curobo/gradient_trajopt_fixbase_object_orientation10x.yml
+    # The paired yaw-weight sweep reduced extra-motion p95 by 58.6% and
+    # overshoot p95 by 78.9% at weight 10 without reducing retained count.
+    base_yaw_distance_weight: 10.0
     # base_z is bounded, so use the raw start/goal coordinate delta. Planning is
     # cheap relative to rendering, so reject large rotations before TrajOpt.
     max_base_xy_delta: 1.0
-    max_base_yaw_delta: 0.35
+    max_base_yaw_delta: 0.5
 
   # Trajectory filtering
   filter:
@@ -72,7 +75,7 @@ planner:
     # Also reject any raw trajectory that swings farther than this between its
     # start and an intermediate waypoint.
     max_base_xy_excursion: 1.0
-    max_base_yaw_excursion: 0.35
+    max_base_yaw_excursion: 0.5
 
   # Output format (11D→12D conversion for IsaacLab-Arena)
   output:
