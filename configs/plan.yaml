@@ -59,12 +59,6 @@ planner:
     interpolation_dt: 0.05
     trajopt_tsteps: 32
     gradient_trajopt_file: configs/curobo/gradient_trajopt_fixbase_object_orientation10x.yml
-    # Prefer arm motion over mobile-base travel when selecting trajectories.
-    # In particular, make base yaw much more expensive than either XY travel.
-    joint_distance_weight_overrides:
-      base_x: 2.0
-      base_y: 2.0
-      base_z: 10.0
     # base_z is bounded, so use the raw start/goal coordinate delta. Planning is
     # cheap relative to rendering, so reject large rotations before TrajOpt.
     max_base_xy_delta: 1.0
