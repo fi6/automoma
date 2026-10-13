@@ -7,6 +7,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -52,6 +53,23 @@ def load_robot_cfg(robot_cfg_path: Union[str, Dict]) -> Dict[str, Any]:
     loaded = load_yaml(robot_cfg_path)["robot_cfg"]
     print(f"Robot configuration loaded from {robot_cfg_path}")
     return loaded
+
+
+def articulation_goal_config(robot_cfg: Dict) -> tuple[Dict, str]:
+    """Store the moving-side link of the final, reversed AKR object joint."""
+    cfg = copy.deepcopy(robot_cfg)
+    kin = cfg["kinematics"]
+    joint_name = kin["cspace"]["joint_names"][-1]
+    urdf = ET.parse(os.path.join(get_project_dir(), kin["urdf_path"])).getroot()
+    joint = next((j for j in urdf.findall("joint") if j.get("name") == joint_name), None)
+    if joint is None or joint.get("type") not in ("revolute", "continuous", "prismatic"):
+        raise ValueError(f"Expected a movable final AKR object joint: {joint_name}")
+    link = joint.find("parent").get("link")
+    if link == kin["ee_link"]:
+        raise ValueError("Object goal link must differ from the fixed AKR anchor")
+    if link not in kin["link_names"]:
+        kin["link_names"].append(link)
+    return cfg, link
 
 
 def override_joint_distance_weight(

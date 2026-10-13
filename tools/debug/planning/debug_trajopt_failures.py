@@ -60,6 +60,8 @@ def main():
     urdf = akr_robot_cfg["robot_cfg"]["kinematics"]["urdf_path"]
     akr_robot_cfg["robot_cfg"]["kinematics"]["urdf_path"] = os.path.abspath(urdf)
     
+    from automoma.utils.file_utils import articulation_goal_config
+    akr_robot_cfg, object_goal_link = articulation_goal_config(akr_robot_cfg['robot_cfg'])
     motion_gen = planner.init_motion_gen(akr_robot_cfg, enable_collision=False)
     
     traj_cfg_plan = {
@@ -77,12 +79,13 @@ def main():
 
     if traj_result.success.sum().item() == 0:
         from curobo.types.robot import JointState
-        from curobo.types.math import Goal
+        from curobo.rollout.rollout_base import Goal
         
         js_s = JointState.from_position(planner.tensor_args.to_device(start_with_angle[0:1]))
         js_g = JointState.from_position(planner.tensor_args.to_device(goal_with_angle[0:1]))
-        ee = motion_gen.ik_solver.fk(js_g.position).ee_pose
-        goal = Goal(goal_pose=ee, goal_state=js_g, current_state=js_s)
+        target = motion_gen.kinematics.get_state(js_g.position)
+        goal = Goal(goal_pose=target.ee_pose.clone(), goal_state=js_g, current_state=js_s,
+                    links_goal_pose={object_goal_link: target.link_poses[object_goal_link].clone()})
         
         result = motion_gen.trajopt_solver.solve_batch(goal)
         print("Status of single solve_batch:", result.status)

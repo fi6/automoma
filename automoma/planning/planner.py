@@ -44,6 +44,7 @@ from automoma.utils.math_utils import (
 )
 from automoma.utils.file_utils import (
     get_project_dir,
+    articulation_goal_config,
     load_robot_cfg,
     override_joint_distance_weight,
     process_robot_cfg,
@@ -593,7 +594,7 @@ class CuroboPlanner:
                     return TrajResult.fallback(robot_dof=start_iks.shape[-1])
         assert start_iks.shape[0] == goal_iks.shape[0]
 
-        robot_cfg = load_robot_cfg(robot_cfg)
+        robot_cfg, object_goal_link = articulation_goal_config(load_robot_cfg(robot_cfg))
         joint_cfg = plan_cfg.get("joint_cfg")
         enable_coll = plan_cfg.get("enable_collision", self.cfg.get("enable_collision", True))
         include_object_mesh = plan_cfg.get("include_object_mesh", False)
@@ -646,8 +647,12 @@ class CuroboPlanner:
             for i, (b_s, b_g) in enumerate(zip(start_batches, goal_batches)):
                 js_s = JointState.from_position(self.tensor_args.to_device(b_s))
                 js_g = JointState.from_position(self.tensor_args.to_device(b_g))
-                ee = motion_gen.ik_solver.fk(js_g.position).ee_pose
-                goal = Goal(goal_pose=ee, goal_state=js_g, current_state=js_s)
+                target = motion_gen.kinematics.get_state(js_g.position)
+                # Pose solves use IK only as a seed; target the moving object link, not every robot joint.
+                goal = Goal(
+                    goal_pose=target.ee_pose.clone(), goal_state=js_g, current_state=js_s,
+                    links_goal_pose={object_goal_link: target.link_poses[object_goal_link].clone()},
+                )
                 torch.cuda.synchronize()
 
                 result = motion_gen.trajopt_solver.solve_batch(goal)
@@ -717,8 +722,13 @@ class CuroboPlanner:
         indices_count = goal_state.shape[0]
         print(f"Loaded {indices_count} trajectories")
 
-        # Step 1: keep only trajopt-successful trajectories.
-        filtered_indices = success.nonzero(as_tuple=True)[0]
+        # Step 1: require solver success and the requested object joint endpoint.
+        object_tol = float(cfg.get("object_joint_tolerance", 0.001))
+        if not np.isfinite(object_tol) or object_tol < 0:
+            raise ValueError("object_joint_tolerance must be finite and non-negative")
+        object_error = torch.abs(trajectories[:, -1, -1] - goal_state[:, -1])
+        endpoint_ok = torch.isfinite(object_error) & (object_error <= object_tol)
+        filtered_indices = (success & endpoint_ok).nonzero(as_tuple=True)[0]
         if filtered_indices.shape[0] == 0:
             print("Step 1: No successful trajectories to filter, returning empty result")
             return TrajResult.fallback(robot_dof=start_state.shape[-1])
@@ -729,7 +739,7 @@ class CuroboPlanner:
         success = success[filtered_indices]
 
         step_1_count = goal_state.shape[0]
-        print(f"Step 1: Filtered from {indices_count} to {step_1_count} trajectories based on success.")
+        print(f"Step 1: Filtered from {indices_count} to {step_1_count} trajectories based on success and object goal.")
 
         max_base_xy_excursion = cfg.get("max_base_xy_excursion")
         max_base_yaw_excursion = cfg.get("max_base_yaw_excursion")

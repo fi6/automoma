@@ -72,6 +72,7 @@ planner:
     # Pre-KS AKR all-waypoint gate; post-KS validation uses 0.002 m.
     position_tolerance: 0.001
     rotation_tolerance: 0.01
+    object_joint_tolerance: 0.001  # rad for revolute objects, m for prismatic objects
     # Also reject any raw trajectory that swings farther than this between its
     # start and an intermediate waypoint.
     max_base_xy_excursion: 1.0
