@@ -50,3 +50,35 @@ The existing position-command resampling's acceleration violations remain
 separately reported; this fix does not claim to resolve them. Other articulated
 assets have not been physically revalidated, and the full production matrix
 has not been rerun.
+
+## Optional IK trajectory initialization
+
+`CuroboPlanner.plan_traj(..., seed_traj=paths)` accepts one caller-computed IK
+path per explicit start/goal pair. `paths` is a tensor with shape
+`[N, motion_gen.trajopt_solver.action_horizon, D]`, including both endpoints,
+in the AKR model's joint order and native object-joint sign. Endpoints must
+match the prepared start/goal states; positive opening targets are normalized
+to negative AKR coordinates by the existing planner convention. Resample and
+align paths before passing them. Invalid shapes, nonfinite values, mismatched
+endpoints, and `expand_to_pairs=True` are rejected.
+
+Each GPU batch receives the corresponding paths as one initial trajectory
+seed; cuRobo supplies any remaining seeds up to the solver's active
+`trajopt_solver.num_seeds`. This is not necessarily MotionGen's configured
+`num_trajopt_seeds`: the tested batch solver used one seed per goal. With `seed_traj=None`,
+the previous seed-generation behavior is preserved. Collision optimization,
+object terminal goals, and `filter_traj` acceptance remain in effect. A supplied
+IK path can contain collisions and must never be treated as an accepted path.
+
+The IK implementation and robot/scene assets remain with the caller. This
+interface adds no dependency and does not change replay, serialization, or
+training. The Panda Omron experiment uses it instead of injecting a seed by
+patching the underlying solver; its experiment and validation data remain in
+`ccmoma-bench`.
+
+Validation: six seed-interface tests cover partial batches, default behavior,
+invalid inputs, endpoint alignment, and object-joint signs. The existing
+terminal-goal and base-motion tests also pass. A GPU Panda Omron run with a
+blocking chair received exactly the same seed tensor as the previous caller
+injection (`[1, 8, 60, 11]`); the selected path passed 711 sampled mesh checks.
+Physical replay was not rerun for this interface-only change.

@@ -530,8 +530,16 @@ class CuroboPlanner:
         *,
         plan_cfg: Optional[Dict[str, Any]] = None,
         motion_gen: Optional[MotionGen] = None,
+        seed_traj: Optional[torch.Tensor] = None,
     ) -> TrajResult:
         """Plan trajectories (batched) from *start_iks* to *goal_iks*.
+
+        ``seed_traj`` optionally supplies one IK path per start/goal pair,
+        shaped ``[N, action_horizon, D]`` in native AKR joint order/sign.
+        Its endpoints must match the prepared start/goal states. Paths are
+        optimizer initial guesses, not collision-checked solutions. Supply
+        explicit pairs (``expand_to_pairs=False``) when using this argument.
+        cuRobo fills any remaining slots in the solver's active seed budget.
 
         ``plan_cfg`` keys:
             - ``batch_size`` (int): GPU batch size.
@@ -544,6 +552,9 @@ class CuroboPlanner:
         """
         if plan_cfg is None:
             plan_cfg = {}
+
+        if seed_traj is not None and plan_cfg.get("expand_to_pairs", False):
+            raise ValueError("seed_traj requires explicit start/goal pairs; disable expand_to_pairs")
 
         if start_iks.shape[0] == 0:
             print("No IK solutions to plan trajectories for.")
@@ -636,6 +647,16 @@ class CuroboPlanner:
                 include_object_mesh=include_object_mesh,
             )
 
+        if seed_traj is not None:
+            expected = (start_iks.shape[0], motion_gen.trajopt_solver.action_horizon, start_iks.shape[1])
+            if not isinstance(seed_traj, torch.Tensor) or tuple(seed_traj.shape) != expected:
+                raise ValueError(f"seed_traj must have shape {expected}")
+            if not torch.isfinite(seed_traj).all():
+                raise ValueError("seed_traj must contain only finite joint positions")
+            for endpoint, states in ((seed_traj[:, 0], start_iks), (seed_traj[:, -1], goal_iks)):
+                if not torch.allclose(endpoint, states.to(endpoint), rtol=0, atol=1e-5):
+                    raise ValueError("seed_traj endpoints must match prepared AKR start/goal states")
+
         batch_size = plan_cfg.get("batch_size", self.cfg.get("traj", {}).get("batch_size", 20))
         start_batches = torch.split(start_iks, batch_size)
         goal_batches = torch.split(goal_iks, batch_size)
@@ -655,7 +676,11 @@ class CuroboPlanner:
                 )
                 torch.cuda.synchronize()
 
-                result = motion_gen.trajopt_solver.solve_batch(goal)
+                seed_kwargs = {}
+                if seed_traj is not None:
+                    batch_seed = seed_traj[i * batch_size:i * batch_size + len(b_s)]
+                    seed_kwargs["seed_traj"] = self.tensor_args.to_device(batch_seed).unsqueeze(0)
+                result = motion_gen.trajopt_solver.solve_batch(goal, **seed_kwargs)
                 trajectories = result.solution.position.detach().clone().cpu()
                 success = result.success.detach().clone().cpu()
 
